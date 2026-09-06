@@ -33,12 +33,29 @@ ApplicationWindow {
     }
     Library { id: library }
 
+    PresetRenderer {
+        id: renderer
+        onFinished: (ok, outputPath, error) => {
+            root.resultOk = ok
+            root.resultMessage = ok ? qsTr("Rendered") : (error.length ? error : qsTr("Render failed"))
+            if (ok) library.scan()
+            clearResult.restart()
+        }
+    }
+
     Component.onCompleted: {
         engine.start()
         library.scan()
         // Screenshot runs open on a playing track so the transport is exercised.
         if (Qt.application.arguments.indexOf("--demo") >= 0 && library.count > 0)
             libraryView.playFirst()
+        // Screenshot/verification run: render the first track with a named preset.
+        const r = Qt.application.arguments.indexOf("--render")
+        if (r >= 0 && library.count > 0) {
+            const row = library.get(0)
+            renderer.render(row.path, row.title, row.artist,
+                            Qt.application.arguments[r + 1], library.musicDir)
+        }
     }
 
     Timer { id: clearResult; interval: 4000; onTriggered: root.resultMessage = "" }
@@ -194,11 +211,48 @@ ApplicationWindow {
             LibraryView {
                 id: libraryView
                 library: library
+                renderer: renderer
                 onPlay: (path, title, artist, thumb) => playerBar.playFile(path, title, artist, thumb)
             }
         }
 
         Item { height: 14 }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 40
+            radius: 10
+            color: Theme.surface
+            border.color: Theme.border
+            visible: renderer.busy
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 12
+                Text {
+                    text: qsTr("Rendering ") + renderer.currentTitle
+                    color: Theme.textMuted
+                    font.family: Fonts.body
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+                Text {
+                    text: Math.round(renderer.progress) + "%"
+                    color: Theme.accent
+                    font.family: Fonts.body
+                    font.pixelSize: 12
+                }
+                Text {
+                    text: qsTr("Cancel")
+                    color: Theme.error
+                    font.family: Fonts.body
+                    font.pixelSize: 12
+                    TapHandler { onTapped: renderer.cancel() }
+                }
+            }
+        }
 
         PlayerBar {
             id: playerBar

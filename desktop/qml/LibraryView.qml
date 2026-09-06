@@ -7,6 +7,7 @@ import Arsivinyo
 Item {
     id: view
     property Library library
+    property PresetRenderer renderer
     property string selectedId: ""
     signal play(string path, string title, string artist, string thumb)
 
@@ -153,6 +154,37 @@ Item {
                         color: Theme.textSubtle
                         font.family: Fonts.body
                         font.pixelSize: 12
+                    }
+
+                    // Presets, offered per track like the phone's long-press action.
+                    Rectangle {
+                        implicitHeight: 24
+                        implicitWidth: 24
+                        radius: 6
+                        color: wandHover.hovered ? Theme.surfaceHover : "transparent"
+                        visible: !view.renderer.busy
+                        Text {
+                            anchors.centerIn: parent
+                            text: "\u2726"
+                            color: Theme.textSubtle
+                            font.pixelSize: 14
+                        }
+                        HoverHandler { id: wandHover }
+                        TapHandler { onTapped: presetMenu.popup() }
+
+                        Menu {
+                            id: presetMenu
+                            Repeater {
+                                model: view.renderer.builtInPresets()
+                                MenuItem {
+                                    required property var modelData
+                                    text: modelData.name
+                                    onTriggered: view.renderer.render(row.path, row.title,
+                                                                     row.artist, modelData.id,
+                                                                     view.library.musicDir)
+                                }
+                            }
+                        }
                     }
 
                     // Heart, drawn rather than imported.
