@@ -53,6 +53,16 @@ public:
     Q_INVOKABLE void setFavourite(const QString &id, bool favourite);
     Q_INVOKABLE bool isFavourite(const QString &id) const;
 
+    /**
+     * File a finished download into the library.
+     *
+     * Moves the media into the music folder and, if yt-dlp downloaded a cover, copies it
+     * into the artwork store beside the database. The engine reports the cover's path
+     * because the bundled FFmpeg cannot embed one — the same reason the phone keeps
+     * artwork as a sidecar rather than inside the file.
+     */
+    Q_INVOKABLE QString adopt(const QString &mediaPath, const QString &thumbnailPath);
+
 signals:
     void countChanged();
     void scanningChanged();
@@ -73,6 +83,7 @@ private:
     /** Reads tags with ffprobe. Only ever called for a file the database has not seen. */
     bool probe(const QString &path, Row &row) const;
     static QString ffprobePath();
+    QString artworkDir() const;
 
     QSqlDatabase m_db;
     QList<Row> m_rows;

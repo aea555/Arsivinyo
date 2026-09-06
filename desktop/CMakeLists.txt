@@ -15,7 +15,7 @@ set_source_files_properties(qml/Theme.qml qml/Fonts.qml PROPERTIES QT_QML_SINGLE
 qt_add_qml_module(arsivinyo-desktop
     URI Arsivinyo
     VERSION 1.0
-    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml
+    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml
     RESOURCES
         qml/fonts/Monda_400Regular.ttf
         qml/fonts/Monda_600SemiBold.ttf

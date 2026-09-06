@@ -56,7 +56,8 @@ signals:
     void statusChanged();
     void progressChanged();
     void ytDlpVersionChanged();
-    void finished(bool ok, const QString &message);
+    /** filePath and thumbnailPath are empty when the download failed. */
+    void finished(bool ok, const QString &message, const QString &filePath, const QString &thumbnailPath);
 
 private:
     void onStdout();

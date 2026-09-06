@@ -172,6 +172,8 @@ void EngineClient::handleEvent(const QJsonObject &event) {
         emit busyChanged();
         emit progressChanged();
         emit statusChanged();
-        emit finished(engineOk, message);
+        emit finished(engineOk, message,
+                      engineOk ? result.value("file_path").toString() : QString(),
+                      engineOk ? result.value("thumbnail_path").toString() : QString());
     }
 }

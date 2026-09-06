@@ -9,6 +9,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
+#include <QUrl>
 
 namespace {
 constexpr auto kFavourites = "favorites";   // spelling matches the phone's reserved id
@@ -86,6 +87,55 @@ void Library::migrate() {
     q.addBindValue(now);
     q.addBindValue(now);
     q.exec();
+}
+
+QString Library::artworkDir() const {
+    const QString dir = QFileInfo(m_db.databaseName()).absolutePath() + "/artwork";
+    QDir().mkpath(dir);
+    return dir;
+}
+
+QString Library::adopt(const QString &mediaPath, const QString &thumbnailPath) {
+    QFileInfo media(mediaPath);
+    if (!media.isFile()) return {};
+
+    // The file name is the identity, so it has to be unique in the folder. The phone
+    // solves the same problem in uniqueDisplayNameLocked.
+    QString name = media.fileName();
+    const QString stem = media.completeBaseName();
+    const QString suffix = media.suffix();
+    for (int n = 1; QFileInfo::exists(QDir(m_musicDir).filePath(name)); ++n)
+        name = QStringLiteral("%1 (%2).%3").arg(stem).arg(n).arg(suffix);
+
+    const QString target = QDir(m_musicDir).filePath(name);
+    if (!QFile::rename(mediaPath, target)) {
+        // Different filesystem: fall back to copy, then drop the original.
+        if (!QFile::copy(mediaPath, target)) return {};
+        QFile::remove(mediaPath);
+    }
+
+    QString thumbName;
+    const QFileInfo thumb(thumbnailPath);
+    if (!thumbnailPath.isEmpty() && thumb.isFile()) {
+        thumbName = name + "." + thumb.suffix();
+        const QString thumbTarget = QDir(artworkDir()).filePath(thumbName);
+        QFile::remove(thumbTarget);
+        // Copied verbatim: the cover is already a decoded image and Qt renders it as is.
+        if (!QFile::copy(thumbnailPath, thumbTarget)) thumbName.clear();
+        QFile::remove(thumbnailPath);
+    }
+
+    scan();
+
+    if (!thumbName.isEmpty()) {
+        QSqlQuery q(m_db);
+        q.prepare("UPDATE songs SET thumb_file = ? WHERE id = ?");
+        q.addBindValue(thumbName);
+        q.addBindValue(name);
+        q.exec();
+        reload();
+    }
+    return name;
 }
 
 QString Library::ffprobePath() {
@@ -292,7 +342,9 @@ QVariant Library::data(const QModelIndex &index, int role) const {
     case PathRole:      return QDir(m_musicDir).filePath(row.fileName);
     case DurationRole:  return row.durationSec;
     case SizeRole:      return row.sizeBytes;
-    case ThumbRole:     return row.thumb;
+    case ThumbRole:     return row.thumb.isEmpty()
+                            ? QString()
+                            : QUrl::fromLocalFile(QDir(artworkDir()).filePath(row.thumb)).toString();
     case FavouriteRole: return row.favourite;
     case PresetIdRole:  return row.presetId;
     default:            return {};

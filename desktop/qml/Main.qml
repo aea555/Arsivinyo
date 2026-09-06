@@ -19,9 +19,15 @@ ApplicationWindow {
 
     EngineClient {
         id: engine
-        onFinished: (ok, message) => {
+        onFinished: (ok, message, filePath, thumbnailPath) => {
             root.resultOk = ok
-            root.resultMessage = ok ? qsTr("Saved") : (message.length ? message : qsTr("Download failed"))
+            if (ok && filePath.length) {
+                // Audio goes into the library; a video just stays where it landed.
+                const named = library.adopt(filePath, thumbnailPath)
+                root.resultMessage = named.length ? qsTr("Added to library") : qsTr("Saved")
+            } else {
+                root.resultMessage = ok ? qsTr("Saved") : (message.length ? message : qsTr("Download failed"))
+            }
             clearResult.restart()
         }
     }
@@ -73,9 +79,47 @@ ApplicationWindow {
             }
         }
 
-        Item { Layout.fillHeight: true }
+        Item { height: 18 }
 
-        DownloadButton {
+        // Two views rather than a sidebar: the app does two things, and a sidebar for
+        // two entries is furniture.
+        RowLayout {
+            Layout.alignment: Qt.AlignHCenter
+            spacing: 4
+            Repeater {
+                model: [qsTr("Download"), qsTr("Library")]
+                Rectangle {
+                    required property int index
+                    required property string modelData
+                    implicitHeight: 30
+                    implicitWidth: tabLabel.implicitWidth + 28
+                    radius: 8
+                    color: root.tab === index ? Theme.surfaceHover : "transparent"
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Text {
+                        id: tabLabel
+                        anchors.centerIn: parent
+                        text: modelData + (index === 1 && library.count ? "  " + library.count : "")
+                        color: root.tab === index ? Theme.text : Theme.textSubtle
+                        font.family: Fonts.body
+                        font.pixelSize: 13
+                    }
+                    TapHandler { onTapped: root.tab = index }
+                }
+            }
+        }
+
+        Item { height: 18 }
+
+        StackLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            currentIndex: root.tab
+
+            ColumnLayout {
+                spacing: 0
+                Item { Layout.fillHeight: true }
+                DownloadButton {
             Layout.alignment: Qt.AlignHCenter
             state_: engine.busy ? "busy"
                                 : (root.resultMessage.length ? (root.resultOk ? "done" : "error") : "idle")
@@ -94,12 +138,12 @@ ApplicationWindow {
                 root.resultMessage = ""
                 engine.download(root.pendingUrl, engine.downloadDir, root.audioMode)
             }
-        }
+                }
 
-        Item { height: 22 }
+                Item { height: 22 }
 
-        // Secondary to the button, the way it is on the phone.
-        Rectangle {
+                // Secondary to the button, the way it is on the phone.
+                Rectangle {
             Layout.alignment: Qt.AlignHCenter
             implicitHeight: 36
             implicitWidth: 190
@@ -137,13 +181,19 @@ ApplicationWindow {
                     }
                 }
             }
-        }
+                }
+                Item { Layout.fillHeight: true }
+            }
 
-        Item { Layout.fillHeight: true }
+            LibraryView {
+                library: library
+                onPlay: (path, title) => console.log("play:", title)
+            }
+        }
 
         Text {
             Layout.fillWidth: true
-            text: engine.downloadDir
+            text: root.tab === 0 ? engine.downloadDir : library.musicDir
             color: Theme.textSubtle
             font.family: Fonts.body
             font.pixelSize: 11
@@ -153,4 +203,6 @@ ApplicationWindow {
     }
 
     property bool audioMode: false
+    // Lets a screenshot run open straight onto a tab.
+    property int tab: parseInt(Qt.application.arguments.indexOf("--library") >= 0 ? 1 : 0)
 }
