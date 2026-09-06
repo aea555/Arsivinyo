@@ -25,7 +25,9 @@ ApplicationWindow {
             clearResult.restart()
         }
     }
-    Component.onCompleted: engine.start()
+    Library { id: library }
+
+    Component.onCompleted: { engine.start(); library.scan() }
 
     Timer { id: clearResult; interval: 4000; onTriggered: root.resultMessage = "" }
 
