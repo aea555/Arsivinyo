@@ -11,7 +11,7 @@ try:
     import sys
     from pathlib import Path
 
-    python_src = Path(__file__).resolve().parent.parent / "android" / "src" / "main" / "python"
+    python_src = Path(__file__).resolve().parents[4] / "shared" / "engine"
     sys.path.insert(0, str(python_src))
     if importlib.util.find_spec("yt_dlp") is None:
         fake_ytdlp = types.ModuleType("yt_dlp")
@@ -47,7 +47,7 @@ try:
     import sys
     from pathlib import Path
 
-    python_src = Path(__file__).resolve().parent.parent / "android" / "src" / "main" / "python"
+    python_src = Path(__file__).resolve().parents[4] / "shared" / "engine"
     sys.path.insert(0, str(python_src))
     import yt_dlp_override_bootstrap as yb
 except Exception as exc:  # pragma: no cover

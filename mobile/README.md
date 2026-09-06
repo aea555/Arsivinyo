@@ -88,7 +88,7 @@ Important integration points:
 - Config plugin: `modules/local-downloader/app.plugin.js`
   - Injects Chaquopy Gradle config, pip installs, ABI filters, manifest entries.
 - Python downloader core:
-  - `modules/local-downloader/android/src/main/python/local_downloader.py`
+  - `../shared/engine/local_downloader.py`
 - Kotlin native module and background service/controller:
   - `modules/local-downloader/android/src/main/java/expo/modules/localdownloader/LocalDownloaderModule.kt`
 
@@ -370,7 +370,7 @@ UI/UX:
 
 Downloader behavior:
 - Python extraction strategy and error mapping:
-  - `modules/local-downloader/android/src/main/python/local_downloader.py`
+  - `../shared/engine/local_downloader.py`
 - Kotlin orchestration, background behavior, storage, auth-gated private flows:
   - `modules/local-downloader/android/src/main/java/expo/modules/localdownloader/LocalDownloaderModule.kt`
 
@@ -389,7 +389,7 @@ Type/API surface:
 
 When you change version pins, update all together:
 - `modules/local-downloader/app.plugin.js`
-- `modules/local-downloader/android/src/main/python/local_downloader.py`
+- `../shared/engine/local_downloader.py`
 - `modules/local-downloader/android/chaquopy-wheels/VERSIONS.json`
 
 ## Troubleshooting

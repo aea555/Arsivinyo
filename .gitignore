@@ -4,6 +4,10 @@
 # Working notes, not part of the project.
 /devdocs
 
+# Python bytecode from the shared engine.
+__pycache__/
+*.pyc
+
 # Built artifacts kept for a release upload. Never committed - a release page holds them.
 /dist
 

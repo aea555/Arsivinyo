@@ -96,7 +96,7 @@ Cross-cutting things to know before editing:
 When bumping any of these, update all together (the verifier will not catch every drift):
 
 - `modules/local-downloader/app.plugin.js` — Chaquopy version, Python version, `curl-cffi` pin
-- `modules/local-downloader/android/src/main/python/local_downloader.py` — yt-dlp call sites
+- `../shared/engine/local_downloader.py` — yt-dlp call sites
 - `modules/local-downloader/android/chaquopy-wheels/VERSIONS.json` — pinned dependency versions + ABI matrix
 - `modules/local-downloader/android/chaquopy-wheels/SHA256SUMS` — regenerate after wheel changes
 

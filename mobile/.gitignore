@@ -59,8 +59,6 @@ modules/local-downloader/android/build/
 # tracked; this is only the generated build tree (per-ABI object dirs, ninja files,
 # CMake caches) that the Android Gradle plugin regenerates on every build.
 modules/local-downloader/android/.cxx/
-modules/local-downloader/android/src/main/python/__pycache__/
-modules/local-downloader/android/src/main/python/**/*.pyc
 modules/local-downloader/tests/__pycache__/*.pyc
 
 # local-downloader ffmpeg binaries and native libs
