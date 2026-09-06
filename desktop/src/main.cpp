@@ -2,6 +2,7 @@
 #include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QQmlError>
 #include <QQuickWindow>
 #include <QTimer>
 
@@ -15,8 +16,18 @@ int main(int argc, char *argv[]) {
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     QQmlApplicationEngine engine;
+    // Print QML errors before exiting. Without this a missing import fails the load
+    // silently and the process just returns 1, which is a poor way to find a typo.
+    QObject::connect(&engine, &QQmlApplicationEngine::warnings, &app,
+                     [](const QList<QQmlError> &warnings) {
+                         for (const QQmlError &error : warnings)
+                             qWarning("QML: %s", qPrintable(error.toString()));
+                     });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
-                     []() { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+                     []() {
+                         qWarning("QML: root object could not be created");
+                         QCoreApplication::exit(1);
+                     }, Qt::QueuedConnection);
     engine.loadFromModule("Arsivinyo", "Main");
 
     // Development aid, off unless asked for: grab the window to a file and exit. External

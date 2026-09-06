@@ -327,6 +327,16 @@ bool Library::isFavourite(const QString &id) const {
     return false;
 }
 
+QVariantMap Library::get(int row) const {
+    QVariantMap out;
+    if (row < 0 || row >= m_rows.size()) return out;
+    const QModelIndex idx = index(row);
+    const QHash<int, QByteArray> names = roleNames();
+    for (auto it = names.constBegin(); it != names.constEnd(); ++it)
+        out.insert(QString::fromUtf8(it.value()), data(idx, it.key()));
+    return out;
+}
+
 int Library::rowCount(const QModelIndex &parent) const {
     return parent.isValid() ? 0 : m_rows.size();
 }

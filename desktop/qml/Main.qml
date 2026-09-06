@@ -33,7 +33,13 @@ ApplicationWindow {
     }
     Library { id: library }
 
-    Component.onCompleted: { engine.start(); library.scan() }
+    Component.onCompleted: {
+        engine.start()
+        library.scan()
+        // Screenshot runs open on a playing track so the transport is exercised.
+        if (Qt.application.arguments.indexOf("--demo") >= 0 && library.count > 0)
+            libraryView.playFirst()
+    }
 
     Timer { id: clearResult; interval: 4000; onTriggered: root.resultMessage = "" }
 
@@ -186,9 +192,17 @@ ApplicationWindow {
             }
 
             LibraryView {
+                id: libraryView
                 library: library
-                onPlay: (path, title) => console.log("play:", title)
+                onPlay: (path, title, artist, thumb) => playerBar.playFile(path, title, artist, thumb)
             }
+        }
+
+        Item { height: 14 }
+
+        PlayerBar {
+            id: playerBar
+            Layout.fillWidth: true
         }
 
         Text {

@@ -53,6 +53,9 @@ public:
     Q_INVOKABLE void setFavourite(const QString &id, bool favourite);
     Q_INVOKABLE bool isFavourite(const QString &id) const;
 
+    /** One row as a map. QAbstractListModel::data is not callable from QML. */
+    Q_INVOKABLE QVariantMap get(int row) const;
+
     /**
      * File a finished download into the library.
      *
