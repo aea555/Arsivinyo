@@ -19,8 +19,125 @@ Item {
         view.play(row.path, row.title, row.artist, row.thumb)
     }
 
-    ColumnLayout {
+    property string activePlaylist: ""
+
+    function refreshPlaylists() { playlistModel.clear();
+        const rows = library.playlists()
+        for (let i = 0; i < rows.length; ++i) playlistModel.append(rows[i]) }
+
+    ListModel { id: playlistModel }
+    Component.onCompleted: refreshPlaylists()
+    Connections {
+        target: library
+        function onPlaylistsChanged() { view.refreshPlaylists() }
+    }
+
+    RowLayout {
         anchors.fill: parent
+        spacing: 16
+
+    ColumnLayout {
+        Layout.preferredWidth: 168
+        Layout.fillHeight: true
+        spacing: 6
+
+        Text {
+            text: qsTr("Playlists")
+            color: Theme.textSubtle
+            font.family: Fonts.body
+            font.pixelSize: 11
+        }
+
+        Repeater {
+            model: [{ id: "", name: qsTr("All tracks"), count: -1, system: false }]
+            Rectangle {
+                required property var modelData
+                Layout.fillWidth: true
+                implicitHeight: 30
+                radius: 8
+                color: view.activePlaylist === "" ? Theme.surfaceHover : "transparent"
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 10
+                    text: modelData.name
+                    color: view.activePlaylist === "" ? Theme.text : Theme.textSubtle
+                    font.family: Fonts.body
+                    font.pixelSize: 12
+                }
+                TapHandler { onTapped: { view.activePlaylist = ""; library.showPlaylist("") } }
+            }
+        }
+
+        Repeater {
+            model: playlistModel
+            Rectangle {
+                required property string id
+                required property string name
+                required property int count
+                required property bool system
+                Layout.fillWidth: true
+                implicitHeight: 30
+                radius: 8
+                color: view.activePlaylist === id ? Theme.surfaceHover
+                     : plHover.hovered ? Qt.darker(Theme.surface, 1.1) : "transparent"
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 8
+                    spacing: 6
+                    Text {
+                        Layout.fillWidth: true
+                        text: name
+                        color: view.activePlaylist === id ? Theme.text : Theme.textSubtle
+                        font.family: Fonts.body
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: count
+                        color: Theme.textSubtle
+                        font.family: Fonts.body
+                        font.pixelSize: 11
+                    }
+                }
+                HoverHandler { id: plHover }
+                TapHandler {
+                    onTapped: { view.activePlaylist = id; library.showPlaylist(id) }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: if (!system) plMenu.popup()
+                }
+                Menu {
+                    id: plMenu
+                    MenuItem { text: qsTr("Delete"); onTriggered: library.deletePlaylist(id) }
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 30
+            radius: 8
+            color: newHover.hovered ? Theme.surfaceHover : "transparent"
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                x: 10
+                text: qsTr("+ New playlist")
+                color: Theme.accent
+                font.family: Fonts.body
+                font.pixelSize: 12
+            }
+            HoverHandler { id: newHover }
+            TapHandler { onTapped: newDialog.open() }
+        }
+
+        Item { Layout.fillHeight: true }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
         spacing: 14
 
         RowLayout {
@@ -174,6 +291,11 @@ Item {
 
                         Menu {
                             id: presetMenu
+                            MenuItem {
+                                text: qsTr("Add to playlist…")
+                                onTriggered: addMenu.popup()
+                            }
+                            MenuSeparator {}
                             Repeater {
                                 model: view.renderer.builtInPresets()
                                 MenuItem {
@@ -182,6 +304,19 @@ Item {
                                     onTriggered: view.renderer.render(row.path, row.title,
                                                                      row.artist, modelData.id,
                                                                      view.library.musicDir)
+                                }
+                            }
+                        }
+
+                        Menu {
+                            id: addMenu
+                            Repeater {
+                                model: playlistModel
+                                MenuItem {
+                                    required property string id
+                                    required property string name
+                                    text: name
+                                    onTriggered: view.library.addToPlaylist(id, row.songId)
                                 }
                             }
                         }
@@ -233,6 +368,24 @@ Item {
                 font.family: Fonts.body
                 font.pixelSize: 13
             }
+        }
+    }
+    }
+
+    Dialog {
+        id: newDialog
+        anchors.centerIn: parent
+        title: qsTr("New playlist")
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: { library.createPlaylist(nameField.text); nameField.text = "" }
+        TextField {
+            id: nameField
+            width: 240
+            placeholderText: qsTr("Name")
+            color: Theme.text
+            font.family: Fonts.body
+            onAccepted: newDialog.accept()
         }
     }
 }

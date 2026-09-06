@@ -56,6 +56,18 @@ public:
     /** One row as a map. QAbstractListModel::data is not callable from QML. */
     Q_INVOKABLE QVariantMap get(int row) const;
 
+    // ---- playlists -------------------------------------------------------
+    /** Every playlist with its track count. Favourites sorts first and is marked. */
+    Q_INVOKABLE QVariantList playlists() const;
+    Q_INVOKABLE QString createPlaylist(const QString &name);
+    /** Refuses the reserved Favourites playlist, as the phone does. */
+    Q_INVOKABLE bool deletePlaylist(const QString &id);
+    Q_INVOKABLE bool renamePlaylist(const QString &id, const QString &name);
+    Q_INVOKABLE void addToPlaylist(const QString &playlistId, const QString &songId);
+    Q_INVOKABLE void removeFromPlaylist(const QString &playlistId, const QString &songId);
+    /** Empty shows everything; otherwise only that playlist's members. */
+    Q_INVOKABLE void showPlaylist(const QString &id);
+
     /**
      * File a finished download into the library.
      *
@@ -70,6 +82,7 @@ signals:
     void countChanged();
     void scanningChanged();
     void filterChanged();
+    void playlistsChanged();
     void scanFinished(int added, int removed);
 
 private:
@@ -92,5 +105,6 @@ private:
     QList<Row> m_rows;
     QString m_musicDir;
     QString m_filter;
+    QString m_playlistFilter;
     bool m_scanning = false;
 };

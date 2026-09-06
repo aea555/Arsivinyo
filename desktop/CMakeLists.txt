@@ -42,3 +42,11 @@ qt_add_qml_module(arsivinyo-desktop
 target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP})
 
 target_link_libraries(arsivinyo-desktop PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Multimedia Qt6::Concurrent)
+
+# ---- tests -------------------------------------------------------------------
+# The library store is plain QObject code, so it is testable without a display.
+enable_testing()
+qt_add_executable(library_test tests/library_test.cpp src/Library.h src/Library.cpp)
+target_include_directories(library_test PRIVATE src)
+target_link_libraries(library_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml)  # Qml for the QML_ELEMENT macro in the header
+add_test(NAME library COMMAND library_test)

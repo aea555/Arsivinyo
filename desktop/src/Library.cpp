@@ -10,6 +10,7 @@
 #include <QSqlQuery>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QUuid>
 
 namespace {
 constexpr auto kFavourites = "favorites";   // spelling matches the phone's reserved id
@@ -257,21 +258,27 @@ void Library::reload() {
     m_rows.clear();
     QSqlQuery q(m_db);
     const bool filtered = !m_filter.trimmed().isEmpty();
+    const bool byPlaylist = !m_playlistFilter.isEmpty();
+    const QString restrict = byPlaylist
+        ? " AND EXISTS(SELECT 1 FROM playlist_songs m WHERE m.song_id = s.id AND m.playlist_id = :pl)"
+        : QString();
     if (filtered) {
         q.prepare("SELECT s.id, s.title, s.artist, s.file_name, s.duration_sec, s.size_bytes,"
                   " s.thumb_file, s.preset_id,"
-                  " EXISTS(SELECT 1 FROM playlist_songs p WHERE p.song_id = s.id AND p.playlist_id = ?)"
-                  " FROM songs s WHERE s.title LIKE ? OR s.artist LIKE ? ORDER BY s.created_at DESC");
-        q.addBindValue(kFavourites);
-        const QString like = "%" + m_filter.trimmed() + "%";
-        q.addBindValue(like);
-        q.addBindValue(like);
+                  " EXISTS(SELECT 1 FROM playlist_songs p WHERE p.song_id = s.id AND p.playlist_id = :fav)"
+                  " FROM songs s WHERE (s.title LIKE :like OR s.artist LIKE :like)"
+                  + restrict + " ORDER BY s.created_at DESC");
+        q.bindValue(":fav", kFavourites);
+        q.bindValue(":like", "%" + m_filter.trimmed() + "%");
+        if (byPlaylist) q.bindValue(":pl", m_playlistFilter);
     } else {
         q.prepare("SELECT s.id, s.title, s.artist, s.file_name, s.duration_sec, s.size_bytes,"
                   " s.thumb_file, s.preset_id,"
-                  " EXISTS(SELECT 1 FROM playlist_songs p WHERE p.song_id = s.id AND p.playlist_id = ?)"
-                  " FROM songs s ORDER BY s.created_at DESC");
-        q.addBindValue(kFavourites);
+                  " EXISTS(SELECT 1 FROM playlist_songs p WHERE p.song_id = s.id AND p.playlist_id = :fav)"
+                  " FROM songs s" + (byPlaylist ? " WHERE 1=1" + restrict : QString())
+                  + " ORDER BY s.created_at DESC");
+        q.bindValue(":fav", kFavourites);
+        if (byPlaylist) q.bindValue(":pl", m_playlistFilter);
     }
     q.exec();
     while (q.next()) {
@@ -325,6 +332,92 @@ bool Library::isFavourite(const QString &id) const {
     for (const Row &row : m_rows)
         if (row.id == id) return row.favourite;
     return false;
+}
+
+QVariantList Library::playlists() const {
+    QVariantList out;
+    QSqlQuery q(m_db);
+    q.exec("SELECT p.id, p.name, p.system, COUNT(ps.song_id)"
+           " FROM playlists p LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id"
+           " GROUP BY p.id ORDER BY p.system DESC, p.name COLLATE NOCASE");
+    while (q.next()) {
+        out.append(QVariantMap{{"id", q.value(0).toString()},
+                               {"name", q.value(1).toString()},
+                               {"system", q.value(2).toBool()},
+                               {"count", q.value(3).toInt()}});
+    }
+    return out;
+}
+
+QString Library::createPlaylist(const QString &name) {
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) return {};
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QSqlQuery q(m_db);
+    q.prepare("INSERT INTO playlists (id, name, system, created_at, updated_at) VALUES (?,?,0,?,?)");
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    q.addBindValue(id);
+    q.addBindValue(trimmed);
+    q.addBindValue(now);
+    q.addBindValue(now);
+    if (!q.exec()) return {};
+    emit playlistsChanged();
+    return id;
+}
+
+bool Library::deletePlaylist(const QString &id) {
+    // Favourites is reserved. The phone refuses the same request for the same reason:
+    // the heart in the UI has nowhere to point if it can be deleted.
+    if (id == QLatin1String(kFavourites)) return false;
+    QSqlQuery q(m_db);
+    q.prepare("DELETE FROM playlists WHERE id = ? AND system = 0");
+    q.addBindValue(id);
+    if (!q.exec() || q.numRowsAffected() == 0) return false;
+    if (m_playlistFilter == id) showPlaylist({});
+    emit playlistsChanged();
+    return true;
+}
+
+bool Library::renamePlaylist(const QString &id, const QString &name) {
+    if (id == QLatin1String(kFavourites)) return false;
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) return false;
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE playlists SET name = ?, updated_at = ? WHERE id = ? AND system = 0");
+    q.addBindValue(trimmed);
+    q.addBindValue(QDateTime::currentMSecsSinceEpoch());
+    q.addBindValue(id);
+    if (!q.exec() || q.numRowsAffected() == 0) return false;
+    emit playlistsChanged();
+    return true;
+}
+
+void Library::addToPlaylist(const QString &playlistId, const QString &songId) {
+    QSqlQuery q(m_db);
+    q.prepare("INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, position)"
+              " VALUES (?, ?, (SELECT COUNT(*) FROM playlist_songs WHERE playlist_id = ?))");
+    q.addBindValue(playlistId);
+    q.addBindValue(songId);
+    q.addBindValue(playlistId);
+    q.exec();
+    emit playlistsChanged();
+    if (!m_playlistFilter.isEmpty()) reload();
+}
+
+void Library::removeFromPlaylist(const QString &playlistId, const QString &songId) {
+    QSqlQuery q(m_db);
+    q.prepare("DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?");
+    q.addBindValue(playlistId);
+    q.addBindValue(songId);
+    q.exec();
+    emit playlistsChanged();
+    if (!m_playlistFilter.isEmpty()) reload();
+}
+
+void Library::showPlaylist(const QString &id) {
+    if (m_playlistFilter == id) return;
+    m_playlistFilter = id;
+    reload();
 }
 
 QVariantMap Library::get(int row) const {
