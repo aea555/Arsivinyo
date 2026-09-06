@@ -51,6 +51,19 @@ _stdout_lock = threading.Lock()
 _cancel_flags: Dict[str, str] = {}
 _cancel_lock = threading.Lock()
 
+# Work in flight. stdin closing means "no more requests", not "abandon what is running",
+# so main() waits for these before it returns. Without this a download vanished with the
+# process the moment the caller closed the pipe.
+_workers: list = []
+_workers_lock = threading.Lock()
+
+
+def _spawn(target, *args) -> None:
+    thread = threading.Thread(target=target, args=args, daemon=True)
+    with _workers_lock:
+        _workers.append(thread)
+    thread.start()
+
 
 def emit(payload: Dict[str, Any]) -> None:
     """One JSON object per line. Locked, because downloads run concurrently."""
@@ -141,9 +154,9 @@ def _handle(req: Dict[str, Any]) -> None:
     op = req.get("op")
 
     if op == "download":
-        threading.Thread(target=_run_download, args=(request_id, req), daemon=True).start()
+        _spawn(_run_download, request_id, req)
     elif op == "preflight":
-        threading.Thread(target=_run_preflight, args=(request_id, req), daemon=True).start()
+        _spawn(_run_preflight, request_id, req)
     elif op == "cancel":
         with _cancel_lock:
             path = _cancel_flags.get(request_id)
@@ -181,6 +194,15 @@ def main() -> int:
         except Exception as exc:
             emit({"id": str(req.get("id", "")), "type": "result", "ok": False,
                   "error": f"{type(exc).__name__}: {exc}"})
+
+    # stdin is closed. Let anything still downloading finish and report.
+    while True:
+        with _workers_lock:
+            pending = [t for t in _workers if t.is_alive()]
+            _workers[:] = pending
+        if not pending:
+            break
+        pending[0].join()
     return 0
 
 
