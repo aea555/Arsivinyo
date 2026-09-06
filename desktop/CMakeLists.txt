@@ -11,7 +11,12 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Sql Multi
 set(ARSIVINYO_DSP ${CMAKE_CURRENT_SOURCE_DIR}/../shared/dsp)
 qt_standard_project_setup(REQUIRES 6.5)
 
+option(ARSIVINYO_DEV_TOOLS "Build the screenshot hook used while iterating on the UI" OFF)
+
 qt_add_executable(arsivinyo-desktop src/main.cpp)
+if(ARSIVINYO_DEV_TOOLS)
+    target_compile_definitions(arsivinyo-desktop PRIVATE ARSIVINYO_DEV_TOOLS)
+endif()
 
 # pragma Singleton in the QML file is only half of it; the build has to agree.
 set_source_files_properties(qml/Theme.qml qml/Fonts.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)

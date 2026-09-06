@@ -46,16 +46,6 @@ ApplicationWindow {
     Component.onCompleted: {
         engine.start()
         library.scan()
-        // Screenshot runs open on a playing track so the transport is exercised.
-        if (Qt.application.arguments.indexOf("--demo") >= 0 && library.count > 0)
-            libraryView.playFirst()
-        // Screenshot/verification run: render the first track with a named preset.
-        const r = Qt.application.arguments.indexOf("--render")
-        if (r >= 0 && library.count > 0) {
-            const row = library.get(0)
-            renderer.render(row.path, row.title, row.artist,
-                            Qt.application.arguments[r + 1], library.musicDir)
-        }
     }
 
     Timer { id: clearResult; interval: 4000; onTriggered: root.resultMessage = "" }
@@ -271,6 +261,5 @@ ApplicationWindow {
     }
 
     property bool audioMode: false
-    // Lets a screenshot run open straight onto a tab.
-    property int tab: parseInt(Qt.application.arguments.indexOf("--library") >= 0 ? 1 : 0)
+    property int tab: 0
 }

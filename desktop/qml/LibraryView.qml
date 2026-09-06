@@ -11,14 +11,6 @@ Item {
     property string selectedId: ""
     signal play(string path, string title, string artist, string thumb)
 
-    /** Used by the screenshot run; the UI itself plays on click. */
-    function playFirst() {
-        if (library.count === 0) return
-        const row = library.get(0)
-        view.selectedId = row.songId
-        view.play(row.path, row.title, row.artist, row.thumb)
-    }
-
     property string activePlaylist: ""
 
     function refreshPlaylists() { playlistModel.clear();

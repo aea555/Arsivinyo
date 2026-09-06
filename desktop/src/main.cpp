@@ -30,9 +30,10 @@ int main(int argc, char *argv[]) {
                      }, Qt::QueuedConnection);
     engine.loadFromModule("Arsivinyo", "Main");
 
-    // Development aid, off unless asked for: grab the window to a file and exit. External
-    // capture tools depend on the compositor, and asking the toolkit for its own frame
-    // works the same under X11 and Wayland.
+#ifdef ARSIVINYO_DEV_TOOLS
+    // Development aid, compiled out of a normal build: grab the window to a file and
+    // exit. External capture tools depend on the compositor; asking the toolkit for its
+    // own frame works the same under X11 and Wayland.
     const QByteArray shotPath = qgetenv("ARSIVINYO_SCREENSHOT");
     if (!shotPath.isEmpty() && !engine.rootObjects().isEmpty()) {
         if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
@@ -42,6 +43,7 @@ int main(int argc, char *argv[]) {
             });
         }
     }
+#endif
 
     return app.exec();
 }
