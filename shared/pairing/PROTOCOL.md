@@ -32,7 +32,8 @@ settings, library management, or vault.
 
 Defended against:
 
-- **A passive listener on the network.** All traffic after pairing is inside TLS 1.3.
+- **A passive listener on the network.** All traffic after the handshake is inside TLS —
+  1.3 where both ends support it, 1.2 on Android releases that do not.
 - **An active attacker during pairing.** This is the moment that matters. Key exchange is
   authenticated out of band — by a QR code the user scans, and a confirmation code shown
   on both devices. An attacker who intercepts the exchange cannot make both codes agree.
@@ -88,8 +89,10 @@ The step that has to be right, because everything after it inherits this trust.
 1. Desktop displays a **QR code**: its fingerprint, address and port.
 2. Phone scans it. The phone now knows the desktop's real key, from a channel an attacker
    on the network cannot reach.
-3. Phone connects. TLS is pinned to that key, so a man in the middle fails here.
-4. Phone sends its own public key over that authenticated channel.
+3. Phone connects, and checks that the `auth` signature it receives verifies against the
+   key from the QR code. A man in the middle fails here: the signature names this
+   connection's certificates, so one relayed from another leg does not verify.
+4. Phone sends its own public key, signed the same way, over that authenticated channel.
 5. **Both devices display the same six digits.** Hash the two public keys, ordered
    lexicographically and concatenated; take the digest's first four bytes big-endian,
    modulo one million, zero-padded. The user confirms they match, which authenticates the
