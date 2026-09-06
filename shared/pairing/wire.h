@@ -64,6 +64,38 @@ DecodeResult DecodeFrame(const std::vector<uint8_t>& buffer, FrameType* type,
 std::vector<uint8_t> CodeInput(const std::vector<uint8_t>& keyA,
                                const std::vector<uint8_t>& keyB);
 
+/** Which end of the connection signed. */
+enum class AuthRole : uint8_t {
+    Server = 'S',
+    Client = 'C',
+};
+
+/** Length of a SHA-256 digest, which is what the transcript carries. */
+inline constexpr size_t kCertHashBytes = 32;
+
+/**
+ * The exact bytes each side signs with its identity key to prove who it is.
+ *
+ * The identity key is *not* the TLS certificate key. Android's TLS stack does not accept
+ * Ed25519 certificates, and this app supports API 24, so a certificate carrying the
+ * identity — what the first draft of PROTOCOL.md specified — cannot be implemented on the
+ * phone at all. Instead each side uses an ordinary self-signed certificate for TLS and
+ * then signs a transcript naming *both* certificates of this particular connection.
+ *
+ * That is what keeps the man-in-the-middle out. An attacker terminating TLS on both legs
+ * sees different certificates on each, so a signature produced for one leg does not
+ * verify on the other, and it cannot forge one without the Ed25519 key.
+ *
+ * The server hash always comes first, so both ends build the same bytes without
+ * negotiating an order. The trailing role byte is what stops a signature captured from
+ * one direction being replayed as the other's.
+ *
+ * Returns empty if either hash is not [kCertHashBytes] long.
+ */
+std::vector<uint8_t> AuthTranscript(AuthRole role,
+                                    const std::vector<uint8_t>& serverCertSha256,
+                                    const std::vector<uint8_t>& clientCertSha256);
+
 /**
  * Six digits from a SHA-256 digest of [CodeInput].
  *

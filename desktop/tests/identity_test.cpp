@@ -129,6 +129,45 @@ int main(int argc, char **argv) {
         }
     }
 
+    // The transcript signature, from the same seed the shared vectors name. Both apps
+    // must produce these exact bytes or authentication fails in one direction only,
+    // which is the hardest kind of pairing bug to read.
+    {
+        QFile file(QStringLiteral(ARSIVINYO_VECTORS));
+        if (file.open(QIODevice::ReadOnly)) {
+            const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+            const QByteArray seed =
+                QByteArray::fromHex(root.value("auth_transcript_seed").toString().toLatin1());
+
+            QTemporaryDir dir;
+            qputenv("ARSIVINYO_DATA_DIR", dir.path().toUtf8());
+            QFile keyFile(dir.path() + "/device.key");
+            if (keyFile.open(QIODevice::WriteOnly)) {
+                // The public half is derived by signing rather than stored here, so write
+                // what load() expects: seed followed by its public key.
+                keyFile.write(seed);
+                keyFile.write(QByteArray::fromHex(
+                    root.value("ed25519").toArray().at(0).toObject()
+                        .value("publicKey").toString().toLatin1()));
+                keyFile.close();
+
+                DeviceIdentity signer;
+                for (const QJsonValue &entry : root.value("auth_transcript").toArray()) {
+                    const QJsonObject v = entry.toObject();
+                    const QByteArray transcript =
+                        QByteArray::fromHex(v.value("transcript").toString().toLatin1());
+                    const QByteArray label =
+                        ("signs the " + v.value("role").toString() + " transcript to the vector")
+                            .toLatin1();
+                    check(signer.sign(transcript).toHex() ==
+                              v.value("signature").toString().toLatin1(),
+                          label.constData());
+                }
+            }
+            qputenv("ARSIVINYO_DATA_DIR", data.path().toUtf8());
+        }
+    }
+
     std::printf("\n%s\n", failures ? "FAILURES" : "all checks passed");
     return failures ? 1 : 0;
 }

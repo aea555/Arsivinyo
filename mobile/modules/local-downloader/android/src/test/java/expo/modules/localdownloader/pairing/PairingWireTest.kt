@@ -136,6 +136,10 @@ class PairingWireTest {
       val seed = unhex(v.getString("seed"))
       val msg = unhex(v.getString("message"))
       assertEquals(v.getString("signature"), hex(Ed25519Keys.sign(seed, msg)))
+      // The RFC's own public key must fall out of the RFC's own seed. This is
+      // what proves the seed is being treated as an Ed25519 seed rather than as
+      // some already-expanded private scalar.
+      assertEquals(v.getString("publicKey"), hex(Ed25519Keys.publicKeyFor(seed)))
     }
   }
 
@@ -171,6 +175,46 @@ class PairingWireTest {
     assertEquals(0, Ed25519Keys.sign(ByteArray(8), message).size)
     assertTrue(!Ed25519Keys.verify(pub, message, ByteArray(0)))
     assertEquals("", Ed25519Keys.fingerprint(ByteArray(0)))
+  }
+
+  @Test
+  fun theAuthTranscriptMatchesTheVectors() {
+    // The transcript is what proves an identity owns this particular TLS session. If the
+    // label, the order of the two certificate hashes, or the role byte differed between
+    // the platforms, every cross-device pairing would fail authentication with both ends
+    // believing they were right.
+    val seed = unhex(vectors.getString("auth_transcript_seed"))
+    val cases = vectors.getJSONArray("auth_transcript")
+    for (i in 0 until cases.length()) {
+      val v = cases.getJSONObject(i)
+      val role = if (v.getString("role") == "server") PairingWire.ROLE_SERVER
+                 else PairingWire.ROLE_CLIENT
+      val transcript = PairingWire.authTranscript(
+        role, unhex(v.getString("serverCertSha256")), unhex(v.getString("clientCertSha256")))
+      assertEquals(v.getString("why"), v.getString("transcript"), hex(transcript))
+      assertEquals(v.getString("signature"), hex(Ed25519Keys.sign(seed, transcript)))
+    }
+  }
+
+  @Test
+  fun theTwoRolesSignDifferentBytes() {
+    // Without this the two directions sign identical bytes, and a signature captured
+    // from one end authenticates the other.
+    val server = ByteArray(PairingWire.CERT_HASH_BYTES) { it.toByte() }
+    val client = ByteArray(PairingWire.CERT_HASH_BYTES) { (it + 100).toByte() }
+    assertTrue(!PairingWire.authTranscript(PairingWire.ROLE_SERVER, server, client)
+      .contentEquals(PairingWire.authTranscript(PairingWire.ROLE_CLIENT, server, client)))
+    // Swapping the certificates must also change the bytes, or a reflected connection
+    // would produce a transcript the peer accepts.
+    assertTrue(!PairingWire.authTranscript(PairingWire.ROLE_SERVER, server, client)
+      .contentEquals(PairingWire.authTranscript(PairingWire.ROLE_SERVER, client, server)))
+  }
+
+  @Test
+  fun aMisshapenCertificateHashYieldsNoTranscript() {
+    val ok = ByteArray(PairingWire.CERT_HASH_BYTES)
+    assertEquals(0, PairingWire.authTranscript(PairingWire.ROLE_SERVER, ByteArray(31), ok).size)
+    assertEquals(0, PairingWire.authTranscript(PairingWire.ROLE_SERVER, ok, ByteArray(0)).size)
   }
 
   @Test

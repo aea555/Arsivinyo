@@ -39,6 +39,14 @@ qt_add_qml_module(arsivinyo-desktop
         src/Library.h src/Library.cpp
         src/PresetRenderer.h src/PresetRenderer.cpp
         src/DeviceIdentity.h src/DeviceIdentity.cpp
+        src/SessionCertificate.h src/SessionCertificate.cpp
+        src/PeerRegistry.h src/PeerRegistry.cpp
+        src/PeerLink.h src/PeerLink.cpp
+        src/PeerContent.h
+        src/PeerSession.h src/PeerSession.cpp
+        src/PairingService.h src/PairingService.cpp
+        src/DnsSd.h src/DnsSd.cpp
+        src/Discovery.h src/Discovery.cpp
         ${ARSIVINYO_PAIRING_DIR}/wire.cpp
         ${ARSIVINYO_DSP}/ffmpeg_pipe.cpp
         ${ARSIVINYO_DSP}/preset_params.cpp
@@ -53,7 +61,7 @@ qt_add_qml_module(arsivinyo-desktop
 # never declared, which surfaces much later as an unrelated template error.
 target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP} ${ARSIVINYO_PAIRING_DIR})
 
-target_link_libraries(arsivinyo-desktop PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Multimedia Qt6::Concurrent PkgConfig::LIBCRYPTO)
+target_link_libraries(arsivinyo-desktop PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Multimedia Qt6::Concurrent Qt6::Network PkgConfig::LIBCRYPTO)
 
 # ---- tests -------------------------------------------------------------------
 # The library store is plain QObject code, so it is testable without a display.
@@ -79,3 +87,26 @@ target_compile_definitions(identity_test PRIVATE
     ARSIVINYO_VECTORS="${ARSIVINYO_PAIRING}/VECTORS.json")
 target_link_libraries(identity_test PRIVATE Qt6::Core Qt6::Network Qt6::Qml PkgConfig::LIBCRYPTO)
 add_test(NAME identity COMMAND identity_test)
+
+# The transport end to end: two services in one process pair over real TLS and move a
+# file. Nothing here is mocked except where the files live.
+qt_add_executable(transport_test tests/transport_test.cpp
+    src/DeviceIdentity.h src/DeviceIdentity.cpp
+    src/SessionCertificate.h src/SessionCertificate.cpp
+    src/PeerRegistry.h src/PeerRegistry.cpp
+    src/PeerLink.h src/PeerLink.cpp
+    src/PeerSession.h src/PeerSession.cpp
+    src/PairingService.h src/PairingService.cpp
+    ${ARSIVINYO_PAIRING}/wire.cpp)
+target_include_directories(transport_test PRIVATE src ${ARSIVINYO_PAIRING})
+target_link_libraries(transport_test PRIVATE Qt6::Core Qt6::Network Qt6::Sql Qt6::Qml
+    Qt6::Concurrent PkgConfig::LIBCRYPTO)
+add_test(NAME transport COMMAND transport_test)
+
+# The DNS-SD codec. Its parser reads whatever is on the network, so the malformed cases
+# matter as much as the well-formed ones.
+qt_add_executable(dnssd_test tests/dnssd_test.cpp src/DnsSd.h src/DnsSd.cpp
+    src/Discovery.h src/Discovery.cpp)
+target_include_directories(dnssd_test PRIVATE src)
+target_link_libraries(dnssd_test PRIVATE Qt6::Core Qt6::Network Qt6::Qml)
+add_test(NAME dnssd COMMAND dnssd_test)

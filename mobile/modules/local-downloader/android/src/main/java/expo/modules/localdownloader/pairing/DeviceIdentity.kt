@@ -56,8 +56,16 @@ class DeviceIdentity(context: Context) {
     if (!keyFile.isFile) return false
     val raw = keyFile.readBytes()
     if (raw.size != Ed25519Keys.SEED_BYTES + Ed25519Keys.PUBLIC_BYTES) return false
-    privateSeed = raw.copyOfRange(0, Ed25519Keys.SEED_BYTES)
-    publicKey = raw.copyOfRange(Ed25519Keys.SEED_BYTES, raw.size)
+    val seed = raw.copyOfRange(0, Ed25519Keys.SEED_BYTES)
+    val stored = raw.copyOfRange(Ed25519Keys.SEED_BYTES, raw.size)
+    // Re-derive rather than trust the file. A corrupted key would otherwise present as a
+    // device whose signatures no peer can verify, with nothing on this end looking wrong.
+    if (!Ed25519Keys.publicKeyFor(seed).contentEquals(stored)) {
+      Log.w(TAG, "the stored identity is inconsistent; generating a new one")
+      return false
+    }
+    privateSeed = seed
+    publicKey = stored
     true
   }.getOrElse { false }
 

@@ -9,7 +9,7 @@
   ],
   "frames": [
     {
-      "why": "empty control payload \u2014 length covers the type byte, so it is 1",
+      "why": "empty control payload — length covers the type byte, so it is 1",
       "type": 0,
       "payload": "",
       "encoded": "0000000100"
@@ -94,5 +94,24 @@
       "message": "6172736976696e796f2070616972696e67",
       "signature": "90f723a248ea8d023589974c6573e58a1430336a8402a8ea28b185c229202032f3fd26e55e60b3965cf20f87f8464753e7bdfa24e7b4aa2837ffd3348b7e110c"
     }
-  ]
+  ],
+  "auth_transcript": [
+    {
+      "why": "transcript signed by the server side of a connection",
+      "role": "server",
+      "serverCertSha256": "54bd2779e2817d5eebb678c7f47fa262f64928971f2947992bc9c61b270db766",
+      "clientCertSha256": "ce4e177d2a0b8af57b1ee9d6dcafbc25bf4f31fc9dae373411cf35e38765f258",
+      "transcript": "6172736976696e796f2d70616972696e672d617574682d76310054bd2779e2817d5eebb678c7f47fa262f64928971f2947992bc9c61b270db766ce4e177d2a0b8af57b1ee9d6dcafbc25bf4f31fc9dae373411cf35e38765f25853",
+      "signature": "8764e486f388d68342f3a113db22661f83c3a83230221067a4be607504589a26c595657a5cd51dfe1866351323eec9c148cb5065c9da94091df6463077583d0b"
+    },
+    {
+      "why": "transcript signed by the client side of a connection",
+      "role": "client",
+      "serverCertSha256": "54bd2779e2817d5eebb678c7f47fa262f64928971f2947992bc9c61b270db766",
+      "clientCertSha256": "ce4e177d2a0b8af57b1ee9d6dcafbc25bf4f31fc9dae373411cf35e38765f258",
+      "transcript": "6172736976696e796f2d70616972696e672d617574682d76310054bd2779e2817d5eebb678c7f47fa262f64928971f2947992bc9c61b270db766ce4e177d2a0b8af57b1ee9d6dcafbc25bf4f31fc9dae373411cf35e38765f25843",
+      "signature": "ff53c3b4a8ab58c44829bbaa1668383952e43aae604e67a13f7626d0d850b129031a57256e0c35e5931e49f0dc0b196d84b4bdceda192d6b6965e16b11a90d0f"
+    }
+  ],
+  "auth_transcript_seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
 }

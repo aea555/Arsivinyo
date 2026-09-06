@@ -1,13 +1,10 @@
 package expo.modules.localdownloader.pairing
 
-import java.security.KeyFactory
-import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.security.Signature
-import java.security.spec.NamedParameterSpec
-import java.security.spec.PKCS8EncodedKeySpec
-import java.security.spec.X509EncodedKeySpec
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
+import org.bouncycastle.crypto.signers.Ed25519Signer
 
 /**
  * Ed25519 over raw 32-byte keys.
@@ -17,9 +14,15 @@ import java.security.spec.X509EncodedKeySpec
  * `desktop/src/DeviceIdentity.cpp` byte for byte, so it lives where a plain JVM test can
  * reach it and be held to `shared/pairing/VECTORS.json`.
  *
- * The JDK speaks PKCS#8 and X.509; the wire and the fingerprint use the raw 32 bytes. The
- * fixed prefixes below convert between the two. Both are the shortest legal encoding of a
- * raw Ed25519 key, so the length bytes are constants rather than something to compute.
+ * **Why BouncyCastle and not the JDK.** `KeyPairGenerator.getInstance("Ed25519")` needs
+ * API 33; this app's minSdk is 24, so on Android 7 through 12 it throws and the device
+ * would silently end up with no identity at all. BouncyCastle's low-level API has no such
+ * floor. This follows what `BackupCrypto.kt` already does: use `org.bouncycastle.crypto.*`
+ * directly and never register the JCE provider, so nothing else in the process changes
+ * behaviour.
+ *
+ * A further benefit is that the raw 32 bytes are what BouncyCastle takes and returns, so
+ * there is no PKCS#8 or X.509 wrapping to get wrong — the encoding is the wire's.
  */
 object Ed25519Keys {
 
@@ -27,45 +30,39 @@ object Ed25519Keys {
   const val PUBLIC_BYTES = 32
   const val SIGNATURE_BYTES = 64
 
-  /** PKCS#8 header for a raw Ed25519 seed, so the JDK will take the 32 bytes back. */
-  private val PKCS8_PREFIX = byteArrayOf(
-    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
-    0x04, 0x22, 0x04, 0x20,
-  )
-
-  /** X.509 header for a raw Ed25519 public key. */
-  private val X509_PREFIX = byteArrayOf(
-    0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-  )
-
   /** A fresh identity: the 32-byte seed and the 32-byte public key it implies. */
   fun generate(): Pair<ByteArray, ByteArray>? = runCatching {
-    val pair = KeyPairGenerator.getInstance("Ed25519").apply {
-      initialize(NamedParameterSpec.ED25519, SecureRandom())
-    }.generateKeyPair()
-    // The JDK hands these back encoded; the raw key is the tail of each form.
-    val encodedPrivate = pair.private.encoded
-    val encodedPublic = pair.public.encoded
-    Pair(
-      encodedPrivate.copyOfRange(encodedPrivate.size - SEED_BYTES, encodedPrivate.size),
-      encodedPublic.copyOfRange(encodedPublic.size - PUBLIC_BYTES, encodedPublic.size),
-    )
+    // For Ed25519 the private key *is* 32 random bytes; the public key is derived.
+    val seed = ByteArray(SEED_BYTES).also { SecureRandom().nextBytes(it) }
+    Pair(seed, publicKeyFor(seed))
   }.getOrNull()
+
+  /**
+   * The public key a seed implies. Storing both and re-deriving on load is what catches a
+   * truncated or corrupted key file, which would otherwise present as a device whose
+   * signatures nobody can verify.
+   */
+  fun publicKeyFor(seed: ByteArray): ByteArray {
+    require(seed.size == SEED_BYTES) { "an Ed25519 seed is $SEED_BYTES bytes" }
+    return Ed25519PrivateKeyParameters(seed, 0).generatePublicKey().encoded
+  }
 
   /** Empty on failure, which callers treat as "cannot prove who I am". */
   fun sign(seed: ByteArray, message: ByteArray): ByteArray = runCatching {
     if (seed.size != SEED_BYTES) return ByteArray(0)
-    val key = KeyFactory.getInstance("Ed25519")
-      .generatePrivate(PKCS8EncodedKeySpec(PKCS8_PREFIX + seed))
-    Signature.getInstance("Ed25519").run { initSign(key); update(message); sign() }
+    Ed25519Signer().apply {
+      init(true, Ed25519PrivateKeyParameters(seed, 0))
+      update(message, 0, message.size)
+    }.generateSignature()
   }.getOrElse { ByteArray(0) }
 
   fun verify(publicKey: ByteArray, message: ByteArray, signature: ByteArray): Boolean =
     runCatching {
       if (publicKey.size != PUBLIC_BYTES || signature.size != SIGNATURE_BYTES) return false
-      val key = KeyFactory.getInstance("Ed25519")
-        .generatePublic(X509EncodedKeySpec(X509_PREFIX + publicKey))
-      Signature.getInstance("Ed25519").run { initVerify(key); update(message); verify(signature) }
+      Ed25519Signer().apply {
+        init(false, Ed25519PublicKeyParameters(publicKey, 0))
+        update(message, 0, message.size)
+      }.verifySignature(signature)
     }.getOrElse { false }
 
   /** Hex SHA-256 of a public key: the fingerprint shown to the user. */

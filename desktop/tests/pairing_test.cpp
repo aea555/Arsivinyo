@@ -91,6 +91,32 @@ int main(int argc, char **argv) {
               "code: " + v.value("why").toString());
     }
 
+    for (const QJsonValue &entry : vectors.value("auth_transcript").toArray()) {
+        const QJsonObject v = entry.toObject();
+        const AuthRole role =
+            v.value("role").toString() == QLatin1String("server") ? AuthRole::Server : AuthRole::Client;
+        const auto transcript = AuthTranscript(role,
+                                               fromHex(v.value("serverCertSha256").toString()),
+                                               fromHex(v.value("clientCertSha256").toString()));
+        check(toHex(transcript) == v.value("transcript").toString(),
+              "transcript: " + v.value("why").toString());
+    }
+
+    // The two directions must sign different bytes, or a signature captured from one end
+    // authenticates the other.
+    {
+        const std::vector<uint8_t> serverHash(kCertHashBytes, 0x11);
+        const std::vector<uint8_t> clientHash(kCertHashBytes, 0x22);
+        check(AuthTranscript(AuthRole::Server, serverHash, clientHash) !=
+                  AuthTranscript(AuthRole::Client, serverHash, clientHash),
+              "the two roles sign different bytes");
+        check(AuthTranscript(AuthRole::Server, serverHash, clientHash) !=
+                  AuthTranscript(AuthRole::Server, clientHash, serverHash),
+              "swapping the certificates changes the bytes");
+        check(AuthTranscript(AuthRole::Server, std::vector<uint8_t>(31, 0), clientHash).empty(),
+              "a misshapen certificate hash yields no transcript");
+    }
+
     // A property the vectors cannot express: both ends must agree for any key pair.
     for (int i = 0; i < 64; ++i) {
         std::vector<uint8_t> a(kPublicKeyBytes), b(kPublicKeyBytes);

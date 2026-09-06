@@ -89,6 +89,39 @@ object PairingWire {
     return first + second
   }
 
+  const val ROLE_SERVER: Byte = 'S'.code.toByte()
+  const val ROLE_CLIENT: Byte = 'C'.code.toByte()
+
+  /** A SHA-256 digest, which is what the transcript carries. */
+  const val CERT_HASH_BYTES = 32
+
+  private val AUTH_LABEL = "arsivinyo-pairing-auth-v1".toByteArray(Charsets.US_ASCII) + 0
+
+  /**
+   * The exact bytes each side signs with its identity key to prove who it is.
+   *
+   * The identity key is *not* the TLS certificate key. Android's TLS stack does not
+   * accept Ed25519 certificates and this app supports API 24, so a certificate carrying
+   * the identity cannot be implemented here at all. Each side uses an ordinary
+   * self-signed certificate for TLS and then signs a transcript naming *both*
+   * certificates of this particular connection.
+   *
+   * That is what keeps the man-in-the-middle out. An attacker terminating TLS on both
+   * legs sees different certificates on each, so a signature made for one leg does not
+   * verify on the other, and it cannot forge one without the Ed25519 key.
+   *
+   * The server hash always comes first, so both ends build the same bytes without
+   * negotiating an order. The trailing role byte stops a signature captured from one
+   * direction being replayed as the other's.
+   *
+   * @return empty if either hash is the wrong length.
+   */
+  fun authTranscript(role: Byte, serverCertSha256: ByteArray, clientCertSha256: ByteArray): ByteArray {
+    if (serverCertSha256.size != CERT_HASH_BYTES) return ByteArray(0)
+    if (clientCertSha256.size != CERT_HASH_BYTES) return ByteArray(0)
+    return AUTH_LABEL + serverCertSha256 + clientCertSha256 + role
+  }
+
   /**
    * Six digits from a SHA-256 digest of [codeInput]: the first four bytes, big-endian,
    * modulo one million, zero-padded.

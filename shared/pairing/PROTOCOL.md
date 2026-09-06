@@ -1,6 +1,7 @@
 # Arsivinyo device pairing
 
-Draft. Nothing implements this yet.
+The desktop implements this. The phone implements the shared halves — framing, the code
+derivation and the auth transcript — and its transport is not wired up yet.
 
 Two devices you own, on the same network, exchanging files directly. No cloud, no
 account, no relay — the same reason the downloader has no backend.
@@ -49,16 +50,27 @@ Not defended against:
 Each device generates one **Ed25519 keypair** on first run and keeps it for life. The
 public key is the device's identity; its SHA-256 is the **fingerprint** shown to the user.
 
-- Android: private key in the Keystore, hardware-backed where available, non-exportable.
-- Desktop: private key in a file readable only by the user, until each platform's keystore
-  is wired up.
+Both platforms keep the private key in storage only the app can read. The Android Keystore
+would be the obvious home on the phone and is where the vault's keys live, but it has no
+Ed25519: `KeyProperties` offers EC with the NIST curves and RSA, and an Ed25519 key cannot
+be imported into it either. Picking the curve to fit the Keystore would mean a different
+signature scheme per platform, which is a worse trade than app-private storage — and the
+desktop has no better option than a user-only file until the platform keychains are wired
+up. Neither change would alter a byte on the wire.
+
+The phone uses BouncyCastle's low-level API rather than the JDK's `KeyPairGenerator`, which
+needs API 33 while this app supports API 24. On the older releases the JDK path throws, and
+the failure is silent: the device ends up with no identity at all.
 
 A device that loses its key is a new device and must pair again. This is intended: it is
 the same property that makes a stolen phone's pairing useless once wiped.
 
 ## Discovery
 
-mDNS / DNS-SD, service type `_arsivinyo._tcp`. TXT records:
+mDNS / DNS-SD, service type `_arsivinyo._tcp`. Android uses `NsdManager` from the
+platform; the desktop implements the wire format itself, in `desktop/src/DnsSd.cpp`,
+because Qt has no mDNS and the alternatives are per-platform daemons that do not ship with
+the app. TXT records:
 
 ```
 v=1                 protocol version
@@ -92,9 +104,37 @@ because a device that has been forgotten should not be told.
 
 ## Transport
 
-TLS 1.3. Each side presents a self-signed certificate whose public key is its identity
-key, and verifies the peer's certificate key against the fingerprint stored at pairing.
-No certificate authority is involved: the pairing *is* the trust.
+TLS, with each side presenting an ordinary self-signed P-256 certificate. No certificate
+authority is involved and nothing checks a name or a chain, because the certificate is not
+what identifies anyone.
+
+**Why the certificate does not carry the identity.** The first draft of this document said
+each side would present a certificate whose public key *is* its Ed25519 identity key. That
+cannot be built: Android's TLS stack does not accept Ed25519 certificates, and this app
+supports API 24. Rather than run a different signature scheme on each platform, the
+identity is bound to the connection instead of to the certificate.
+
+After the handshake each side sends an `auth` message carrying its public key and an
+Ed25519 signature over a fixed transcript:
+
+```
+"arsivinyo-pairing-auth-v1\0" || sha256(server cert DER) || sha256(client cert DER) || role
+```
+
+`role` is `'S'` or `'C'`. The server's hash always comes first, so both ends build the same
+bytes without negotiating an order, and the role byte is what stops a signature captured
+from one direction being replayed as the other's.
+
+This is what keeps a man in the middle out. An attacker terminating TLS on both legs
+presents different certificates on each, so a signature made for one leg does not verify on
+the other, and it cannot forge one without the Ed25519 key. A connection that fails this
+check is closed before a single request is read, and so is one whose key has not been
+paired.
+
+The session certificate is generated per process and never written to disk. Keygen costs
+under a millisecond, so persisting it would buy nothing, and not persisting it means there
+is no second private key at rest and a captured transcript signature is useless past the
+run that produced it.
 
 Framing — every message:
 
@@ -114,7 +154,8 @@ control message without tearing down the connection.
 
 ```jsonc
 // on connect, both directions
-{"t":"hello","v":1,"name":"Desktop","caps":["put","get","list","download"]}
+{"t":"auth","v":1,"key":"<hex ed25519 public key>","name":"Desktop","sig":"<hex>"}
+// the first message in each direction; nothing else is read until it verifies
 
 {"t":"list","kind":"music"}                 // or "backups"
 {"t":"listing","kind":"music","items":[
@@ -138,7 +179,8 @@ Neither platform can call the other's code, so the framing and the code derivati
 twice — `shared/pairing/wire.cpp` and `PairingWire.kt`. Prose does not keep two
 implementations honest, so both test suites read the same file:
 **`shared/pairing/VECTORS.json`**, which fixes the exact bytes for encoding, for every
-rejection case, for key ordering, and for the code.
+rejection case, for key ordering, for the code, for the fingerprint, and for the auth
+transcript and its signature.
 
 This is not belt and braces. An implementation can be perfectly self-consistent and still
 disagree with the other end — reversing the key sort passes every internal check and

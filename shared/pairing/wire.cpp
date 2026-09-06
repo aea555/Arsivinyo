@@ -68,6 +68,24 @@ std::vector<uint8_t> CodeInput(const std::vector<uint8_t>& keyA,
     return out;
 }
 
+std::vector<uint8_t> AuthTranscript(AuthRole role,
+                                    const std::vector<uint8_t>& serverCertSha256,
+                                    const std::vector<uint8_t>& clientCertSha256) {
+    if (serverCertSha256.size() != kCertHashBytes) return {};
+    if (clientCertSha256.size() != kCertHashBytes) return {};
+
+    // A fixed-length layout with a domain-separating label. Every field has a known size,
+    // so no two different inputs can produce the same bytes.
+    static constexpr char kLabel[] = "arsivinyo-pairing-auth-v1";
+    std::vector<uint8_t> out;
+    out.reserve(sizeof(kLabel) + 2 * kCertHashBytes + 1);
+    out.insert(out.end(), kLabel, kLabel + sizeof(kLabel));  // includes the NUL
+    out.insert(out.end(), serverCertSha256.begin(), serverCertSha256.end());
+    out.insert(out.end(), clientCertSha256.begin(), clientCertSha256.end());
+    out.push_back(static_cast<uint8_t>(role));
+    return out;
+}
+
 std::string PairingCode(const uint8_t* digest, size_t digestLen) {
     if (!digest || digestLen < 4) return {};
     const uint32_t value = (static_cast<uint32_t>(digest[0]) << 24) |
