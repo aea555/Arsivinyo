@@ -5,6 +5,7 @@
 #include <QQmlEngine>
 #include <QString>
 #include <QTcpServer>
+#include <QUrl>
 
 #include "DeviceIdentity.h"
 #include "PeerContent.h"
@@ -32,6 +33,10 @@ class PairingService : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
+    // Set from QML, which is where the Library and the engine are created.
+    Q_PROPERTY(DeviceIdentity *identity READ identity WRITE setIdentity NOTIFY wiringChanged)
+    Q_PROPERTY(PeerRegistry *registry READ registry WRITE setRegistry NOTIFY wiringChanged)
+    Q_PROPERTY(QObject *content READ contentObject WRITE setContentObject NOTIFY wiringChanged)
     Q_PROPERTY(bool listening READ isListening NOTIFY listeningChanged)
     Q_PROPERTY(quint16 port READ port NOTIFY listeningChanged)
     Q_PROPERTY(bool pairingMode READ pairingMode NOTIFY pairingModeChanged)
@@ -42,9 +47,13 @@ public:
     explicit PairingService(QObject *parent = nullptr);
 
     /** Must be set before listening. Not owned. */
-    void setIdentity(DeviceIdentity *identity) { m_identity = identity; }
-    void setRegistry(PeerRegistry *registry) { m_registry = registry; }
+    DeviceIdentity *identity() const { return m_identity; }
+    void setIdentity(DeviceIdentity *identity);
+    PeerRegistry *registry() const { return m_registry; }
+    void setRegistry(PeerRegistry *registry);
     void setContent(PeerContent *content) { m_content = content; }
+    QObject *contentObject() const { return m_contentObject; }
+    void setContentObject(QObject *content);
 
     bool isListening() const;
     quint16 port() const;
@@ -70,9 +79,13 @@ public:
 
     QList<PeerSession *> sessions() const { return m_sessions; }
     /** The live session for a paired peer, or null. */
-    PeerSession *sessionFor(const QString &fingerprint) const;
+    Q_INVOKABLE PeerSession *sessionFor(const QString &fingerprint) const;
+
+    /** The dialogs hand back URLs; the transport wants paths. */
+    Q_INVOKABLE QString pathOf(const QUrl &url) const { return url.toLocalFile(); }
 
 signals:
+    void wiringChanged();
     void listeningChanged();
     void pairingModeChanged();
     void pendingPeerChanged();
@@ -90,6 +103,7 @@ private:
     DeviceIdentity *m_identity = nullptr;
     PeerRegistry *m_registry = nullptr;
     PeerContent *m_content = nullptr;
+    QObject *m_contentObject = nullptr;
 
     QTcpServer *m_server = nullptr;
     SessionCertificate m_certificate;

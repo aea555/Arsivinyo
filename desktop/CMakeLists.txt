@@ -29,7 +29,7 @@ set_source_files_properties(qml/Theme.qml qml/Fonts.qml PROPERTIES QT_QML_SINGLE
 qt_add_qml_module(arsivinyo-desktop
     URI Arsivinyo
     VERSION 1.0
-    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml qml/PlayerBar.qml
+    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml qml/PlayerBar.qml qml/DevicesView.qml
     RESOURCES
         qml/fonts/Monda_400Regular.ttf
         qml/fonts/Monda_600SemiBold.ttf
@@ -45,6 +45,7 @@ qt_add_qml_module(arsivinyo-desktop
         src/PeerContent.h
         src/PeerSession.h src/PeerSession.cpp
         src/PairingService.h src/PairingService.cpp
+        src/LibraryContent.h src/LibraryContent.cpp
         src/DnsSd.h src/DnsSd.cpp
         src/Discovery.h src/Discovery.cpp
         ${ARSIVINYO_PAIRING_DIR}/wire.cpp

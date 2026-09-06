@@ -33,6 +33,43 @@ ApplicationWindow {
     }
     Library { id: library }
 
+    // Pairing. The identity is a singleton — one keypair per install — while the peer
+    // list, the transport and what a peer may reach are ordinary objects wired together
+    // here, where the Library and the engine already exist.
+    PeerRegistry { id: peers }
+    Discovery { id: discovery }
+    LibraryContent {
+        id: shared
+        library: library
+        engine: engine
+        onDownloadRequested: (url, mediaKind) => {
+            // A peer asking this device to fetch something is shown, never started
+            // silently: the URL goes into the download field for the user to accept.
+            root.pendingUrl = url
+            root.audioMode = mediaKind === "audio"
+            root.tab = 0
+            root.resultOk = true
+            root.resultMessage = qsTr("A device sent a link")
+            clearResult.restart()
+        }
+    }
+    PairingService {
+        id: pairing
+        identity: DeviceIdentity
+        registry: peers
+        content: shared
+        onRefused: (reason) => {
+            root.resultOk = false
+            root.resultMessage = reason
+            clearResult.restart()
+        }
+        onPeerConnected: (fingerprint, name) => {
+            root.resultOk = true
+            root.resultMessage = name + qsTr(" connected")
+            clearResult.restart()
+        }
+    }
+
     PresetRenderer {
         id: renderer
         onFinished: (ok, outputPath, error) => {
@@ -46,6 +83,10 @@ ApplicationWindow {
     Component.onCompleted: {
         engine.start()
         library.scan()
+        // 0 asks the system for a free port, which is then advertised over mDNS. A fixed
+        // port would collide with a second copy of the app on the same machine.
+        if (pairing.listen(0))
+            discovery.start(DeviceIdentity.fingerprint, DeviceIdentity.deviceName, pairing.port)
     }
 
     Timer { id: clearResult; interval: 4000; onTriggered: root.resultMessage = "" }
@@ -100,7 +141,7 @@ ApplicationWindow {
             Layout.alignment: Qt.AlignHCenter
             spacing: 4
             Repeater {
-                model: [qsTr("Download"), qsTr("Library")]
+                model: [qsTr("Download"), qsTr("Library"), qsTr("Devices")]
                 Rectangle {
                     required property int index
                     required property string modelData
@@ -204,6 +245,18 @@ ApplicationWindow {
                 renderer: renderer
                 onPlay: (path, title, artist, thumb) => playerBar.playFile(path, title, artist, thumb)
             }
+
+            DevicesView {
+                service: pairing
+                registry: peers
+                discovery: discovery
+                identity: DeviceIdentity
+                onMessage: (text, ok) => {
+                    root.resultOk = ok
+                    root.resultMessage = text
+                    clearResult.restart()
+                }
+            }
         }
 
         Item { height: 14 }
@@ -251,7 +304,10 @@ ApplicationWindow {
 
         Text {
             Layout.fillWidth: true
-            text: root.tab === 0 ? engine.downloadDir : library.musicDir
+            text: root.tab === 0 ? engine.downloadDir
+                  : root.tab === 1 ? library.musicDir
+                  : (pairing.listening ? qsTr("Listening on port ") + pairing.port
+                                       : qsTr("Not listening"))
             color: Theme.textSubtle
             font.family: Fonts.body
             font.pixelSize: 11

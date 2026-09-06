@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
+#include <QQmlEngine>
 #include <QString>
 
 #include "PeerContent.h"
@@ -26,6 +27,9 @@
  */
 class PeerSession : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    // A session exists only because a peer connected; QML gets one from PairingService.
+    QML_UNCREATABLE("Obtained from PairingService.sessionFor()")
 
 public:
     PeerSession(PeerLink *link, PeerContent *content, QObject *parent = nullptr);
@@ -33,15 +37,15 @@ public:
     PeerLink *link() const { return m_link; }
 
     /** Ask the peer for its [kind] listing. */
-    bool requestListing(const QString &kind);
+    Q_INVOKABLE bool requestListing(const QString &kind);
     /** Ask the peer to send an item it listed. */
-    bool requestItem(const QString &id);
+    Q_INVOKABLE bool requestItem(const QString &id);
     /** Offer a local file to the peer. */
-    bool sendFile(const QString &path, const QString &kind);
+    Q_INVOKABLE bool sendFile(const QString &path, const QString &kind);
     /** Ask the peer to fetch a URL itself. */
-    bool requestDownload(const QString &url, const QString &mediaKind);
+    Q_INVOKABLE bool requestDownload(const QString &url, const QString &mediaKind);
 
-    bool isTransferring() const { return m_sending.active || m_receiving.active; }
+    Q_INVOKABLE bool isTransferring() const { return m_sending.active || m_receiving.active; }
 
 signals:
     void listingReceived(const QString &kind, const QJsonArray &items);

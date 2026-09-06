@@ -39,6 +39,28 @@ QString localAddress() {
 
 PairingService::PairingService(QObject *parent) : QObject(parent) {}
 
+void PairingService::setIdentity(DeviceIdentity *identity) {
+    if (m_identity == identity) return;
+    m_identity = identity;
+    emit wiringChanged();
+}
+
+void PairingService::setRegistry(PeerRegistry *registry) {
+    if (m_registry == registry) return;
+    m_registry = registry;
+    emit wiringChanged();
+}
+
+void PairingService::setContentObject(QObject *content) {
+    if (m_contentObject == content) return;
+    m_contentObject = content;
+    // The interface is not a QObject, so QML hands over the object and the cast finds the
+    // interface on it. A content object that does not implement it leaves the peer with
+    // nothing to reach, which is the safe direction to fail in.
+    m_content = dynamic_cast<PeerContent *>(content);
+    emit wiringChanged();
+}
+
 bool PairingService::isListening() const { return m_server && m_server->isListening(); }
 
 quint16 PairingService::port() const { return m_server ? m_server->serverPort() : 0; }
