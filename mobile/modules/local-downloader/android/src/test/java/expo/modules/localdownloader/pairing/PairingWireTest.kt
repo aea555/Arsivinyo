@@ -103,6 +103,77 @@ class PairingWireTest {
   }
 
   @Test
+  fun theRfc8032SignatureVerifies() {
+    // Ed25519 keys must be handled as raw 32 bytes on both platforms. The JDK wants
+    // X.509 and PKCS#8, so this is exactly where the two ends could diverge without
+    // either looking wrong on its own.
+    val cases = vectors.getJSONArray("ed25519")
+    for (i in 0 until cases.length()) {
+      val v = cases.getJSONObject(i)
+      val pub = unhex(v.getString("publicKey"))
+      val msg = unhex(v.getString("message"))
+      val sig = unhex(v.getString("signature"))
+      // The fingerprint is what the user compares on screen and what mDNS
+      // advertises, so it must be the same digest on both platforms, not merely
+      // self-consistent on each.
+      assertEquals(v.getString("fingerprint"), Ed25519Keys.fingerprint(pub))
+      assertTrue(v.getString("why"), Ed25519Keys.verify(pub, msg, sig))
+      assertTrue("a changed message must not verify",
+        !Ed25519Keys.verify(pub, msg + 'x'.code.toByte(), sig))
+      assertTrue("a changed signature must not verify",
+        !Ed25519Keys.verify(pub, msg, sig.clone().also { it[0] = (it[0] + 1).toByte() }))
+    }
+  }
+
+  @Test
+  fun signingIsDeterministicAndMatchesTheVector() {
+    // Ed25519 has no nonce to vary, so the same seed and message must give the same 64
+    // bytes here as the desktop's OpenSSL produced. Verification alone would still pass
+    // if this side signed differently, which is the drift the vectors exist to catch.
+    val cases = vectors.getJSONArray("ed25519")
+    for (i in 0 until cases.length()) {
+      val v = cases.getJSONObject(i)
+      val seed = unhex(v.getString("seed"))
+      val msg = unhex(v.getString("message"))
+      assertEquals(v.getString("signature"), hex(Ed25519Keys.sign(seed, msg)))
+    }
+  }
+
+  @Test
+  fun aGeneratedKeyIsUsableAndDistinct() {
+    val (seedA, pubA) = Ed25519Keys.generate()!!
+    val (seedB, pubB) = Ed25519Keys.generate()!!
+    assertEquals(Ed25519Keys.SEED_BYTES, seedA.size)
+    assertEquals(Ed25519Keys.PUBLIC_BYTES, pubA.size)
+    assertTrue("two identities must not collide", !pubA.contentEquals(pubB))
+
+    val message = "pair with me".toByteArray()
+    val signature = Ed25519Keys.sign(seedA, message)
+    assertEquals(Ed25519Keys.SIGNATURE_BYTES, signature.size)
+    assertTrue(Ed25519Keys.verify(pubA, message, signature))
+    assertTrue("another device's key must not verify this signature",
+      !Ed25519Keys.verify(pubB, message, signature))
+    assertTrue("signing with the wrong seed must not verify",
+      !Ed25519Keys.verify(pubA, message, Ed25519Keys.sign(seedB, message)))
+  }
+
+  @Test
+  fun malformedKeyMaterialIsRefusedRatherThanThrowing() {
+    val (seed, pub) = Ed25519Keys.generate()!!
+    val message = "x".toByteArray()
+    val signature = Ed25519Keys.sign(seed, message)
+
+    assertTrue(!Ed25519Keys.verify(ByteArray(0), message, signature))
+    assertTrue(!Ed25519Keys.verify(pub.copyOf(31), message, signature))
+    assertTrue(!Ed25519Keys.verify(pub, message, ByteArray(0)))
+    assertTrue(!Ed25519Keys.verify(pub, message, signature.copyOf(63)))
+    // A short seed cannot sign, and the empty result must not then verify as anything.
+    assertEquals(0, Ed25519Keys.sign(ByteArray(8), message).size)
+    assertTrue(!Ed25519Keys.verify(pub, message, ByteArray(0)))
+    assertEquals("", Ed25519Keys.fingerprint(ByteArray(0)))
+  }
+
+  @Test
   fun aFrameOverTheCapIsRefused() {
     assertEquals(null, PairingWire.encodeFrame(PairingWire.TYPE_BULK,
       ByteArray(PairingWire.MAX_FRAME_BYTES)))

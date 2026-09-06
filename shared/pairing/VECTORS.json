@@ -4,11 +4,12 @@
     "Every implementation must reproduce these exactly. A framing bug or an off-by-one",
     "in the code derivation shows up as 'pairing does not work' with nothing to read,",
     "so the two ends are pinned to the same bytes here rather than to prose.",
-    "Byte strings are lowercase hex."
+    "Byte strings are lowercase hex.",
+    "ed25519 pins signature interoperability: a signature made on one platform must verify on the other."
   ],
   "frames": [
     {
-      "why": "empty control payload — length covers the type byte, so it is 1",
+      "why": "empty control payload \u2014 length covers the type byte, so it is 1",
       "type": 0,
       "payload": "",
       "encoded": "0000000100"
@@ -27,13 +28,31 @@
     }
   ],
   "decode_errors": [
-    { "why": "length of zero is never valid: every frame has a type byte",
-      "input": "00000000", "expect": "TooLarge" },
-    { "why": "over the 8 MiB cap, refused before the body is awaited",
-      "input": "10000001", "expect": "TooLarge" },
-    { "why": "unknown frame type", "input": "0000000102", "expect": "BadType" },
-    { "why": "header not yet complete", "input": "000000", "expect": "Incomplete" },
-    { "why": "body not yet complete", "input": "0000000e007b22", "expect": "Incomplete" }
+    {
+      "why": "length of zero is never valid: every frame has a type byte",
+      "input": "00000000",
+      "expect": "TooLarge"
+    },
+    {
+      "why": "over the 8 MiB cap, refused before the body is awaited",
+      "input": "10000001",
+      "expect": "TooLarge"
+    },
+    {
+      "why": "unknown frame type",
+      "input": "0000000102",
+      "expect": "BadType"
+    },
+    {
+      "why": "header not yet complete",
+      "input": "000000",
+      "expect": "Incomplete"
+    },
+    {
+      "why": "body not yet complete",
+      "input": "0000000e007b22",
+      "expect": "Incomplete"
+    }
   ],
   "code_input": [
     {
@@ -50,14 +69,30 @@
     }
   ],
   "pairing_code": [
-    { "why": "first four bytes big-endian, modulo one million, zero padded",
+    {
+      "why": "first four bytes big-endian, modulo one million, zero padded",
       "digest": "0000000000000000000000000000000000000000000000000000000000000000",
-      "code": "000000" },
-    { "why": "leading zeros are kept",
+      "code": "000000"
+    },
+    {
+      "why": "leading zeros are kept",
       "digest": "00000f4200000000000000000000000000000000000000000000000000000000",
-      "code": "003906" },
-    { "why": "wraps by modulo, not by truncation",
+      "code": "003906"
+    },
+    {
+      "why": "wraps by modulo, not by truncation",
       "digest": "ffffffff00000000000000000000000000000000000000000000000000000000",
-      "code": "967295" }
+      "code": "967295"
+    }
+  ],
+  "ed25519": [
+    {
+      "why": "RFC 8032 section 7.1 test 1 seed. The derived public key is the RFC's own, which is what proves both platforms handle raw 32-byte keys rather than some encoded form.",
+      "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "publicKey": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "fingerprint": "21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9",
+      "message": "6172736976696e796f2070616972696e67",
+      "signature": "90f723a248ea8d023589974c6573e58a1430336a8402a8ea28b185c229202032f3fd26e55e60b3965cf20f87f8464753e7bdfa24e7b4aa2837ffd3348b7e110c"
+    }
   ]
 }

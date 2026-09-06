@@ -9,6 +9,11 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Sql Multi
 # The preset signal chain, shared verbatim with the Android app. Only its JNI wrapper is
 # Android's; everything here is the same C++ the phone runs.
 set(ARSIVINYO_DSP ${CMAKE_CURRENT_SOURCE_DIR}/../shared/dsp)
+set(ARSIVINYO_PAIRING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../shared/pairing)
+
+# Ed25519. Qt does not expose it, so the identity keys go straight to OpenSSL's EVP.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBCRYPTO REQUIRED IMPORTED_TARGET libcrypto)
 qt_standard_project_setup(REQUIRES 6.5)
 
 option(ARSIVINYO_DEV_TOOLS "Build the screenshot hook used while iterating on the UI" OFF)
@@ -33,6 +38,8 @@ qt_add_qml_module(arsivinyo-desktop
         src/EngineClient.h src/EngineClient.cpp
         src/Library.h src/Library.cpp
         src/PresetRenderer.h src/PresetRenderer.cpp
+        src/DeviceIdentity.h src/DeviceIdentity.cpp
+        ${ARSIVINYO_PAIRING_DIR}/wire.cpp
         ${ARSIVINYO_DSP}/ffmpeg_pipe.cpp
         ${ARSIVINYO_DSP}/preset_params.cpp
         ${ARSIVINYO_DSP}/dsp/freeverb.cpp
@@ -44,9 +51,9 @@ qt_add_qml_module(arsivinyo-desktop
 # The generated QML type registration includes headers as <EngineClient.h>, guarded by
 # __has_include. Without src/ on the include path the guard quietly fails and the type is
 # never declared, which surfaces much later as an unrelated template error.
-target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP})
+target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP} ${ARSIVINYO_PAIRING_DIR})
 
-target_link_libraries(arsivinyo-desktop PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Multimedia Qt6::Concurrent)
+target_link_libraries(arsivinyo-desktop PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Multimedia Qt6::Concurrent PkgConfig::LIBCRYPTO)
 
 # ---- tests -------------------------------------------------------------------
 # The library store is plain QObject code, so it is testable without a display.
@@ -64,3 +71,11 @@ target_compile_definitions(pairing_test PRIVATE
     ARSIVINYO_VECTORS="${ARSIVINYO_PAIRING}/VECTORS.json")
 target_link_libraries(pairing_test PRIVATE Qt6::Core)
 add_test(NAME pairing COMMAND pairing_test)
+
+qt_add_executable(identity_test tests/identity_test.cpp
+    src/DeviceIdentity.h src/DeviceIdentity.cpp ${ARSIVINYO_PAIRING}/wire.cpp)
+target_include_directories(identity_test PRIVATE src ${ARSIVINYO_PAIRING})
+target_compile_definitions(identity_test PRIVATE
+    ARSIVINYO_VECTORS="${ARSIVINYO_PAIRING}/VECTORS.json")
+target_link_libraries(identity_test PRIVATE Qt6::Core Qt6::Network Qt6::Qml PkgConfig::LIBCRYPTO)
+add_test(NAME identity COMMAND identity_test)
