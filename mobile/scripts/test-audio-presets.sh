@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CPP_DIR="$REPO_ROOT/modules/local-downloader/android/src/main/cpp"
+CPP_DIR="$REPO_ROOT/../shared/dsp"
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 

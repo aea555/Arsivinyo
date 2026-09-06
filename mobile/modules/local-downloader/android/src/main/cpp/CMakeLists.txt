@@ -14,17 +14,21 @@ project(audiopresets LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# The signal processing lives in shared/dsp because the desktop app renders the same
+# presets from the same code. Only the JNI bridge below is Android's.
+set(ARSIVINYO_DSP ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../../shared/dsp)
+
 add_library(audiopresets SHARED
     audio_presets_jni.cpp
-    ffmpeg_pipe.cpp
-    preset_params.cpp
-    dsp/freeverb.cpp
-    dsp/resampler.cpp
-    dsp/limiter.cpp
-    dsp/preset_chain.cpp
+    ${ARSIVINYO_DSP}/ffmpeg_pipe.cpp
+    ${ARSIVINYO_DSP}/preset_params.cpp
+    ${ARSIVINYO_DSP}/dsp/freeverb.cpp
+    ${ARSIVINYO_DSP}/dsp/resampler.cpp
+    ${ARSIVINYO_DSP}/dsp/limiter.cpp
+    ${ARSIVINYO_DSP}/dsp/preset_chain.cpp
 )
 
-target_include_directories(audiopresets PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(audiopresets PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${ARSIVINYO_DSP})
 
 target_compile_options(audiopresets PRIVATE
     -Wall
