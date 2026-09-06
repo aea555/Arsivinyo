@@ -55,3 +55,12 @@ qt_add_executable(library_test tests/library_test.cpp src/Library.h src/Library.
 target_include_directories(library_test PRIVATE src)
 target_link_libraries(library_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml)  # Qml for the QML_ELEMENT macro in the header
 add_test(NAME library COMMAND library_test)
+
+# The pairing wire format, checked against the vectors both apps are held to.
+set(ARSIVINYO_PAIRING ${CMAKE_CURRENT_SOURCE_DIR}/../shared/pairing)
+qt_add_executable(pairing_test tests/pairing_test.cpp ${ARSIVINYO_PAIRING}/wire.cpp)
+target_include_directories(pairing_test PRIVATE ${ARSIVINYO_PAIRING})
+target_compile_definitions(pairing_test PRIVATE
+    ARSIVINYO_VECTORS="${ARSIVINYO_PAIRING}/VECTORS.json")
+target_link_libraries(pairing_test PRIVATE Qt6::Core)
+add_test(NAME pairing COMMAND pairing_test)

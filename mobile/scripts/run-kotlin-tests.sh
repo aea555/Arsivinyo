@@ -58,7 +58,9 @@ SRC_TEST="$MODULE/src/test/java/expo/modules/localdownloader"
 # Each entry is "<test class>|<source files...>". Add a line to cover a new suite.
 BACKUP_SOURCES="$SRC_MAIN/backup/BackupFormat.kt $SRC_MAIN/backup/BackupCrypto.kt $SRC_MAIN/backup/BackupContainer.kt $SRC_MAIN/backup/BackupSections.kt $SRC_MAIN/backup/BackupPorts.kt $SRC_MAIN/backup/BackupPipeline.kt"
 SCHEDULER_SOURCES="$SRC_MAIN/scheduler/PriorityGate.kt $SRC_MAIN/scheduler/DownloadStages.kt"
+PAIRING_SOURCES="$SRC_MAIN/pairing/PairingWire.kt"
 SUITES=(
+  "expo.modules.localdownloader.pairing.PairingWireTest|$PAIRING_SOURCES $SRC_TEST/pairing/PairingWireTest.kt"
   "expo.modules.localdownloader.scheduler.PriorityGateTest|$SCHEDULER_SOURCES $SRC_TEST/scheduler/PriorityGateTest.kt"
   "expo.modules.localdownloader.backup.BackupFormatTest|$BACKUP_SOURCES $SRC_TEST/backup/BackupFormatTest.kt"
   "expo.modules.localdownloader.backup.BackupContainerTest|$SRC_TEST/backup/BackupContainerTest.kt"

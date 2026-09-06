@@ -78,9 +78,10 @@ The step that has to be right, because everything after it inherits this trust.
    on the network cannot reach.
 3. Phone connects. TLS is pinned to that key, so a man in the middle fails here.
 4. Phone sends its own public key over that authenticated channel.
-5. **Both devices display the same six digits**, derived as
-   `SHA-256(sorted(pubkey_a, pubkey_b))` truncated to 20 bits. The user confirms they
-   match, which authenticates the phone's key to the desktop.
+5. **Both devices display the same six digits.** Hash the two public keys, ordered
+   lexicographically and concatenated; take the digest's first four bytes big-endian,
+   modulo one million, zero-padded. The user confirms they match, which authenticates the
+   phone's key to the desktop. Sorting means neither device has to be "first".
 6. Each stores the other's public key and a user-visible name.
 
 The QR authenticates one direction; the confirmation code authenticates the other. Both
@@ -130,6 +131,19 @@ control message without tearing down the connection.
 {"t":"download","url":"...","mediaKind":"audio"}
 {"t":"error","code":"...","message":"..."}
 ```
+
+## Holding the two implementations together
+
+Neither platform can call the other's code, so the framing and the code derivation exist
+twice — `shared/pairing/wire.cpp` and `PairingWire.kt`. Prose does not keep two
+implementations honest, so both test suites read the same file:
+**`shared/pairing/VECTORS.json`**, which fixes the exact bytes for encoding, for every
+rejection case, for key ordering, and for the code.
+
+This is not belt and braces. An implementation can be perfectly self-consistent and still
+disagree with the other end — reversing the key sort passes every internal check and
+produces a device that pairs with itself and nothing else. The vectors are what turns that
+into a failing test instead of an unexplainable bug in the field.
 
 ## Integrity
 
