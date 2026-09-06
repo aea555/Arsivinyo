@@ -28,3 +28,7 @@ keystore.properties
 signing.properties
 .env
 .env*.local
+
+# Stray CMake probe output at the repository root.
+/CMakeFiles/
+/CMakeCache.txt
