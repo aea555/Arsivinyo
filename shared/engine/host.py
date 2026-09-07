@@ -163,8 +163,26 @@ def _run_ytdlp_update(request_id: str, req: Dict[str, Any]) -> None:
                   "stage": stage, "done": done, "total": total})
 
         root = req.get("root") or _bundle_root()
-        result = ytdlp_updater.install_override(root, report)
+        # No version means the newest; "bundled" means drop the override entirely.
+        wanted = req.get("version")
+        if wanted == "bundled":
+            result = ytdlp_updater.use_bundled(root)
+        else:
+            result = ytdlp_updater.install_override(root, wanted, report)
         emit({"id": request_id, "type": "result", "ok": True, "result": result})
+    except Exception as exc:
+        emit({"id": request_id, "type": "result", "ok": False,
+              "error": f"{type(exc).__name__}: {exc}"})
+
+
+def _run_ytdlp_versions(request_id: str, req: Dict[str, Any]) -> None:
+    """Recent stable releases, so the user can pick one rather than only take the newest."""
+    try:
+        import ytdlp_updater
+
+        releases = ytdlp_updater.list_releases(int(req.get("limit") or 12))
+        emit({"id": request_id, "type": "result", "ok": True,
+              "result": {"versions": [r["version"] for r in releases]}})
     except Exception as exc:
         emit({"id": request_id, "type": "result", "ok": False,
               "error": f"{type(exc).__name__}: {exc}"})
@@ -210,6 +228,8 @@ def _handle(req: Dict[str, Any]) -> None:
               "result": {"ytDlp": version, "frozen": bool(getattr(sys, "frozen", False))}})
     elif op == "updateYtDlp":
         _spawn(_run_ytdlp_update, request_id, req)
+    elif op == "listYtDlpVersions":
+        _spawn(_run_ytdlp_versions, request_id, req)
     else:
         emit({"id": request_id, "type": "result", "ok": False, "error": f"UNKNOWN_OP:{op}"})
 

@@ -36,19 +36,69 @@ def _request(url: str) -> urllib.request.Request:
     return urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
 
 
+def _wheel_of(files: list) -> Optional[Tuple[str, int]]:
+    """The pure-Python wheel: nothing to compile, works everywhere this ships."""
+    for candidate in files:
+        if candidate.get("packagetype") == "bdist_wheel" and str(
+            candidate.get("filename", "")
+        ).endswith("-py3-none-any.whl"):
+            return candidate["url"], int(candidate.get("size") or 0)
+    return None
+
+
+def _is_stable(version: str) -> bool:
+    """yt-dlp releases are YYYY.MM.DD. Anything else is a pre-release or an oddity."""
+    parts = version.split(".")
+    return len(parts) == 3 and all(part.isdigit() for part in parts) and len(parts[0]) == 4
+
+
+def _sort_key(version: str) -> Tuple[int, int, int]:
+    return tuple(int(part) for part in version.split("."))  # type: ignore[return-value]
+
+
 def latest_release(timeout: float = 30.0) -> Tuple[str, str, int]:
     """@return (version, wheel url, size in bytes) of the newest yt-dlp on PyPI."""
     with urllib.request.urlopen(_request(PYPI_URL), timeout=timeout) as response:
         payload = json.load(response)
 
     version = payload["info"]["version"]
-    for candidate in payload["urls"]:
-        # The pure-Python wheel: nothing to compile, works on every platform this ships to.
-        if candidate["packagetype"] == "bdist_wheel" and candidate["filename"].endswith(
-            "-py3-none-any.whl"
-        ):
-            return version, candidate["url"], int(candidate.get("size") or 0)
-    raise RuntimeError("no pure-python wheel published for yt-dlp " + version)
+    wheel = _wheel_of(payload["urls"])
+    if not wheel:
+        raise RuntimeError("no pure-python wheel published for yt-dlp " + version)
+    return version, wheel[0], wheel[1]
+
+
+def list_releases(limit: int = 12, timeout: float = 30.0) -> list:
+    """Recent stable releases, newest first.
+
+    Capped because yt-dlp has hundreds of them and a list that long is not a choice, it
+    is a wall of numbers.
+    """
+    with urllib.request.urlopen(_request(PYPI_URL), timeout=timeout) as response:
+        payload = json.load(response)
+
+    versions = [v for v in payload.get("releases", {}) if _is_stable(v)]
+    versions.sort(key=_sort_key, reverse=True)
+
+    out = []
+    for version in versions[:limit]:
+        wheel = _wheel_of(payload["releases"][version])
+        if wheel:
+            out.append({"version": version, "url": wheel[0], "size": wheel[1]})
+    return out
+
+
+def release(version: str, timeout: float = 30.0) -> Tuple[str, str, int]:
+    """@return (version, wheel url, size) for one specific release."""
+    with urllib.request.urlopen(_request(PYPI_URL), timeout=timeout) as response:
+        payload = json.load(response)
+    files = payload.get("releases", {}).get(version)
+    if not files:
+        raise RuntimeError(f"yt-dlp {version} is not on PyPI")
+    wheel = _wheel_of(files)
+    if not wheel:
+        raise RuntimeError(f"no pure-python wheel published for yt-dlp {version}")
+    return version, wheel[0], wheel[1]
 
 
 def download_wheel(url: str, expected_size: int = 0, timeout: float = 60.0,
@@ -114,12 +164,31 @@ def write_manifest(path: str, manifest: Dict) -> None:
     os.replace(temp, path)
 
 
-def install_override(root: str, progress: Optional[ProgressFn] = None) -> Dict:
-    """Download the newest yt-dlp and queue it for the next start.
+def _prune_versions(override_root: str, keep: str) -> None:
+    """Keep exactly one downloaded version.
+
+    Without this every switch leaks an unpacked copy — thirteen megabytes a time, never
+    reclaimed. One slot is enough: the copy the app shipped with is still on disk as a
+    floor, and any other version is a download away.
+    """
+    versions_dir = os.path.join(override_root, "versions")
+    if not os.path.isdir(versions_dir):
+        return
+    for name in os.listdir(versions_dir):
+        if name == keep:
+            continue
+        shutil.rmtree(os.path.join(versions_dir, name), ignore_errors=True)
+
+
+def install_override(root: str, version: Optional[str] = None,
+                     progress: Optional[ProgressFn] = None) -> Dict:
+    """Download a yt-dlp and queue it for the next start.
 
     Queued rather than swapped in: yt-dlp is already imported by the time anyone asks for
-    an update, and rebinding a live module is a good way to get a process that half works.
+    a change, and rebinding a live module is a good way to get a process that half works.
     The engine restarts and `yt_dlp_override_bootstrap` picks it up.
+
+    [version] of None means the newest on PyPI.
     """
     override_root = os.path.join(root, "yt-dlp-overrides")
     manifest_path = os.path.join(override_root, "manifest.json")
@@ -127,12 +196,14 @@ def install_override(root: str, progress: Optional[ProgressFn] = None) -> Dict:
 
     if progress:
         progress("checking", 0, 0)
-    version, url, size = latest_release()
+    wanted, url, size = release(version) if version else latest_release()
 
-    if manifest.get("activeVersion") == version:
-        return {"status": "current", "version": version}
+    if manifest.get("activeVersion") == wanted and os.path.isdir(
+        os.path.join(override_root, "versions", wanted)
+    ):
+        return {"status": "current", "version": wanted}
 
-    target = os.path.join(override_root, "versions", version)
+    target = os.path.join(override_root, "versions", wanted)
     if not os.path.isdir(target):
         data = download_wheel(url, size, progress=progress)
         if progress:
@@ -140,12 +211,28 @@ def install_override(root: str, progress: Optional[ProgressFn] = None) -> Dict:
         unpack_wheel(data, target)
 
     manifest["schemaVersion"] = manifest.get("schemaVersion", 1)
-    manifest["pendingVersion"] = version
-    # A previous failure must not veto a newly downloaded version.
+    manifest["pendingVersion"] = wanted
+    # A previous failure must not veto a newly chosen version.
     manifest["failedVersion"] = None
     manifest["failedReason"] = None
     write_manifest(manifest_path, manifest)
-    return {"status": "pending", "version": version}
+    _prune_versions(override_root, wanted)
+    return {"status": "pending", "version": wanted}
+
+
+def use_bundled(root: str) -> Dict:
+    """Drop the override entirely and go back to the copy the app shipped with."""
+    override_root = os.path.join(root, "yt-dlp-overrides")
+    manifest_path = os.path.join(override_root, "manifest.json")
+    manifest = read_manifest(manifest_path)
+    manifest["schemaVersion"] = manifest.get("schemaVersion", 1)
+    manifest["pendingVersion"] = None
+    manifest["activeVersion"] = None
+    manifest["failedVersion"] = None
+    manifest["failedReason"] = None
+    write_manifest(manifest_path, manifest)
+    _prune_versions(override_root, keep="")
+    return {"status": "bundled"}
 
 
 def install_bundled(root: str, progress: Optional[ProgressFn] = None) -> Dict:

@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QQmlEngine>
 #include <QString>
+#include <QStringList>
 
 /**
  * Drives the download engine, which runs as a separate process.
@@ -31,6 +32,9 @@ class EngineClient : public QObject {
     Q_PROPERTY(bool updatingYtDlp READ updatingYtDlp NOTIFY ytDlpUpdateChanged)
     Q_PROPERTY(QString ytDlpUpdateStatus READ ytDlpUpdateStatus NOTIFY ytDlpUpdateChanged)
     Q_PROPERTY(double ytDlpUpdateProgress READ ytDlpUpdateProgress NOTIFY ytDlpUpdateChanged)
+    Q_PROPERTY(QStringList ytDlpVersions READ ytDlpVersions NOTIFY ytDlpVersionsChanged)
+    Q_PROPERTY(bool ytDlpVersionsLoading READ ytDlpVersionsLoading NOTIFY ytDlpVersionsChanged)
+    Q_PROPERTY(QString ytDlpSource READ ytDlpSource NOTIFY ytDlpVersionChanged)
 
 public:
     explicit EngineClient(QObject *parent = nullptr);
@@ -51,10 +55,19 @@ public:
     Q_INVOKABLE void cancel();
     /** Fetch the newest yt-dlp. It takes effect when the engine next starts. */
     Q_INVOKABLE void updateYtDlp();
+    /** Switch to a specific version, or "bundled" for the copy the app shipped with. */
+    Q_INVOKABLE void useYtDlpVersion(const QString &version);
+    /** Ask PyPI what is available; the answer arrives in [ytDlpVersions]. */
+    Q_INVOKABLE void refreshYtDlpVersions();
 
     bool updatingYtDlp() const { return m_updatingYtDlp; }
     QString ytDlpUpdateStatus() const { return m_ytDlpUpdateStatus; }
     double ytDlpUpdateProgress() const { return m_ytDlpUpdateProgress; }
+    QStringList ytDlpVersions() const { return m_ytDlpVersions; }
+    /** True while PyPI is being asked, so the UI does not claim failure prematurely. */
+    bool ytDlpVersionsLoading() const { return m_ytDlpVersionsLoading; }
+    /** "bundled" or "override", so the UI can mark which entry is in use. */
+    QString ytDlpSource() const { return m_ytDlpSource; }
 
     /** What is on the clipboard, if it looks like a link. QML has no clipboard access. */
     Q_INVOKABLE QString clipboardUrl() const;
@@ -63,6 +76,7 @@ public:
 
 signals:
     void ytDlpUpdateChanged();
+    void ytDlpVersionsChanged();
     void readyChanged();
     void busyChanged();
     void statusChanged();
@@ -87,6 +101,9 @@ private:
     bool m_updatingYtDlp = false;
     QString m_ytDlpUpdateStatus;
     double m_ytDlpUpdateProgress = 0;
+    QStringList m_ytDlpVersions;
+    bool m_ytDlpVersionsLoading = false;
+    QString m_ytDlpSource;
     QString m_activeId;
     QString m_status;
     QString m_ytDlpVersion;

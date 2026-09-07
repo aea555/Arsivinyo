@@ -16,6 +16,17 @@ Item {
     required property var engine
     required property var library
 
+    /** Version to install once confirmed; empty string means the newest. */
+    property string pendingVersion: ""
+    property string pendingLabel: ""
+
+    /** Changing the extractor needs a restart either way, so it is always confirmed. */
+    function confirmYtDlp(version, label) {
+        pendingVersion = version
+        pendingLabel = label
+        confirmDialog.visible = true
+    }
+
     ScrollView {
         id: scroller
         anchors.fill: parent
@@ -320,16 +331,197 @@ Item {
                         }
 
                         TextAction {
-                            text: settings.engine.updatingYtDlp ? qsTr("Updating…") : qsTr("Update")
+                            text: qsTr("Choose")
                             active: !settings.engine.updatingYtDlp && settings.engine.ready
                             font.pixelSize: 12
-                            onClicked: settings.engine.updateYtDlp()
+                            onClicked: {
+                                versionList.visible = !versionList.visible
+                                if (versionList.visible) settings.engine.refreshYtDlpVersions()
+                            }
+                        }
+
+                        TextAction {
+                            text: settings.engine.updatingYtDlp ? qsTr("Updating…") : qsTr("Latest")
+                            active: !settings.engine.updatingYtDlp && settings.engine.ready
+                            font.pixelSize: 12
+                            onClicked: settings.confirmYtDlp("", qsTr("the newest version"))
+                        }
+                    }
+                }
+
+                // The versions on PyPI, most recent first, plus the copy the app shipped
+                // with. Only one downloaded version is kept, so switching replaces it.
+                Rectangle {
+                    id: versionList
+                    visible: false
+                    Layout.fillWidth: true
+                    implicitHeight: versions.implicitHeight + 20
+                    radius: 10
+                    color: Theme.surface
+                    border.color: Theme.border
+
+                    ColumnLayout {
+                        id: versions
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 2
+
+                        Pressable {
+                            Layout.fillWidth: true
+                            implicitHeight: 32
+                            radius: 8
+                            selected: settings.engine.ytDlpSource === "bundled"
+                            onClicked: settings.confirmYtDlp("bundled", qsTr("the bundled version"))
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Bundled with the app")
+                                    color: Theme.text
+                                    font.family: Fonts.body
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    visible: settings.engine.ytDlpSource === "bundled"
+                                    text: qsTr("in use")
+                                    color: Theme.accent
+                                    font.family: Fonts.body
+                                    font.pixelSize: 11
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: settings.engine.ytDlpVersions.length === 0
+                            Layout.fillWidth: true
+                            Layout.margins: 8
+                            // Saying it failed while the request is still out is a lie the
+                            // user acts on, so the two states are told apart.
+                            text: settings.engine.ytDlpVersionsLoading
+                                  ? qsTr("Checking…")
+                                  : qsTr("Could not reach PyPI. A connection is needed to change version.")
+                            color: Theme.textSubtle
+                            font.family: Fonts.body
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Repeater {
+                            model: settings.engine.ytDlpVersions
+                            Pressable {
+                                required property string modelData
+                                readonly property bool inUse:
+                                    settings.engine.ytDlpSource === "override" &&
+                                    settings.engine.ytDlpVersion === modelData
+                                Layout.fillWidth: true
+                                implicitHeight: 32
+                                radius: 8
+                                selected: inUse
+                                onClicked: settings.confirmYtDlp(modelData, modelData)
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData
+                                        color: Theme.text
+                                        font.family: Fonts.body
+                                        font.pixelSize: 12
+                                    }
+                                    Text {
+                                        visible: inUse
+                                        text: qsTr("in use")
+                                        color: Theme.accent
+                                        font.family: Fonts.body
+                                        font.pixelSize: 11
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
 
             Item { Layout.fillHeight: true; Layout.minimumHeight: 12 }
+        }
+    }
+
+    // ---- confirming a change of extractor ------------------------------------------
+    Rectangle {
+        id: confirmDialog
+        visible: false
+        anchors.fill: parent
+        color: Theme.overlay
+        // Swallow clicks so the list behind cannot be operated through the dialog.
+        TapHandler { onTapped: confirmDialog.visible = false }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 60, 420)
+            implicitHeight: dialogBody.implicitHeight + 36
+            radius: 12
+            color: Theme.surface
+            border.color: Theme.border
+            TapHandler {}
+
+            ColumnLayout {
+                id: dialogBody
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 10
+
+                Text {
+                    text: qsTr("Switch yt-dlp?")
+                    color: Theme.text
+                    font.family: Fonts.body
+                    font.pixelSize: 14
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("This installs %1 and restarts the engine.").arg(settings.pendingLabel)
+                    color: Theme.textMuted
+                    font.family: Fonts.body
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 18
+                    TextAction {
+                        text: qsTr("Cancel")
+                        accentColor: Theme.textMuted
+                        font.pixelSize: 13
+                        onClicked: confirmDialog.visible = false
+                    }
+                    TextAction {
+                        text: qsTr("Switch and restart")
+                        font.pixelSize: 13
+                        onClicked: {
+                            confirmDialog.visible = false
+                            versionList.visible = false
+                            if (settings.pendingVersion.length)
+                                settings.engine.useYtDlpVersion(settings.pendingVersion)
+                            else
+                                settings.engine.updateYtDlp()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The engine has to come back for a queued version to be the live one.
+    Connections {
+        target: settings.engine
+        function onYtDlpUpdateChanged() {
+            if (!settings.engine.updatingYtDlp &&
+                settings.engine.ytDlpUpdateStatus.indexOf("restart") !== -1) {
+                settings.engine.restart()
+            }
         }
     }
 }

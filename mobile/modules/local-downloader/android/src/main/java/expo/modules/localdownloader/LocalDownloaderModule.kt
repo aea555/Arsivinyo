@@ -4287,9 +4287,34 @@ class LocalDownloaderModule : Module() {
     }
   }
 
-  private fun fetchLatestYtDlpRelease(): YtDlpReleaseAsset {
+  private fun fetchLatestYtDlpRelease(): YtDlpReleaseAsset = fetchYtDlpRelease(null)
+
+  /** Recent stable releases, newest first. Capped: yt-dlp has hundreds of them. */
+  private fun listYtDlpVersionsInternal(limit: Int = 12): Map<String, Any?> {
     val json = httpGetJson(YT_DLP_PYPI_JSON_URL)
-    val version = json.optJSONObject("info")?.optString("version")?.takeIf { isStableYtDlpVersion(it) }
+    val releases = json.optJSONObject("releases") ?: return mapOf("versions" to emptyList<String>())
+    // A list of ints is not Comparable, so sort on the tuple explicitly: yt-dlp versions
+    // are YYYY.M.D and "2026.7.4" sorts before "2026.10.1" as a string.
+    fun parts(version: String): Triple<Int, Int, Int> {
+      val bits = version.split(".").map { it.toIntOrNull() ?: 0 }
+      return Triple(bits.getOrElse(0) { 0 }, bits.getOrElse(1) { 0 }, bits.getOrElse(2) { 0 })
+    }
+
+    val versions = releases.keys().asSequence()
+      .filter { isStableYtDlpVersion(it) }
+      .sortedWith(compareByDescending<String> { parts(it).first }
+        .thenByDescending { parts(it).second }
+        .thenByDescending { parts(it).third })
+      .take(limit)
+      .toList()
+    return mapOf("versions" to versions)
+  }
+
+  /** @param wanted null for the newest stable release. */
+  private fun fetchYtDlpRelease(wanted: String?): YtDlpReleaseAsset {
+    val json = httpGetJson(YT_DLP_PYPI_JSON_URL)
+    val version = (wanted ?: json.optJSONObject("info")?.optString("version"))
+      ?.takeIf { isStableYtDlpVersion(it) }
       ?: throw IllegalStateException("LATEST_VERSION_NOT_STABLE")
     val releases = json.optJSONObject("releases")?.optJSONArray(version)
       ?: throw IllegalStateException("LATEST_RELEASE_FILES_MISSING")

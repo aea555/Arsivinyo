@@ -1,5 +1,7 @@
 #include "EngineClient.h"
 
+#include <QJsonArray>
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -116,6 +118,22 @@ void EngineClient::updateYtDlp() {
     send({{"id", "ytdlp"}, {"op", "updateYtDlp"}});
 }
 
+void EngineClient::useYtDlpVersion(const QString &version) {
+    if (m_updatingYtDlp || m_process.state() != QProcess::Running) return;
+    m_updatingYtDlp = true;
+    m_ytDlpUpdateProgress = 0;
+    m_ytDlpUpdateStatus = QStringLiteral("checking");
+    emit ytDlpUpdateChanged();
+    send({{"id", "ytdlp"}, {"op", "updateYtDlp"}, {"version", version}});
+}
+
+void EngineClient::refreshYtDlpVersions() {
+    if (m_process.state() != QProcess::Running || m_ytDlpVersionsLoading) return;
+    m_ytDlpVersionsLoading = true;
+    emit ytDlpVersionsChanged();
+    send({{"id", "ytdlpVersions"}, {"op", "listYtDlpVersions"}, {"limit", 12}});
+}
+
 void EngineClient::send(const QJsonObject &request) {
     m_process.write(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n');
 }
@@ -169,6 +187,8 @@ void EngineClient::handleEvent(const QJsonObject &event) {
     const QString type = event.value("type").toString();
 
     if (type == "bootstrap") {
+        m_ytDlpSource = event.value("ytDlp").toObject().value("source").toString();
+        emit ytDlpVersionChanged();
         // Says whether the bundled yt-dlp or a downloaded override is in use, and why
         // an override was rejected. Surfaced rather than swallowed: a silent fall back
         // to an older extractor is exactly the failure worth seeing.
@@ -208,6 +228,17 @@ void EngineClient::handleEvent(const QJsonObject &event) {
         const double total = event.value("total").toDouble();
         m_ytDlpUpdateProgress = total > 0 ? event.value("done").toDouble() / total : 0;
         emit ytDlpUpdateChanged();
+        return;
+    }
+
+    if (type == "result" && event.value("id").toString() == QLatin1String("ytdlpVersions")) {
+        m_ytDlpVersions.clear();
+        m_ytDlpVersionsLoading = false;
+        if (event.value("ok").toBool()) {
+            const QJsonArray list = event.value("result").toObject().value("versions").toArray();
+            for (const QJsonValue &entry : list) m_ytDlpVersions.append(entry.toString());
+        }
+        emit ytDlpVersionsChanged();
         return;
     }
 
