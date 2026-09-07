@@ -53,7 +53,7 @@ class PeerSession(
 
   private val lock = Any()
   private var receiving: Receiving? = null
-  @Volatile private var sending: File? = null
+  @Volatile private var sending: ItemSource? = null
   private var accepted = CountDownLatch(0)
   @Volatile private var cancelled = false
 
@@ -85,24 +85,30 @@ class PeerSession(
 
   /** Offer a local file to the peer. Returns once the send has been started, not finished. */
   fun sendFile(file: File, kind: String): Boolean {
-    if (isTransferring || !file.isFile) return false
-    sending = file
+    if (!file.isFile) return false
+    return send(ItemSource(file.name, file.length()) { file.inputStream() }, kind)
+  }
+
+  /** Offer anything readable to the peer — on this platform, usually a MediaStore item. */
+  fun send(source: ItemSource, kind: String): Boolean {
+    if (isTransferring) return false
+    sending = source
     cancelled = false
     accepted = CountDownLatch(1)
-    Thread({ streamFile(file, kind) }, "pairing-send").apply { isDaemon = true }.start()
+    Thread({ streamSource(source, kind) }, "pairing-send").apply { isDaemon = true }.start()
     return true
   }
 
-  private fun streamFile(file: File, kind: String) {
-    val digest = hashFile(file)
+  private fun streamSource(source: ItemSource, kind: String) {
+    val digest = hashSource(source)
     if (digest == null) {
-      abortSending("could not read the file")
+      abortSending("could not read the item")
       return
     }
 
-    val total = file.length()
+    val total = source.sizeBytes
     if (!link.sendControl(JSONObject()
-        .put("t", "put").put("name", file.name).put("kind", kind)
+        .put("t", "put").put("name", source.name).put("kind", kind)
         .put("sizeBytes", total).put("sha256", hex(digest)))) {
       abortSending("the connection went away")
       return
@@ -116,7 +122,12 @@ class PeerSession(
     if (cancelled || sending == null) return
 
     var sent = 0L
-    file.inputStream().use { input ->
+    val stream = runCatching { source.open() }.getOrNull()
+    if (stream == null) {
+      abortSending("could not read the item")
+      return
+    }
+    stream.use { input ->
       val chunk = ByteArray(CHUNK_BYTES)
       while (sent < total) {
         if (cancelled) return
@@ -170,8 +181,8 @@ class PeerSession(
       link.sendControl(JSONObject().put("t", "reject").put("reason", "busy"))
       return
     }
-    val path = content.pathForItem(message.optString("id"))
-    if (path == null || !sendFile(File(path), "music")) {
+    val source = content.openItem(message.optString("id"))
+    if (source == null || !send(source, "music")) {
       link.sendControl(JSONObject().put("t", "error").put("code", "NOT_FOUND")
         .put("message", "no such item"))
     }
@@ -282,9 +293,9 @@ class PeerSession(
     onTransferFailed?.invoke(reason)
   }
 
-  private fun hashFile(file: File): ByteArray? = runCatching {
+  private fun hashSource(source: ItemSource): ByteArray? = runCatching {
     val digest = MessageDigest.getInstance("SHA-256")
-    file.inputStream().use { input ->
+    source.open().use { input ->
       val buffer = ByteArray(CHUNK_BYTES)
       while (true) {
         val read = input.read(buffer)

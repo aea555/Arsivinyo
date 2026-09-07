@@ -29,6 +29,7 @@ import com.chaquo.python.android.AndroidPlatform
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.localdownloader.audio.AudioPresetRenderer
+import expo.modules.localdownloader.pairing.PairingCoordinator
 import expo.modules.localdownloader.sounds.SoundsStore
 import expo.modules.localdownloader.vault.ThumbnailGenerator
 import expo.modules.localdownloader.vault.VaultLoopbackProvider
@@ -293,6 +294,35 @@ class LocalDownloaderModule : Module() {
   private val soundsStore: SoundsStore by lazy {
     SoundsStore(requireNotNull(appContext.reactContext).applicationContext)
   }
+
+  /**
+   * Created on first use, not at startup. An install that never opens the pairing screen
+   * should not generate an identity key or put a listening socket on the network.
+   */
+  private var pairingCoordinator: PairingCoordinator? = null
+
+  private fun pairing(): PairingCoordinator {
+    pairingCoordinator?.let { return it }
+    val context = requireNotNull(appContext.reactContext).applicationContext
+    val created = PairingCoordinator(
+      context = context,
+      store = soundsStore,
+      onChanged = { runCatching { sendEvent("pairingStateChanged", pairingCoordinator?.state().orEmpty()) } },
+      onDownloadRequested = { url, mediaKind ->
+        // Surfaced only. The user decides whether to download what a peer sent.
+        lastPeerUrl = url
+        lastPeerMediaKind = mediaKind
+        runCatching { sendEvent("pairingStateChanged", pairingCoordinator?.state().orEmpty()) }
+      },
+    )
+    pairingCoordinator = created
+    return created
+  }
+
+  /** The most recent URL a peer asked this phone to fetch, for the screen to offer. */
+  @Volatile private var lastPeerUrl: String = ""
+  @Volatile private var lastPeerMediaKind: String = ""
+
   private val vaultLoopbackLock = Any()
   @Volatile private var vaultLoopbackServer: VaultLoopbackServer? = null
   @Volatile private var cachedVaultDekV4: ByteArray? = null
@@ -375,6 +405,7 @@ class LocalDownloaderModule : Module() {
       "privateVaultMigrationProgress",
       "soundPresetProgress",
       "backupProgress",
+      "pairingStateChanged",
     )
 
     OnCreate {
@@ -605,6 +636,78 @@ class LocalDownloaderModule : Module() {
 
     Function("isSoundsSupported") {
       soundsStore.isSupported()
+    }
+
+    // ---- device pairing --------------------------------------------------------
+    AsyncFunction("pairingState") {
+      pairing().state() + mapOf(
+        "peerUrl" to lastPeerUrl,
+        "peerMediaKind" to lastPeerMediaKind,
+      )
+    }
+
+    AsyncFunction("pairingStart") {
+      pairing().start()
+    }
+
+    AsyncFunction("pairingStop") {
+      pairingCoordinator?.stop()
+      true
+    }
+
+    AsyncFunction("pairingBeginPairing") { seconds: Int ->
+      pairing().beginPairing(seconds)
+      true
+    }
+
+    AsyncFunction("pairingCancelPairing") {
+      pairingCoordinator?.cancelPairing()
+      true
+    }
+
+    AsyncFunction("pairingConfirm") {
+      pairing().confirmPairing()
+    }
+
+    AsyncFunction("pairingConnect") { host: String, port: Int ->
+      pairing().connectToPeer(host, port)
+      true
+    }
+
+    AsyncFunction("pairingForget") { fingerprint: String ->
+      pairing().forgetPeer(fingerprint)
+    }
+
+    AsyncFunction("pairingSetDeviceName") { name: String ->
+      pairing().setDeviceName(name)
+      true
+    }
+
+    AsyncFunction("pairingBrowse") { fingerprint: String ->
+      pairing().browsePeer(fingerprint)
+    }
+
+    AsyncFunction("pairingFetch") { fingerprint: String, id: String ->
+      pairing().fetchItem(fingerprint, id)
+    }
+
+    AsyncFunction("pairingSend") { fingerprint: String, songId: String ->
+      pairing().sendItemToPeer(fingerprint, songId)
+    }
+
+    AsyncFunction("pairingSendUrl") { fingerprint: String, url: String, mediaKind: String ->
+      pairing().sendUrlToPeer(fingerprint, url, mediaKind)
+    }
+
+    AsyncFunction("pairingCancelTransfer") { fingerprint: String ->
+      pairingCoordinator?.cancelTransfer(fingerprint)
+      true
+    }
+
+    AsyncFunction("pairingClearPeerUrl") {
+      lastPeerUrl = ""
+      lastPeerMediaKind = ""
+      true
     }
 
     AsyncFunction("listSounds") {

@@ -44,11 +44,12 @@ class PeerSessionTest {
       return items
     }
 
-    override fun pathForItem(id: String): String? {
+    override fun openItem(id: String): ItemSource? {
       // Only a plain name in this folder, never a path the peer composed.
       if (id.contains('/') || id.contains("..")) return null
       val file = File(dir, id)
-      return if (file.isFile) file.path else null
+      if (!file.isFile) return null
+      return ItemSource(file.name, file.length()) { file.inputStream() }
     }
 
     override fun destinationFor(name: String, kind: String): String =

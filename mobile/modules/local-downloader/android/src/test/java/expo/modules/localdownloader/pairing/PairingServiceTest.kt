@@ -26,7 +26,7 @@ class PairingServiceTest {
   private class EmptyContent(private val dir: File) : PeerContent {
     init { dir.mkdirs() }
     override fun listing(kind: String) = JSONArray()
-    override fun pathForItem(id: String): String? = null
+    override fun openItem(id: String): ItemSource? = null
     override fun destinationFor(name: String, kind: String) = File(dir, File(name).name).path
     override fun accepted(path: String, kind: String) {}
     override fun download(url: String, mediaKind: String) {}
