@@ -44,7 +44,7 @@ set_source_files_properties(qml/Theme.qml qml/Fonts.qml PROPERTIES QT_QML_SINGLE
 qt_add_qml_module(arsivinyo-desktop
     URI Arsivinyo
     VERSION 1.0
-    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml qml/PlayerBar.qml qml/DevicesView.qml qml/Pressable.qml qml/TextAction.qml qml/SettingsView.qml qml/Modal.qml qml/UnlockSheet.qml
+    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml qml/PlayerBar.qml qml/DevicesView.qml qml/Pressable.qml qml/TextAction.qml qml/SettingsView.qml qml/Modal.qml qml/UnlockSheet.qml qml/VaultView.qml
     RESOURCES
         qml/fonts/Monda_400Regular.ttf
         qml/fonts/Monda_600SemiBold.ttf
@@ -62,6 +62,9 @@ qt_add_qml_module(arsivinyo-desktop
         src/PairingService.h src/PairingService.cpp
         src/CookieStore.h src/CookieStore.cpp
         src/SecretStore.h src/SecretStore.cpp
+        src/Vault.h src/Vault.cpp
+        src/VaultDevice.h src/VaultDevice.cpp
+        src/VaultPlayer.h src/VaultPlayer.cpp
         src/DataDir.h
         ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
         ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
@@ -246,6 +249,17 @@ add_test(NAME playback COMMAND playback_test)
 # A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
 # and not a test: it needs another device on the network to talk to.
 if(ARSIVINYO_DEV_TOOLS)
+    # Fills a vault with sample items, for looking at the vault screen with content in it.
+    qt_add_executable(vault_seed tools/vault_seed.cpp
+        src/Vault.h src/Vault.cpp
+        src/SecretStore.h src/SecretStore.cpp src/DataDir.h
+        ${ARSIVINYO_CRYPTO_DIR}/secret.cpp ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp)
+    target_include_directories(vault_seed PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
+    target_link_libraries(vault_seed PRIVATE Qt6::Core Qt6::Qml PkgConfig::LIBCRYPTO)
+
     qt_add_executable(pair_probe tools/pair_probe.cpp
         src/DeviceIdentity.h src/DeviceIdentity.cpp
         src/SessionCertificate.h src/SessionCertificate.cpp

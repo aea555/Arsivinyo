@@ -37,6 +37,9 @@ ApplicationWindow {
     Library { id: library }
     CookieStore { id: cookies; secrets: secrets }
 
+    Vault { id: vault; secrets: secrets }
+    VaultPlayer { id: vaultPlayer; vault: vault }
+
     // The keybox. Nothing prompts at launch: whatever needs a key asks for one, and with
     // "remember on this device" set it is already open by the time anything looks.
     SecretStore {
@@ -160,7 +163,7 @@ ApplicationWindow {
             Layout.alignment: Qt.AlignHCenter
             spacing: 4
             Repeater {
-                model: [qsTr("Download"), qsTr("Library"), qsTr("Devices"), qsTr("Settings")]
+                model: [qsTr("Download"), qsTr("Library"), qsTr("Vault"), qsTr("Devices"), qsTr("Settings")]
                 Pressable {
                     required property int index
                     required property string modelData
@@ -298,6 +301,18 @@ ApplicationWindow {
                 onPlay: (path, title, artist, thumb) => playerBar.playFile(path, title, artist, thumb)
             }
 
+            VaultView {
+                // A StackLayout sizes a plain Item to its implicit width, which for this
+                // view is only as wide as its widest label — so centring inside it put
+                // everything left of centre. The other views escape this by having content
+                // that is naturally full width.
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                vault: vault
+                player: vaultPlayer
+                secrets: secrets
+            }
+
             DevicesView {
                 service: pairing
                 registry: peers
@@ -365,9 +380,14 @@ ApplicationWindow {
 
         Text {
             Layout.fillWidth: true
+            // Indexed by hand, so inserting a tab shifts everything after it.
             text: root.tab === 0 ? engine.downloadDir
                   : root.tab === 1 ? library.musicDir
-                  : root.tab === 2 ? (pairing.listening ? qsTr("Listening on port ") + pairing.port
+                  : root.tab === 2 ? (secrets.unlocked
+                                      ? (vault.count === 1 ? qsTr("1 item in the vault")
+                                                           : qsTr("%1 items in the vault").arg(vault.count))
+                                      : qsTr("Locked"))
+                  : root.tab === 3 ? (pairing.listening ? qsTr("Listening on port ") + pairing.port
                                                         : qsTr("Not listening"))
                   : ""
             color: Theme.textSubtle
