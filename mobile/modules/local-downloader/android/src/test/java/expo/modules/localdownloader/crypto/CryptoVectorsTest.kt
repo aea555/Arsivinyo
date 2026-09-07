@@ -6,6 +6,7 @@ import expo.modules.localdownloader.backup.BackupContainer
 import expo.modules.localdownloader.backup.BackupCrypto
 import expo.modules.localdownloader.backup.BackupFormat
 import expo.modules.localdownloader.backup.BackupSections
+import expo.modules.localdownloader.vault.VaultIndexCodec
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 import org.json.JSONArray
@@ -223,6 +224,35 @@ class CryptoVectorsTest {
     }
     root.put("aead_stream", aead)
 
+    // --- the vault index -----------------------------------------------------------------
+    // Both apps seal their vault listing the same way. The phone's was plain JSON until now,
+    // so this label and this padding are new on both sides at once, which is exactly when a
+    // pinned vector is worth having.
+    val dek = ByteArray(32) { (0x10 + it).toByte() }
+    val listing = JSONObject().put("formatVersion", 1).put("items", JSONArray()).toString()
+    val padSamples = JSONArray()
+    for (length in listOf(0, 1, 4091, 4092, 4093, 9000)) {
+      val content = patternBytes(length, length.toLong())
+      val padded = VaultIndexCodec.pad(content)
+      padSamples.put(
+        JSONObject().put("length", length).put("paddedLength", padded.size)
+          .put("paddedSha256", hex(sha256(padded)))
+      )
+    }
+    root.put(
+      "vault_index",
+      JSONObject()
+        .put("why", "the index key label and the padding, which must agree or one app cannot " +
+          "read a listing the other wrote")
+        .put("dek", hex(dek))
+        .put("indexKey", hex(VaultIndexCodec.indexKey(dek)))
+        .put("associatedData", VaultIndexCodec.AAD)
+        .put("padBoundary", VaultIndexCodec.PAD_BOUNDARY)
+        .put("padding", padSamples)
+        .put("listing", listing)
+        .put("sealed", base64(VaultIndexCodec.seal(dek, listing)))
+    )
+
     // --- a whole .avsbck container -----------------------------------------------------------
     // The desktop has to open backups the phone wrote: the pairing protocol names them as the
     // only route for vault contents between devices, and the desktop cannot read one today.
@@ -361,6 +391,26 @@ class CryptoVectorsTest {
     assertEquals("segment nonce layout has drifted",
       built.getJSONObject("segment_nonce").toString(),
       onDisk.getJSONObject("segment_nonce").toString())
+  }
+
+  @Test
+  fun theRecordedVaultIndexStillOpens() {
+    if (!vectorsFile.exists()) return
+    val spec = JSONObject(vectorsFile.readText()).getJSONObject("vault_index")
+    val dek = unhex(spec.getString("dek"))
+    assertEquals("the index key label has drifted",
+      spec.getString("indexKey"), hex(VaultIndexCodec.indexKey(dek)))
+    assertEquals("a sealed listing no longer opens",
+      spec.getString("listing"), VaultIndexCodec.open(dek, unbase64(spec.getString("sealed"))))
+    val padding = spec.getJSONArray("padding")
+    for (i in 0 until padding.length()) {
+      val case = padding.getJSONObject(i)
+      val padded = VaultIndexCodec.pad(patternBytes(case.getInt("length"), case.getLong("length")))
+      assertEquals("padded length for ${case.getInt("length")}",
+        case.getInt("paddedLength"), padded.size)
+      assertEquals("padded bytes for ${case.getInt("length")}",
+        case.getString("paddedSha256"), hex(sha256(padded)))
+    }
   }
 
   @Test

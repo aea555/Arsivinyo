@@ -81,9 +81,11 @@ bool Vault::load() {
             const QByteArray ciphertext = file.readAll();
             Bytes plaintext;
             std::string error;
+            Bytes padded;
             if (DecryptBuffer(key.data(), key.size(), kIndexAad,
                               reinterpret_cast<const uint8_t *>(ciphertext.constData()),
-                              static_cast<std::size_t>(ciphertext.size()), &plaintext, &error)) {
+                              static_cast<std::size_t>(ciphertext.size()), &padded, &error) &&
+                UnpadFromConcealment(padded, &plaintext, &error)) {
                 document = QJsonDocument::fromJson(
                                QByteArray(reinterpret_cast<const char *>(plaintext.data()),
                                           static_cast<int>(plaintext.size())))
@@ -137,11 +139,16 @@ QString Vault::store() {
 
     SecretBytes key;
     if (!m_secrets->purposeKey(kPurposeVaultIndex, &key)) return tr("Could not reach the key.");
+    // Padded before it is sealed, so the file's size does not say roughly how many items
+    // are in the vault — which is most of what the listing itself would have told anyone.
+    const Bytes padded = PadForConcealment(
+        reinterpret_cast<const uint8_t *>(plaintext.constData()),
+        static_cast<std::size_t>(plaintext.size()));
+
     Bytes ciphertext;
     std::string error;
-    if (!EncryptBuffer(key.data(), key.size(), kIndexAad,
-                       reinterpret_cast<const uint8_t *>(plaintext.constData()),
-                       static_cast<std::size_t>(plaintext.size()), &ciphertext, &error)) {
+    if (!EncryptBuffer(key.data(), key.size(), kIndexAad, padded.data(), padded.size(),
+                       &ciphertext, &error)) {
         return tr("Could not write the vault listing.");
     }
 

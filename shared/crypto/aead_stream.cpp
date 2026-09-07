@@ -252,6 +252,38 @@ bool SeekableStreamReader::ReadAt(uint64_t offset, uint8_t *out, std::size_t len
     return true;
 }
 
+// ---- concealment padding ------------------------------------------------------------------
+
+Bytes PadForConcealment(const uint8_t *content, std::size_t length) {
+    const std::size_t framed = 4 + length;
+    const std::size_t total = ((framed + kPadBoundary - 1) / kPadBoundary) * kPadBoundary;
+    Bytes out(total == 0 ? kPadBoundary : total, 0);
+    out[0] = static_cast<uint8_t>((length >> 24) & 0xff);
+    out[1] = static_cast<uint8_t>((length >> 16) & 0xff);
+    out[2] = static_cast<uint8_t>((length >> 8) & 0xff);
+    out[3] = static_cast<uint8_t>(length & 0xff);
+    if (length > 0) std::memcpy(out.data() + 4, content, length);
+    return out;
+}
+
+bool UnpadFromConcealment(const Bytes &padded, Bytes *out, std::string *error) {
+    if (out == nullptr) return false;
+    if (padded.size() < 4) {
+        if (error) *error = "the padded block is too short";
+        return false;
+    }
+    const uint64_t length = (static_cast<uint64_t>(padded[0]) << 24) |
+                            (static_cast<uint64_t>(padded[1]) << 16) |
+                            (static_cast<uint64_t>(padded[2]) << 8) |
+                            static_cast<uint64_t>(padded[3]);
+    if (length + 4 > padded.size()) {
+        if (error) *error = "the padded block declares more content than it holds";
+        return false;
+    }
+    out->assign(padded.begin() + 4, padded.begin() + 4 + static_cast<long>(length));
+    return true;
+}
+
 // ---- whole-buffer helpers ----------------------------------------------------------------
 
 bool EncryptBuffer(const uint8_t *key, std::size_t keyLength, const std::string &associatedData,

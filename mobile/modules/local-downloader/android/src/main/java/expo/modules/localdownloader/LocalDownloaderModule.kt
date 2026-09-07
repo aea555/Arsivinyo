@@ -73,6 +73,7 @@ import expo.modules.localdownloader.backup.BackupPorts
 import expo.modules.localdownloader.backup.BackupSecretException
 import expo.modules.localdownloader.backup.BackupSections
 import expo.modules.localdownloader.vault.VaultCipherV4
+import expo.modules.localdownloader.vault.VaultIndexCodec
 import java.security.KeyStore
 import java.security.SecureRandom
 import java.time.Instant
@@ -6217,15 +6218,65 @@ class LocalDownloaderModule : Module() {
     }
   }
 
+  private fun privateVaultIndexFileV2(createParent: Boolean = true): File {
+    return File(privateVaultRoot(createParent), PRIVATE_VAULT_INDEX_V2_FILENAME)
+  }
+
+  /**
+   * Encrypt a listing left in the clear by an older build.
+   *
+   * Order matters: seal, read back and compare, and only then destroy the plain text. A crash
+   * at any point leaves a readable vault.
+   */
+  private fun migratePrivateVaultIndexToEncrypted(legacy: File): JSONObject {
+    val parsed = runCatching { normalisePrivateVaultIndex(JSONObject(legacy.readText(Charsets.UTF_8))) }
+      .getOrElse {
+        // A plain-text index that will not parse is a problem to hand to the user, not one to
+        // convert into an encrypted index that will not parse.
+        throw IllegalStateException("PRIVATE_INDEX_MIGRATION_FAILED")
+      }
+
+    writePrivateVaultIndex(parsed)
+
+    val verified = runCatching {
+      JSONObject(VaultIndexCodec.open(getOrCreateVaultDekV4(), privateVaultIndexFileV2().readBytes()))
+    }.getOrNull()
+    val sameItems = verified?.optJSONArray("items")?.length() == parsed.optJSONArray("items")?.length()
+    if (verified == null || !sameItems) {
+      privateVaultIndexFileV2().delete()
+      throw IllegalStateException("PRIVATE_INDEX_MIGRATION_FAILED")
+    }
+
+    // Overwrite before unlinking. A plain delete on a journalling filesystem leaves the
+    // titles recoverable, which is most of what was being hidden.
+    runCatching {
+      java.io.RandomAccessFile(legacy, "rws").use { handle ->
+        handle.write(ByteArray(handle.length().toInt().coerceAtMost(1 shl 20)))
+      }
+    }
+    legacy.delete()
+    debug("[PRIVATE] index migrated to an encrypted listing")
+    return parsed
+  }
+
+  private fun normalisePrivateVaultIndex(parsed: JSONObject): JSONObject {
+    if (!parsed.has("items")) parsed.put("items", JSONArray())
+    if (!parsed.has("tagDefinitions")) parsed.put("tagDefinitions", JSONArray())
+    if (!parsed.has("folders")) parsed.put("folders", JSONArray())
+    return parsed
+  }
+
   private fun readPrivateVaultIndex(): JSONObject {
-    val file = privateVaultIndexFile(createParent = true)
-    if (!file.exists()) {
+    val encrypted = privateVaultIndexFileV2(createParent = true)
+    val legacy = privateVaultIndexFile(createParent = true)
+    if (!encrypted.exists()) {
+      if (legacy.exists()) return migratePrivateVaultIndexToEncrypted(legacy)
       val initial = defaultPrivateVaultIndex()
       writePrivateVaultIndex(initial)
       return initial
     }
     return runCatching {
-      val parsed = JSONObject(file.readText(Charsets.UTF_8))
+      val parsed = JSONObject(VaultIndexCodec.open(getOrCreateVaultDekV4(), encrypted.readBytes()))
       if (!parsed.has("items")) {
         parsed.put("items", JSONArray())
       }
@@ -6250,8 +6301,10 @@ class LocalDownloaderModule : Module() {
   }
 
   private fun writePrivateVaultIndex(index: JSONObject) {
-    val file = privateVaultIndexFile(createParent = true)
-    atomicWriteBytes(file, index.toString().toByteArray(Charsets.UTF_8))
+    // Sealed under a key derived from the vault's own DEK, so it inherits whatever protects
+    // that — including, later, an auth-bound master key — with no second key to migrate.
+    val sealed = VaultIndexCodec.seal(getOrCreateVaultDekV4(), index.toString())
+    atomicWriteBytes(privateVaultIndexFileV2(createParent = true), sealed)
   }
 
   private fun privateVideoEntryFromJson(obj: JSONObject?): PrivateVideoEntry? {
@@ -8917,6 +8970,13 @@ class LocalDownloaderModule : Module() {
     private const val PRIVATE_VAULT_DIRNAME = "private_vault"
     private const val PRIVATE_VAULT_OBJECTS_DIRNAME = "objects"
     private const val PRIVATE_VAULT_INDEX_FILENAME = "index.json"
+
+    /**
+     * The encrypted listing. A new name rather than ciphertext written over index.json: an
+     * older build running against this data directory finds no index.json, makes its own
+     * empty one, and leaves this untouched — so a downgrade is confusing rather than fatal.
+     */
+    private const val PRIVATE_VAULT_INDEX_V2_FILENAME = "index.v2.enc"
     private const val PRIVATE_PLAYBACK_CACHE_DIRNAME = "private_playback"
     private const val PRIVATE_EXPORT_CACHE_DIRNAME = "private_export"
     private const val PRIVATE_IMPORT_CACHE_DIRNAME = "private_import"

@@ -69,6 +69,8 @@ int main() {
     check(!fileContains(index, "A Very Private Recording"),
           "the index does not contain the title");
     check(!fileContains(index, "mp4"), "nor the file's extension");
+    const qint64 oneItem = QFile(index).size();
+    check(oneItem % 4096 == 56, "and its size is padded, so it does not count the items");
     const QFileDevice::Permissions permissions = QFile::permissions(object);
     check(!(permissions & QFileDevice::ReadGroup) && !(permissions & QFileDevice::ReadOther),
           "and the object is readable only by its owner");

@@ -154,6 +154,17 @@ class SeekableStreamReader {
     uint64_t m_cachedIndex = UINT64_MAX;
 };
 
+/**
+ * Wraps a small plaintext so its ciphertext length reveals nothing about its size.
+ *
+ * A vault index encrypted without this leaks roughly how many items are in the vault to
+ * anyone who can run `ls -l`, which is most of what a listing would have told them anyway.
+ * Framed as `u32 length | content | zeros to the next boundary`.
+ */
+inline constexpr std::size_t kPadBoundary = 4096;
+Bytes PadForConcealment(const uint8_t *content, std::size_t length);
+bool UnpadFromConcealment(const Bytes &padded, Bytes *out, std::string *error);
+
 /** Decrypts a whole buffer in one call. For small payloads such as an index or a cookie jar. */
 bool DecryptBuffer(const uint8_t *key, std::size_t keyLength, const std::string &associatedData,
                    const uint8_t *ciphertext, std::size_t ciphertextLength, Bytes *out,

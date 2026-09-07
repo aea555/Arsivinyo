@@ -203,6 +203,53 @@ static void testAeadStream(const QJsonArray &cases) {
     }
 }
 
+static void testVaultIndex(const QJsonObject &spec) {
+    const Bytes raw = unhex(spec["dek"].toString());
+    SecretBytes dek;
+    dek.assign(raw.data(), raw.size());
+    std::string error;
+
+    SecretBytes indexKey;
+    check(PurposeKey(dek, kPurposeVaultIndex, &indexKey, &error) &&
+              hex(indexKey) == spec["indexKey"].toString(),
+          "vault index: the key label matches the phone's");
+
+    bool paddingOk = true;
+    for (const QJsonValue &value : spec["padding"].toArray()) {
+        const QJsonObject c = value.toObject();
+        const std::size_t length = static_cast<std::size_t>(c["length"].toInt());
+        Bytes content(length);
+        JavaRandom(static_cast<uint64_t>(c["length"].toInt())).nextBytes(content.data(), length);
+        const Bytes padded = PadForConcealment(content.data(), length);
+        const QByteArray digest = QCryptographicHash::hash(
+            QByteArray(reinterpret_cast<const char *>(padded.data()),
+                       static_cast<int>(padded.size())),
+            QCryptographicHash::Sha256);
+        if (padded.size() != static_cast<std::size_t>(c["paddedLength"].toInt()) ||
+            QString(digest.toHex()) != c["paddedSha256"].toString()) {
+            paddingOk = false;
+        }
+        Bytes back;
+        if (!UnpadFromConcealment(padded, &back, &error) || back != content) paddingOk = false;
+    }
+    check(paddingOk, "vault index: padding matches, and unpads back");
+
+    const QByteArray sealedRaw = QByteArray::fromBase64(spec["sealed"].toString().toLatin1());
+    Bytes padded;
+    Bytes listing;
+    const bool opened =
+        DecryptBuffer(indexKey.data(), indexKey.size(),
+                      spec["associatedData"].toString().toStdString(),
+                      reinterpret_cast<const uint8_t *>(sealedRaw.constData()),
+                      static_cast<std::size_t>(sealedRaw.size()), &padded, &error) &&
+        UnpadFromConcealment(padded, &listing, &error);
+    const QString text =
+        QString::fromUtf8(reinterpret_cast<const char *>(listing.data()),
+                          static_cast<int>(listing.size()));
+    check(opened && text == spec["listing"].toString(),
+          "vault index: a listing sealed by the phone opens here");
+}
+
 /** Properties the vectors cannot express, exercised locally. */
 static void testSeeking() {
     uint8_t key[32];
@@ -361,6 +408,8 @@ int main() {
     testNonces(vectors["segment_nonce"].toObject());
     std::printf("streaming aead, against Tink's own output\n");
     testAeadStream(vectors["aead_stream"].toArray());
+    std::printf("vault index\n");
+    testVaultIndex(vectors["vault_index"].toObject());
     std::printf("seeking\n");
     testSeeking();
     std::printf("keybox\n");
