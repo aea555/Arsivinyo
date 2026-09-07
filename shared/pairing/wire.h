@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 /**
@@ -92,6 +93,20 @@ inline constexpr size_t kCertHashBytes = 32;
  *
  * Returns empty if either hash is not [kCertHashBytes] long.
  */
+/**
+ * Put this connection's two certificate hashes in the order [AuthTranscript] requires.
+ *
+ * The server's hash comes first, always. Swapping this consistently on both ends of one
+ * platform is invisible — the two agree with each other and every test passes — and fails
+ * only against the other platform. That is why it is a named function pinned to the shared
+ * vectors rather than an expression inlined at each call site.
+ *
+ * [role] is the *local* device's role. Returns {serverCertSha256, clientCertSha256}.
+ */
+std::pair<std::vector<uint8_t>, std::vector<uint8_t>> TranscriptOrder(
+    AuthRole role, const std::vector<uint8_t>& ownCertSha256,
+    const std::vector<uint8_t>& peerCertSha256);
+
 std::vector<uint8_t> AuthTranscript(AuthRole role,
                                     const std::vector<uint8_t>& serverCertSha256,
                                     const std::vector<uint8_t>& clientCertSha256);

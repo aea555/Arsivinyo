@@ -68,6 +68,13 @@ std::vector<uint8_t> CodeInput(const std::vector<uint8_t>& keyA,
     return out;
 }
 
+std::pair<std::vector<uint8_t>, std::vector<uint8_t>> TranscriptOrder(
+    AuthRole role, const std::vector<uint8_t>& ownCertSha256,
+    const std::vector<uint8_t>& peerCertSha256) {
+    if (role == AuthRole::Server) return {ownCertSha256, peerCertSha256};
+    return {peerCertSha256, ownCertSha256};
+}
+
 std::vector<uint8_t> AuthTranscript(AuthRole role,
                                     const std::vector<uint8_t>& serverCertSha256,
                                     const std::vector<uint8_t>& clientCertSha256) {

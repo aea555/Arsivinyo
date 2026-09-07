@@ -100,13 +100,13 @@ QByteArray PeerLink::transcriptFor(bool forPeer) const {
     // The server's certificate always comes first, so both ends build identical bytes
     // without negotiating an order.
     const bool weAreServer = m_role == Role::Server;
-    const QByteArray &serverHash = weAreServer ? own : peer;
-    const QByteArray &clientHash = weAreServer ? peer : own;
+    const auto [serverHash, clientHash] = TranscriptOrder(
+        weAreServer ? AuthRole::Server : AuthRole::Client, toVector(own), toVector(peer));
 
     // Our own signature carries our role; the peer's carries theirs.
     const bool signerIsServer = forPeer ? !weAreServer : weAreServer;
     return toByteArray(AuthTranscript(signerIsServer ? AuthRole::Server : AuthRole::Client,
-                                      toVector(serverHash), toVector(clientHash)));
+                                      serverHash, clientHash));
 }
 
 void PeerLink::onEncrypted() {

@@ -41,11 +41,34 @@ object PairingAuth {
     role: Byte,
     serverCertSha256: ByteArray,
     clientCertSha256: ByteArray,
+  ): String? = build(publicKey, deviceName, role, serverCertSha256, clientCertSha256) {
+    Ed25519Keys.sign(seed, it)
+  }
+
+  /**
+   * The same, for a device whose key it cannot hand out. This is what the transport uses,
+   * so the private seed stays inside [DeviceIdentity] and only signatures leave it.
+   */
+  fun build(
+    identity: PairingIdentity,
+    role: Byte,
+    serverCertSha256: ByteArray,
+    clientCertSha256: ByteArray,
+  ): String? = build(identity.publicKey, identity.deviceName, role,
+                     serverCertSha256, clientCertSha256, identity::sign)
+
+  private fun build(
+    publicKey: ByteArray,
+    deviceName: String,
+    role: Byte,
+    serverCertSha256: ByteArray,
+    clientCertSha256: ByteArray,
+    sign: (ByteArray) -> ByteArray,
   ): String? {
     val transcript = PairingWire.authTranscript(role, serverCertSha256, clientCertSha256)
     if (transcript.isEmpty()) return null
 
-    val signature = Ed25519Keys.sign(seed, transcript)
+    val signature = sign(transcript)
     if (signature.size != Ed25519Keys.SIGNATURE_BYTES) return null
 
     return JSONObject()

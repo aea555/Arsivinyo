@@ -77,4 +77,9 @@ dependencies {
   // The android.jar used for unit tests stubs org.json with methods that throw, so the
   // real implementation has to be on the test classpath for the header codec to run.
   testImplementation "org.json:json:20240303"
+  // Building a self-signed certificate, for the JVM tests only. On a device the TLS key
+  // is generated in the Android Keystore, which issues its own certificate, so this never
+  // reaches the APK — `testImplementation`, not `implementation`.
+  testImplementation "org.bouncycastle:bcpkix-jdk18on:1.79"
+  testImplementation "org.bouncycastle:bcutil-jdk18on:1.79"
 }

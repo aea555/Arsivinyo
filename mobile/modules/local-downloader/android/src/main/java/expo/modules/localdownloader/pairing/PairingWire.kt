@@ -123,6 +123,25 @@ object PairingWire {
   }
 
   /**
+   * Put this connection's two certificate hashes in the order the transcript requires.
+   *
+   * The server's hash comes first, always. Swapping this consistently on both ends of one
+   * platform is invisible — the two agree with each other and every test passes — and
+   * fails only against the other platform, which is why it is a named function pinned to
+   * the vectors rather than an expression inlined at each call site.
+   *
+   * @param role this device's own role.
+   * @return (serverCertSha256, clientCertSha256).
+   */
+  fun transcriptOrder(
+    role: Byte,
+    ownCertSha256: ByteArray,
+    peerCertSha256: ByteArray,
+  ): Pair<ByteArray, ByteArray> =
+    if (role == ROLE_SERVER) Pair(ownCertSha256, peerCertSha256)
+    else Pair(peerCertSha256, ownCertSha256)
+
+  /**
    * Six digits from a SHA-256 digest of [codeInput]: the first four bytes, big-endian,
    * modulo one million, zero-padded.
    */

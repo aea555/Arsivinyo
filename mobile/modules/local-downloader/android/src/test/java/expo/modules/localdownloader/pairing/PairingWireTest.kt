@@ -211,6 +211,36 @@ class PairingWireTest {
   }
 
   @Test
+  fun theCertificateOrderMatchesTheVectors() {
+    // Both ends of one platform can swap this together and still agree with each other, so
+    // the only thing that catches it is the shared vectors. A server's own certificate is
+    // the server certificate; a client's own certificate is the client one.
+    val cases = vectors.getJSONArray("auth_transcript")
+    for (i in 0 until cases.length()) {
+      val v = cases.getJSONObject(i)
+      val server = unhex(v.getString("serverCertSha256"))
+      val client = unhex(v.getString("clientCertSha256"))
+
+      val asServer = PairingWire.transcriptOrder(PairingWire.ROLE_SERVER, server, client)
+      assertTrue("a server's own certificate leads", asServer.first.contentEquals(server))
+      assertTrue(asServer.second.contentEquals(client))
+
+      // The client holds the same two hashes the other way round: its own is the client's.
+      val asClient = PairingWire.transcriptOrder(PairingWire.ROLE_CLIENT, client, server)
+      assertTrue("and a client's own certificate follows", asClient.first.contentEquals(server))
+      assertTrue(asClient.second.contentEquals(client))
+
+      // The end-to-end pin: ordering plus transcript must reproduce the vector's bytes.
+      val role = if (v.getString("role") == "server") PairingWire.ROLE_SERVER
+                 else PairingWire.ROLE_CLIENT
+      val own = if (role == PairingWire.ROLE_SERVER) server else client
+      val peer = if (role == PairingWire.ROLE_SERVER) client else server
+      val (s, c) = PairingWire.transcriptOrder(role, own, peer)
+      assertEquals(v.getString("transcript"), hex(PairingWire.authTranscript(role, s, c)))
+    }
+  }
+
+  @Test
   fun aMisshapenCertificateHashYieldsNoTranscript() {
     val ok = ByteArray(PairingWire.CERT_HASH_BYTES)
     assertEquals(0, PairingWire.authTranscript(PairingWire.ROLE_SERVER, ByteArray(31), ok).size)

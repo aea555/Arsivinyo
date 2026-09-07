@@ -9,8 +9,9 @@ All notable changes to this project are documented here. Format based on [Keep a
   — no cloud, no account, no relay. The desktop app implements the whole protocol:
   discovery over mDNS, a pairing ceremony where both screens show the same six digits, a
   TLS connection, and the four verbs (`list`, `get`, `put`, `download`). This app carries
-  its half of the shared protocol — the framing, the code derivation, the identity key and
-  the authentication handshake — and its transport is not wired up yet.
+  the shared protocol — the framing, the code derivation, the identity key, the
+  authentication handshake — along with the list of paired devices and the TLS connection
+  itself. Discovery, the transfers and the screens are still to come.
 - Each device now has a permanent Ed25519 identity. Its public key *is* the device; the
   SHA-256 of that key is the fingerprint shown when pairing. The vault is deliberately not
   reachable over this channel: it stays confined to the device that made it, and a

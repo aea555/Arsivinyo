@@ -102,6 +102,29 @@ int main(int argc, char **argv) {
               "transcript: " + v.value("why").toString());
     }
 
+    // The ordering, pinned separately. Both ends of one platform can swap it together
+    // and still agree with each other; only the shared vectors catch that.
+    for (const QJsonValue &entry : vectors.value("auth_transcript").toArray()) {
+        const QJsonObject v = entry.toObject();
+        const auto server = fromHex(v.value("serverCertSha256").toString());
+        const auto client = fromHex(v.value("clientCertSha256").toString());
+
+        const auto asServer = TranscriptOrder(AuthRole::Server, server, client);
+        check(asServer.first == server && asServer.second == client,
+              "a server's own certificate leads");
+        const auto asClient = TranscriptOrder(AuthRole::Client, client, server);
+        check(asClient.first == server && asClient.second == client,
+              "and a client's own certificate follows");
+
+        const AuthRole role =
+            v.value("role").toString() == QLatin1String("server") ? AuthRole::Server : AuthRole::Client;
+        const auto own = role == AuthRole::Server ? server : client;
+        const auto peer = role == AuthRole::Server ? client : server;
+        const auto [s, c] = TranscriptOrder(role, own, peer);
+        check(toHex(AuthTranscript(role, s, c)) == v.value("transcript").toString(),
+              "ordering and transcript together reproduce the vector");
+    }
+
     // The two directions must sign different bytes, or a signature captured from one end
     // authenticates the other.
     {

@@ -22,7 +22,7 @@ import java.io.File
  * Losing the key means becoming a new device that must pair again. That is intended: it
  * is the same property that makes a wiped phone's old pairings useless.
  */
-class DeviceIdentity(context: Context) {
+class DeviceIdentity(context: Context) : PairingIdentity {
 
   private val keyFile = File(context.filesDir, "pairing/device.key")
   private val nameFile = File(context.filesDir, "pairing/device.name")
@@ -30,7 +30,7 @@ class DeviceIdentity(context: Context) {
   private var privateSeed: ByteArray = ByteArray(0)
 
   /** 32 bytes. The device's identity. Empty if the key could not be created. */
-  var publicKey: ByteArray = ByteArray(0)
+  override var publicKey: ByteArray = ByteArray(0)
     private set
 
   val ready: Boolean get() = publicKey.size == Ed25519Keys.PUBLIC_BYTES
@@ -38,7 +38,7 @@ class DeviceIdentity(context: Context) {
   /** Hex SHA-256 of [publicKey]. */
   val fingerprint: String get() = Ed25519Keys.fingerprint(publicKey)
 
-  var deviceName: String
+  override var deviceName: String
     get() = runCatching { nameFile.readText().trim() }.getOrNull()
       ?.takeIf { it.isNotEmpty() } ?: Build.MODEL
     set(value) {
@@ -92,7 +92,7 @@ class DeviceIdentity(context: Context) {
     }
   }
 
-  fun sign(message: ByteArray): ByteArray = Ed25519Keys.sign(privateSeed, message)
+  override fun sign(message: ByteArray): ByteArray = Ed25519Keys.sign(privateSeed, message)
 
   /** The six digits both devices must show. See shared/pairing/VECTORS.json. */
   fun pairingCodeWith(peerPublicKey: ByteArray): String =
