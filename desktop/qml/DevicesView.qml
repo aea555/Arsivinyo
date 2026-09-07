@@ -132,25 +132,20 @@ Item {
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 18
-                    Text {
+                    TextAction {
                         text: qsTr("They match")
-                        color: Theme.accent
-                        font.family: Fonts.body
                         font.pixelSize: 13
-                        TapHandler {
-                            onTapped: {
-                                const name = devices.service.pendingName
-                                if (devices.service.confirmPairing())
-                                    devices.message(qsTr("Paired with ") + name, true)
-                            }
+                        onClicked: {
+                            const name = devices.service.pendingName
+                            if (devices.service.confirmPairing())
+                                devices.message(qsTr("Paired with ") + name, true)
                         }
                     }
-                    Text {
+                    TextAction {
                         text: qsTr("They do not")
-                        color: Theme.error
-                        font.family: Fonts.body
+                        accentColor: Theme.error
                         font.pixelSize: 13
-                        TapHandler { onTapped: devices.service.cancelPairing() }
+                        onClicked: devices.service.cancelPairing()
                     }
                 }
             }
@@ -208,12 +203,18 @@ Item {
             spacing: 8
             visible: devices.browsingPeer.length === 0
 
-            Rectangle {
+            Pressable {
                 implicitHeight: 32
                 implicitWidth: pairLabel.implicitWidth + 26
                 radius: 8
-                color: devices.service.pairingMode ? Theme.surfaceHover : Theme.surface
-                border.color: devices.service.pairingMode ? Theme.accent : Theme.border
+                selected: devices.service.pairingMode
+                baseColor: Theme.surface
+                border.color: devices.service.pairingMode ? Theme.accent
+                            : hovered ? Theme.borderSubtle : Theme.border
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+                onClicked: devices.service.pairingMode
+                           ? devices.service.cancelPairing()
+                           : devices.service.beginPairing(120)
                 Text {
                     id: pairLabel
                     anchors.centerIn: parent
@@ -222,19 +223,16 @@ Item {
                     font.family: Fonts.body
                     font.pixelSize: 12
                 }
-                TapHandler {
-                    onTapped: devices.service.pairingMode
-                              ? devices.service.cancelPairing()
-                              : devices.service.beginPairing(120)
-                }
             }
 
-            Rectangle {
+            Pressable {
                 implicitHeight: 32
                 implicitWidth: scanLabel.implicitWidth + 26
                 radius: 8
-                color: Theme.surface
-                border.color: Theme.border
+                baseColor: Theme.surface
+                border.color: hovered ? Theme.borderSubtle : Theme.border
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+                onClicked: devices.discovery.browse()
                 Text {
                     id: scanLabel
                     anchors.centerIn: parent
@@ -243,7 +241,6 @@ Item {
                     font.family: Fonts.body
                     font.pixelSize: 12
                 }
-                TapHandler { onTapped: devices.discovery.browse() }
             }
 
             Item { Layout.fillWidth: true }
@@ -255,12 +252,10 @@ Item {
             spacing: 10
             visible: devices.browsingPeer.length > 0
 
-            Text {
+            TextAction {
                 text: qsTr("← Back")
-                color: Theme.accent
-                font.family: Fonts.body
                 font.pixelSize: 12
-                TapHandler { onTapped: devices.browsingPeer = "" }
+                onClicked: devices.browsingPeer = ""
             }
             Text {
                 Layout.fillWidth: true
@@ -314,18 +309,15 @@ Item {
                         }
                     }
 
-                    Text {
+                    TextAction {
                         text: qsTr("Get")
-                        color: devices.service.transferring ? Theme.textSubtle : Theme.accent
-                        font.family: Fonts.body
+                        accentColor: devices.service.transferring ? Theme.textSubtle : Theme.accent
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                if (devices.service.transferring) return
-                                const session = devices.service.sessionFor(devices.browsingPeer)
-                                if (session && session.requestItem(modelData.id))
-                                    devices.message(qsTr("Requested"), true)
-                            }
+                        onClicked: {
+                            if (devices.service.transferring) return
+                            const session = devices.service.sessionFor(devices.browsingPeer)
+                            if (session && session.requestItem(modelData.id))
+                                devices.message(qsTr("Requested"), true)
                         }
                     }
                 }
@@ -347,11 +339,14 @@ Item {
                 required property string fingerprint
                 required property string name
 
-                Layout.fillWidth: true
+                    Layout.fillWidth: true
                 implicitHeight: 52
                 radius: 10
-                color: Theme.surface
-                border.color: Theme.border
+                color: peerHover.hovered ? Theme.surfaceHover : Theme.surface
+                Behavior on color { ColorAnimation { duration: 120 } }
+                border.color: peerHover.hovered ? Theme.borderSubtle : Theme.border
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+                HoverHandler { id: peerHover }
                 visible: devices.browsingPeer.length === 0
 
                 readonly property bool connected: devices.service.sessionFor(fingerprint) !== null
@@ -379,63 +374,51 @@ Item {
                         }
                     }
 
-                    Text {
+                    TextAction {
                         text: devices.awaitingListing ? qsTr("…") : qsTr("Browse")
-                        color: connected ? Theme.accent : Theme.textSubtle
-                        font.family: Fonts.body
+                        active: connected
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                const session = devices.service.sessionFor(fingerprint)
-                                if (!session) return
-                                devices.browsingName = name
-                                devices.awaitingListing = true
-                                session.requestListing("music")
-                            }
+                        onClicked: {
+                            const session = devices.service.sessionFor(fingerprint)
+                            if (!session) return
+                            devices.browsingName = name
+                            devices.awaitingListing = true
+                            session.requestListing("music")
                         }
                     }
 
-                    Text {
+                    TextAction {
                         text: qsTr("Send")
-                        color: connected ? Theme.accent : Theme.textSubtle
-                        font.family: Fonts.body
+                        active: connected
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                if (!connected) return
-                                sendDialog.target = fingerprint
-                                sendDialog.open()
-                            }
+                        onClicked: {
+                            if (!connected) return
+                            sendDialog.target = fingerprint
+                            sendDialog.open()
                         }
                     }
 
-                    Text {
+                    TextAction {
                         text: qsTr("Link")
-                        color: connected ? Theme.accent : Theme.textSubtle
-                        font.family: Fonts.body
+                        active: connected
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                if (!connected) return
-                                linkSheet.target = fingerprint
-                                linkSheet.targetName = name
-                                linkField.text = ""
-                                linkSheet.visible = true
-                                linkField.forceActiveFocus()
-                            }
+                        onClicked: {
+                            if (!connected) return
+                            linkSheet.target = fingerprint
+                            linkSheet.targetName = name
+                            linkField.text = ""
+                            linkSheet.visible = true
+                            linkField.forceActiveFocus()
                         }
                     }
 
-                    Text {
+                    TextAction {
                         text: qsTr("Forget")
-                        color: Theme.error
-                        font.family: Fonts.body
+                        accentColor: Theme.error
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                devices.registry.forget(fingerprint)
-                                devices.message(qsTr("Device forgotten"), true)
-                            }
+                        onClicked: {
+                            devices.registry.forget(fingerprint)
+                            devices.message(qsTr("Device forgotten"), true)
                         }
                     }
                 }
@@ -462,8 +445,11 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 46
                 radius: 10
-                color: "transparent"
-                border.color: Theme.border
+                color: foundHover.hovered ? Theme.surface : "transparent"
+                Behavior on color { ColorAnimation { duration: 120 } }
+                border.color: foundHover.hovered ? Theme.borderSubtle : Theme.border
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+                HoverHandler { id: foundHover }
                 visible: devices.browsingPeer.length === 0
 
                 RowLayout {
@@ -482,16 +468,12 @@ Item {
                         elide: Text.ElideRight
                     }
 
-                    Text {
+                    TextAction {
                         text: qsTr("Pair")
-                        color: Theme.accent
-                        font.family: Fonts.body
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                devices.service.beginPairing(120)
-                                devices.service.connectToPeer(host, port)
-                            }
+                        onClicked: {
+                            devices.service.beginPairing(120)
+                            devices.service.connectToPeer(host, port)
                         }
                     }
                 }
@@ -556,26 +538,22 @@ Item {
                 RowLayout {
                     Layout.alignment: Qt.AlignRight
                     spacing: 16
-                    Text {
+                    TextAction {
                         text: qsTr("Cancel")
-                        color: Theme.textMuted
-                        font.family: Fonts.body
+                        accentColor: Theme.textMuted
                         font.pixelSize: 12
-                        TapHandler { onTapped: linkSheet.visible = false }
+                        onClicked: linkSheet.visible = false
                     }
-                    Text {
+                    TextAction {
                         text: qsTr("Send")
-                        color: linkField.text.length ? Theme.accent : Theme.textSubtle
-                        font.family: Fonts.body
+                        active: linkField.text.length
                         font.pixelSize: 12
-                        TapHandler {
-                            onTapped: {
-                                if (!linkField.text.length) return
-                                const session = devices.service.sessionFor(linkSheet.target)
-                                if (session && session.requestDownload(linkField.text, "audio"))
-                                    devices.message(qsTr("Link sent"), true)
-                                linkSheet.visible = false
-                            }
+                        onClicked: {
+                            if (!linkField.text.length) return
+                            const session = devices.service.sessionFor(linkSheet.target)
+                            if (session && session.requestDownload(linkField.text, "audio"))
+                                devices.message(qsTr("Link sent"), true)
+                            linkSheet.visible = false
                         }
                     }
                 }

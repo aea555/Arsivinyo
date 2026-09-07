@@ -75,9 +75,13 @@ Rectangle {
                     Rectangle { width: 4; height: 18; radius: 1; color: Theme.accent }
                 }
             }
+            HoverHandler { id: playHover; cursorShape: Qt.PointingHandCursor }
             TapHandler {
+                id: playTap
                 onTapped: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
             }
+            scale: playTap.pressed ? 0.93 : playHover.hovered ? 1.06 : 1
+            Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutQuad } }
         }
 
         ColumnLayout {
@@ -120,15 +124,18 @@ Rectangle {
             Rectangle {
                 id: track
                 Layout.fillWidth: true
-                implicitHeight: 5
-                radius: 2.5
+                implicitHeight: seekHover.hovered ? 8 : 5
+                Behavior on implicitHeight { NumberAnimation { duration: 110 } }
+                radius: height / 2
                 color: Theme.surfaceHover
+                HoverHandler { id: seekHover; cursorShape: Qt.PointingHandCursor }
 
                 Rectangle {
                     width: player.duration > 0 ? track.width * (player.position / player.duration) : 0
                     height: parent.height
                     radius: parent.radius
-                    color: Theme.accent
+                    color: seekHover.hovered ? Theme.accentHover : Theme.accent
+                    Behavior on color { ColorAnimation { duration: 110 } }
                 }
                 TapHandler {
                     onTapped: (point) => {

@@ -29,25 +29,38 @@ Item {
         spacing: 16
 
     ColumnLayout {
+        // preferredWidth alone left the sidebar taking half the window. Pinning the
+        // maximum as well is what actually holds it, since the column's children ask to
+        // fill and a RowLayout will grow a child to satisfy that.
         Layout.preferredWidth: 168
+        Layout.maximumWidth: 168
+        Layout.fillWidth: false
         Layout.fillHeight: true
         spacing: 6
 
-        Text {
-            text: qsTr("Playlists")
-            color: Theme.textSubtle
-            font.family: Fonts.body
-            font.pixelSize: 11
+        Item {
+            Layout.fillWidth: true
+            // Matches the search field opposite, so both columns start on the same line.
+            implicitHeight: 38
+            Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Playlists")
+                color: Theme.textSubtle
+                font.family: Fonts.body
+                font.pixelSize: 11
+            }
         }
 
         Repeater {
             model: [{ id: "", name: qsTr("All tracks"), count: -1, system: false }]
-            Rectangle {
+            Pressable {
                 required property var modelData
                 Layout.fillWidth: true
                 implicitHeight: 30
                 radius: 8
-                color: view.activePlaylist === "" ? Theme.surfaceHover : "transparent"
+                selected: view.activePlaylist === ""
+                onClicked: { view.activePlaylist = ""; library.showPlaylist("") }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     x: 10
@@ -56,13 +69,12 @@ Item {
                     font.family: Fonts.body
                     font.pixelSize: 12
                 }
-                TapHandler { onTapped: { view.activePlaylist = ""; library.showPlaylist("") } }
             }
         }
 
         Repeater {
             model: playlistModel
-            Rectangle {
+            Pressable {
                 required property string id
                 required property string name
                 required property int count
@@ -70,8 +82,8 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 30
                 radius: 8
-                color: view.activePlaylist === id ? Theme.surfaceHover
-                     : plHover.hovered ? Qt.darker(Theme.surface, 1.1) : "transparent"
+                selected: view.activePlaylist === id
+                hoverColor: Qt.alpha(Theme.surfaceHover, 0.6)
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 10
@@ -92,10 +104,7 @@ Item {
                         font.pixelSize: 11
                     }
                 }
-                HoverHandler { id: plHover }
-                TapHandler {
-                    onTapped: { view.activePlaylist = id; library.showPlaylist(id) }
-                }
+                onClicked: { view.activePlaylist = id; library.showPlaylist(id) }
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: if (!system) plMenu.popup()
@@ -107,21 +116,20 @@ Item {
             }
         }
 
-        Rectangle {
+        Pressable {
             Layout.fillWidth: true
             implicitHeight: 30
             radius: 8
-            color: newHover.hovered ? Theme.surfaceHover : "transparent"
+            onClicked: newDialog.open()
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 x: 10
                 text: qsTr("+ New playlist")
-                color: Theme.accent
+                color: parent.hovered ? Qt.lighter(Theme.accent, 1.2) : Theme.accent
+                Behavior on color { ColorAnimation { duration: 110 } }
                 font.family: Fonts.body
                 font.pixelSize: 12
             }
-            HoverHandler { id: newHover }
-            TapHandler { onTapped: newDialog.open() }
         }
 
         Item { Layout.fillHeight: true }
@@ -155,12 +163,16 @@ Item {
                     font.pixelSize: 13
                     background: null
                     selectByMouse: true
+                    HoverHandler { cursorShape: Qt.IBeamCursor }
                     selectionColor: Theme.accent
                     selectedTextColor: Theme.background
                     onTextChanged: view.library.filter = text
                 }
             }
             Text {
+                // Without this the RowLayout stretches the label to the search field's
+                // height and the text draws at the top of it, sitting a row above centre.
+                Layout.alignment: Qt.AlignVCenter
                 text: view.library.count + (view.library.count === 1 ? qsTr(" track") : qsTr(" tracks"))
                 color: Theme.textSubtle
                 font.family: Fonts.body
@@ -178,7 +190,7 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            delegate: Rectangle {
+            delegate: Pressable {
                 id: row
                 required property string songId
                 required property string title
@@ -192,9 +204,8 @@ Item {
                 width: list.width
                 height: 60
                 radius: 10
-                color: view.selectedId === songId ? Theme.surfaceHover
-                     : rowHover.hovered ? Qt.darker(Theme.surface, 1.1) : "transparent"
-                Behavior on color { ColorAnimation { duration: 100 } }
+                selected: view.selectedId === songId
+                hoverColor: Qt.alpha(Theme.surfaceHover, 0.55)
 
                 RowLayout {
                     anchors.fill: parent
@@ -337,18 +348,16 @@ Item {
                                 function onFavouriteChanged() { parent.requestPaint() }
                             }
                         }
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
                         TapHandler {
                             onTapped: view.library.setFavourite(row.songId, !row.favourite)
                         }
                     }
                 }
 
-                HoverHandler { id: rowHover }
-                TapHandler {
-                    onTapped: {
-                        view.selectedId = row.songId
-                        view.play(row.path, row.title, row.artist, row.thumb)
-                    }
+                onClicked: {
+                    view.selectedId = row.songId
+                    view.play(row.path, row.title, row.artist, row.thumb)
                 }
             }
 

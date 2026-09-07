@@ -12,6 +12,7 @@ ApplicationWindow {
     visible: true
     title: qsTr("Arsivinyo")
     color: Theme.background
+    Behavior on color { ColorAnimation { duration: 160 } }
 
     property string pendingUrl: ""
     property string resultMessage: ""
@@ -115,6 +116,7 @@ ApplicationWindow {
                 font.pixelSize: 20
             }
             Item { Layout.fillWidth: true }
+            ThemePicker {}
             Rectangle {
                 implicitHeight: 24
                 // Capped: an engine error is a sentence, not a version string.
@@ -152,23 +154,25 @@ ApplicationWindow {
             spacing: 4
             Repeater {
                 model: [qsTr("Download"), qsTr("Library"), qsTr("Devices")]
-                Rectangle {
+                Pressable {
                     required property int index
                     required property string modelData
                     implicitHeight: 30
                     implicitWidth: tabLabel.implicitWidth + 28
                     radius: 8
-                    color: root.tab === index ? Theme.surfaceHover : "transparent"
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    selected: root.tab === index
+                    onClicked: root.tab = index
                     Text {
                         id: tabLabel
                         anchors.centerIn: parent
                         text: modelData + (index === 1 && library.count ? "  " + library.count : "")
-                        color: root.tab === index ? Theme.text : Theme.textSubtle
+                        color: root.tab === index ? Theme.text
+                             : parent.hovered ? Theme.textMuted
+                             : Theme.textSubtle
+                        Behavior on color { ColorAnimation { duration: 120 } }
                         font.family: Fonts.body
                         font.pixelSize: 13
                     }
-                    TapHandler { onTapped: root.tab = index }
                 }
             }
         }
