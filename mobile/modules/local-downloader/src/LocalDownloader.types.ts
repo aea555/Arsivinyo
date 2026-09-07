@@ -687,3 +687,66 @@ export interface LocalBackupJobState {
   active: LocalBackupJob | null;
   last: LocalBackupJobOutcome | null;
 }
+
+// ---- device pairing ----------------------------------------------------------------
+
+/** A device this phone has paired with. */
+export interface LocalPairedDevice {
+  /** Hex SHA-256 of the peer's Ed25519 public key. Its identity. */
+  fingerprint: string;
+  /** Chosen by the peer. Shown, never matched against. */
+  name: string;
+  lastAddress: string;
+  connected: boolean;
+}
+
+/** A device seen on the network that this phone has not paired with. */
+export interface LocalDiscoveredDevice {
+  fingerprint: string;
+  name: string;
+  host: string;
+  port: number;
+}
+
+/** One track on a peer, from its `listing`. */
+export interface LocalPeerItem {
+  id: string;
+  title: string;
+  artist?: string | null;
+  durationSec: number;
+  sizeBytes: number;
+}
+
+/**
+ * Everything the pairing screen renders.
+ *
+ * Deliberately absent: the name of any file in flight. A transfer reports a size and a
+ * count, which shows progress just as well and keeps a track title off a screen that may
+ * be shown to whoever is standing there.
+ */
+export interface LocalPairingState {
+  /** This device's own fingerprint and name. */
+  fingerprint: string;
+  deviceName: string;
+  /** False if the identity key could not be created; pairing is impossible. */
+  ready: boolean;
+  listening: boolean;
+  port: number;
+  /** True while the user has opened the window in which an unknown device may present itself. */
+  pairingMode: boolean;
+  /** Six digits when a device is waiting to be confirmed, empty otherwise. */
+  pendingCode: string;
+  pendingName: string;
+  /** The last thing worth telling the user. Never a file name. */
+  message: string;
+  transferDone: number;
+  transferTotal: number;
+  peers: LocalPairedDevice[];
+  discovered: LocalDiscoveredDevice[];
+  /** Whose listing `listing` holds. */
+  listingFrom: string;
+  listing: LocalPeerItem[];
+  /** A URL a peer asked this phone to fetch. Shown for the user to accept, never started. */
+  peerUrl: string;
+  peerMediaKind: string;
+}

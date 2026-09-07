@@ -4,6 +4,7 @@ export {
   addBackupProgressListener,
   addDownloadProgressListener,
   addPrivateVaultMigrationProgressListener,
+  addPairingStateListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from '../../modules/local-downloader/src';
@@ -63,6 +64,10 @@ export type {
   LocalSoundPlaylist,
   LocalSoundsImportResult,
   LocalSoundsLibrary,
+  LocalDiscoveredDevice,
+  LocalPairedDevice,
+  LocalPairingState,
+  LocalPeerItem,
   LocalTaskStatus,
   LocalTaskStatusResult,
   LocalVaultDiagnostics,

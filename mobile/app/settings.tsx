@@ -528,6 +528,10 @@ export default function SettingsScreen() {
     router.push('/diagnostics' as never);
   }, [router]);
 
+  const openDevices = useCallback(() => {
+    router.push('/devices' as never);
+  }, [router]);
+
   const openBackup = useCallback(() => {
     router.push('/backup');
   }, [router]);
@@ -810,6 +814,12 @@ export default function SettingsScreen() {
               onPress={handleYtDlpUpdate}
               rightElement={ytDlpUpdating ? <ActivityIndicator size="small" color={colors.accent} /> : undefined}
               showArrow={!ytDlpUpdateDisabled}
+            />
+            <SettingsItem
+              icon="phone-portrait-outline"
+              title={t('settings.devices')}
+              subtitle={t('settings.devicesHint')}
+              onPress={openDevices}
             />
             <SettingsItem
               icon="archive-outline"

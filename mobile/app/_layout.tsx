@@ -64,6 +64,14 @@ function AppContent() {
           }}
         />
         <Stack.Screen
+          name="devices"
+          options={{
+            presentation: 'card',
+            headerShown: true,
+            title: t('devices.title'),
+          }}
+        />
+        <Stack.Screen
           name="recent-failures"
           options={{
             presentation: 'card',

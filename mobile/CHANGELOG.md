@@ -8,10 +8,10 @@ All notable changes to this project are documented here. Format based on [Keep a
 - **Device pairing.** Two devices you own, on the same network, exchanging files directly
   — no cloud, no account, no relay. The desktop app implements the whole protocol:
   discovery over mDNS, a pairing ceremony where both screens show the same six digits, a
-  TLS connection, and the four verbs (`list`, `get`, `put`, `download`). This app carries
-  the shared protocol — the framing, the code derivation, the identity key, the
-  authentication handshake — along with the list of paired devices and the TLS connection
-  itself. Discovery, the transfers and the screens are still to come.
+  TLS connection, and the four verbs (`list`, `get`, `put`, `download`). Both apps now
+  implement it: on the phone there is a **Devices** screen in Settings that lists what is
+  on the network, runs the ceremony, and sends or fetches a track. A URL a peer sends is
+  shown for you to accept rather than downloaded on its own.
 - Each device now has a permanent Ed25519 identity. Its public key *is* the device; the
   SHA-256 of that key is the fingerprint shown when pairing. The vault is deliberately not
   reachable over this channel: it stays confined to the device that made it, and a

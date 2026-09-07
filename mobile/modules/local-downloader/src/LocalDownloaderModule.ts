@@ -10,6 +10,7 @@ import type {
   LocalBackupPreview,
   LocalBackupRestoreInput,
   LocalBackupRestoreResult,
+  LocalPairingState,
   LocalSoundPresetProgressEvent,
   LocalSoundPresetStartResult,
   LocalCookieProfile,
@@ -116,6 +117,23 @@ type LocalDownloaderNativeModule = {
   previewBackup(): Promise<LocalBackupPreview>;
   getBackupJobState(): Promise<LocalBackupJobState>;
   restoreBackup(input: LocalBackupRestoreInput): Promise<LocalBackupRestoreResult>;
+  // ---- device pairing ----
+  pairingState(): Promise<LocalPairingState>;
+  pairingStart(): Promise<boolean>;
+  pairingStop(): Promise<boolean>;
+  pairingBeginPairing(seconds: number): Promise<boolean>;
+  pairingCancelPairing(): Promise<boolean>;
+  pairingConfirm(): Promise<boolean>;
+  pairingConnect(host: string, port: number): Promise<boolean>;
+  pairingForget(fingerprint: string): Promise<boolean>;
+  pairingSetDeviceName(name: string): Promise<boolean>;
+  pairingBrowse(fingerprint: string): Promise<boolean>;
+  pairingFetch(fingerprint: string, id: string): Promise<boolean>;
+  pairingSend(fingerprint: string, songId: string): Promise<boolean>;
+  pairingSendUrl(fingerprint: string, url: string, mediaKind: string): Promise<boolean>;
+  pairingCancelTransfer(fingerprint: string): Promise<boolean>;
+  pairingClearPeerUrl(): Promise<boolean>;
+
   listSounds(): Promise<LocalSoundsLibrary>;
   importSounds(): Promise<LocalSoundsImportResult>;
   deleteSounds(input: { ids: string[] }): Promise<{ deletedCount: number }>;
@@ -207,6 +225,21 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       previewBackup: async () => unsupported(),
       getBackupJobState: async () => unsupported(),
       restoreBackup: async () => unsupported(),
+      pairingState: async () => unsupported(),
+      pairingStart: async () => unsupported(),
+      pairingStop: async () => unsupported(),
+      pairingBeginPairing: async () => unsupported(),
+      pairingCancelPairing: async () => unsupported(),
+      pairingConfirm: async () => unsupported(),
+      pairingConnect: async () => unsupported(),
+      pairingForget: async () => unsupported(),
+      pairingSetDeviceName: async () => unsupported(),
+      pairingBrowse: async () => unsupported(),
+      pairingFetch: async () => unsupported(),
+      pairingSend: async () => unsupported(),
+      pairingSendUrl: async () => unsupported(),
+      pairingCancelTransfer: async () => unsupported(),
+      pairingClearPeerUrl: async () => unsupported(),
       listSounds: async () => unsupported(),
       importSounds: async () => unsupported(),
       deleteSounds: async () => unsupported(),
@@ -291,6 +324,19 @@ export function addPrivateVaultMigrationProgressListener(
     return { remove: () => undefined };
   }
   return emitter.addListener('privateVaultMigrationProgress', listener);
+}
+
+/**
+ * Pairing state, whenever anything a screen renders changes — a device found or lost, a
+ * code to confirm, transfer progress, a listing coming back.
+ */
+export function addPairingStateListener(
+  listener: (state: LocalPairingState) => void
+): EventSubscription {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+  return emitter.addListener('pairingStateChanged', listener);
 }
 
 export default NativeLocalDownloader;

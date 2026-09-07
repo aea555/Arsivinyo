@@ -87,3 +87,4 @@ export type {
     LocalSoundsImportResult,
     LocalSoundsLibrary,
 } from '../native/localDownloader';
+export * from './pairing';
