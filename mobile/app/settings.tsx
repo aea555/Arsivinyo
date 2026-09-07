@@ -97,6 +97,8 @@ export default function SettingsScreen() {
   const [customDomainAction, setCustomDomainAction] = useState<string | null>(null);
   const [pendingBuiltInDelete, setPendingBuiltInDelete] = useState<PendingBuiltInDelete>(null);
   const [pendingCustomDelete, setPendingCustomDelete] = useState<PendingCustomDelete>(null);
+  /** Set when something has been staged that only takes effect on the next launch. */
+  const [pendingRestart, setPendingRestart] = useState<string | null>(null);
 
   const [showCustomImportModal, setShowCustomImportModal] = useState(false);
   const [customImportDomain, setCustomImportDomain] = useState('');
@@ -643,13 +645,18 @@ export default function SettingsScreen() {
    */
   const handleClearYtDlpOverride = useCallback(async () => {
     const result = await clearLocalYtDlpOverride();
-    if (result.success) {
-      await refreshYtDlpUpdateStatus();
-      showError(t('settings.ytDlpClearedRestart'));
+    if (!result.success) {
+      showError(t('errors.UNKNOWN_ERROR'));
+      return;
     }
+    await refreshYtDlpUpdateStatus();
+    // Offer the restart rather than describing it. Telling someone an action is needed
+    // and giving them only a dismiss button leaves them to find it themselves.
+    setPendingRestart(t('settings.ytDlpClearedRestart'));
   }, [refreshYtDlpUpdateStatus, showError, t]);
 
   const handleRestart = useCallback(async () => {
+    setPendingRestart(null);
     // The process is killed to do this, so a transfer in flight would be lost with it.
     const result = await restartLocalApp();
     if (!result.restarted && result.reason === 'DOWNLOAD_ACTIVE') {
@@ -671,7 +678,11 @@ export default function SettingsScreen() {
       const result = await updateLocalYtDlp();
       await refreshYtDlpUpdateStatus();
       if (result.status === 'installed' && result.installedVersion) {
-        showSuccess(t('settings.ytDlpUpdateInstalled', { version: result.installedVersion }));
+        // A downloaded version is only live once Python restarts, so offer that here
+        // instead of reporting success and leaving the user to work out the rest.
+        setPendingRestart(
+          t('settings.ytDlpUpdateRestartRequired', { version: result.installedVersion })
+        );
       } else if (result.status === 'up_to_date') {
         showSuccess(t('settings.ytDlpUpdateAlreadyCurrent'));
       } else if (result.status === 'blocked' || result.code === 'DOWNLOAD_ACTIVE') {
@@ -1209,6 +1220,24 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmModal
+        visible={pendingRestart !== null}
+        config={
+          pendingRestart
+            ? {
+                title: t('settings.restartNow'),
+                message: pendingRestart,
+                confirm: t('settings.restartNow'),
+                destructive: false,
+              }
+            : null
+        }
+        onCancel={() => setPendingRestart(null)}
+        onConfirm={() => {
+          void handleRestart();
+        }}
+      />
 
       <ConfirmModal
         visible={pendingCustomDelete !== null}
