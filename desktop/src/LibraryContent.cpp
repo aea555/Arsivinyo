@@ -52,7 +52,7 @@ QJsonArray LibraryContent::listing(const QString &kind) const {
     for (int row = 0; row < m_library->rowCount(); ++row) {
         const QVariantMap item = m_library->get(row);
         items.append(QJsonObject{
-            {"id", item.value(QStringLiteral("id")).toString()},
+            {"id", item.value(QStringLiteral("songId")).toString()},
             {"title", item.value(QStringLiteral("title")).toString()},
             {"artist", item.value(QStringLiteral("artist")).toString()},
             {"durationSec", item.value(QStringLiteral("durationSec")).toDouble()},
@@ -66,7 +66,7 @@ QString LibraryContent::pathForItem(const QString &id) const {
     if (!m_library || id.isEmpty()) return {};
     for (int row = 0; row < m_library->rowCount(); ++row) {
         const QVariantMap item = m_library->get(row);
-        if (item.value(QStringLiteral("id")).toString() != id) continue;
+        if (item.value(QStringLiteral("songId")).toString() != id) continue;
         const QString path = item.value(QStringLiteral("path")).toString();
         return QFileInfo(path).isFile() ? path : QString();
     }

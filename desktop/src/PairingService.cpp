@@ -8,6 +8,8 @@
 #include <QSslSocket>
 #include <QTimer>
 
+#include <QJsonArray>
+
 #include "wire.h"
 
 using namespace arsivinyo::pairing;
@@ -37,7 +39,48 @@ QString localAddress() {
 
 }  // namespace
 
+QString PairingService::fingerprintOf(const QByteArray &publicKey) {
+    return QString::fromLatin1(
+        QCryptographicHash::hash(publicKey, QCryptographicHash::Sha256).toHex());
+}
+
 PairingService::PairingService(QObject *parent) : QObject(parent) {}
+
+PeerSession *PairingService::makeSession(PeerLink *link) {
+    auto *session = new PeerSession(link, m_content, this);
+    m_sessions.append(session);
+
+    const QString fingerprint = fingerprintOf(link->peerKey());
+    connect(session, &PeerSession::transferStarted, this,
+            [this, fingerprint](const QString &, qint64 total) {
+                // The name is deliberately not kept: a transfer's file name is private
+                // and must not reach the UI's status line or a log.
+                m_transferPeer = fingerprint;
+                m_transferDone = 0;
+                m_transferTotal = total;
+                emit transferChanged();
+            });
+    connect(session, &PeerSession::transferProgress, this, [this](qint64 done, qint64 total) {
+        m_transferDone = done;
+        m_transferTotal = total;
+        emit transferChanged();
+    });
+    connect(session, &PeerSession::transferComplete, this, [this] {
+        m_transferDone = m_transferTotal = 0;
+        emit transferChanged();
+        emit transferFinished(true, QString());
+    });
+    connect(session, &PeerSession::transferFailed, this, [this](const QString &reason) {
+        m_transferDone = m_transferTotal = 0;
+        emit transferChanged();
+        emit transferFinished(false, reason);
+    });
+    connect(session, &PeerSession::listingReceived, this,
+            [this, fingerprint](const QString &kind, const QJsonArray &items) {
+                emit listingReceived(fingerprint, kind, items.toVariantList());
+            });
+    return session;
+}
 
 void PairingService::setIdentity(DeviceIdentity *identity) {
     if (m_identity == identity) return;
@@ -123,8 +166,7 @@ void PairingService::adopt(PeerLink *link) {
 }
 
 void PairingService::onAuthenticated(PeerLink *link, const QByteArray &key, const QString &name) {
-    const QString fingerprint =
-        QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Sha256).toHex());
+    const QString fingerprint = fingerprintOf(key);
 
     if (!m_registry->isPaired(key)) {
         if (!m_pairingMode) {
@@ -146,8 +188,7 @@ void PairingService::onAuthenticated(PeerLink *link, const QByteArray &key, cons
     }
 
     m_registry->noteAddress(key, link->peerAddress());
-    auto *session = new PeerSession(link, m_content, this);
-    m_sessions.append(session);
+    makeSession(link);
     emit peerConnected(fingerprint, name);
 }
 
@@ -168,10 +209,8 @@ bool PairingService::confirmPairing() {
     emit pendingPeerChanged();
     emit pairingModeChanged();
 
-    const QString fingerprint =
-        QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Sha256).toHex());
-    auto *session = new PeerSession(link, m_content, this);
-    m_sessions.append(session);
+    const QString fingerprint = fingerprintOf(key);
+    makeSession(link);
     emit paired(fingerprint, name);
     emit peerConnected(fingerprint, name);
     return true;
@@ -209,10 +248,7 @@ void PairingService::dropLink(PeerLink *link) {
         PeerSession *session = m_sessions.takeAt(i);
         const QByteArray key = link->peerKey();
         session->deleteLater();
-        if (key.size() == int(kPublicKeyBytes)) {
-            emit peerDisconnected(QString::fromLatin1(
-                QCryptographicHash::hash(key, QCryptographicHash::Sha256).toHex()));
-        }
+        if (key.size() == int(kPublicKeyBytes)) emit peerDisconnected(fingerprintOf(key));
         break;
     }
     if (m_pendingLink == link) {
@@ -226,11 +262,7 @@ void PairingService::dropLink(PeerLink *link) {
 
 PeerSession *PairingService::sessionFor(const QString &fingerprint) const {
     for (PeerSession *session : m_sessions) {
-        const QByteArray key = session->link()->peerKey();
-        if (QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Sha256).toHex())
-            == fingerprint) {
-            return session;
-        }
+        if (fingerprintOf(session->link()->peerKey()) == fingerprint) return session;
     }
     return nullptr;
 }

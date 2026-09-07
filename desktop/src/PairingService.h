@@ -6,6 +6,7 @@
 #include <QString>
 #include <QTcpServer>
 #include <QUrl>
+#include <QVariantList>
 
 #include "DeviceIdentity.h"
 #include "PeerContent.h"
@@ -42,6 +43,11 @@ class PairingService : public QObject {
     Q_PROPERTY(bool pairingMode READ pairingMode NOTIFY pairingModeChanged)
     Q_PROPERTY(QString pendingCode READ pendingCode NOTIFY pendingPeerChanged)
     Q_PROPERTY(QString pendingName READ pendingName NOTIFY pendingPeerChanged)
+    // A transfer runs on one session, but the UI wants one thing to bind to rather than
+    // a session object that appears and disappears with the connection.
+    Q_PROPERTY(bool transferring READ isTransferring NOTIFY transferChanged)
+    Q_PROPERTY(QString transferPeer READ transferPeer NOTIFY transferChanged)
+    Q_PROPERTY(qreal transferFraction READ transferFraction NOTIFY transferChanged)
 
 public:
     explicit PairingService(QObject *parent = nullptr);
@@ -60,6 +66,12 @@ public:
     bool pairingMode() const { return m_pairingMode; }
     QString pendingCode() const { return m_pendingCode; }
     QString pendingName() const { return m_pendingName; }
+
+    bool isTransferring() const { return m_transferTotal > 0; }
+    QString transferPeer() const { return m_transferPeer; }
+    qreal transferFraction() const {
+        return m_transferTotal > 0 ? qreal(m_transferDone) / qreal(m_transferTotal) : 0;
+    }
 
     /** [port] of 0 asks the system for a free one. */
     Q_INVOKABLE bool listen(quint16 port = 0);
@@ -86,6 +98,12 @@ public:
 
 signals:
     void wiringChanged();
+    void transferChanged();
+    /** Relayed from whichever session is busy, so QML binds to one object. */
+    void transferFinished(bool ok, const QString &reason);
+    /** A peer answered a browse. Items are the protocol's `listing` entries. */
+    void listingReceived(const QString &fingerprint, const QString &kind,
+                         const QVariantList &items);
     void listeningChanged();
     void pairingModeChanged();
     void pendingPeerChanged();
@@ -97,6 +115,9 @@ signals:
 
 private:
     void adopt(PeerLink *link);
+    /** Wrap an authenticated link in a session and relay its signals. */
+    PeerSession *makeSession(PeerLink *link);
+    static QString fingerprintOf(const QByteArray &publicKey);
     void onAuthenticated(PeerLink *link, const QByteArray &key, const QString &name);
     void dropLink(PeerLink *link);
 
@@ -115,4 +136,8 @@ private:
     QByteArray m_pendingKey;
 
     QList<PeerSession *> m_sessions;
+
+    QString m_transferPeer;
+    qint64 m_transferDone = 0;
+    qint64 m_transferTotal = 0;
 };

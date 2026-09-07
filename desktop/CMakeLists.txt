@@ -111,3 +111,12 @@ qt_add_executable(dnssd_test tests/dnssd_test.cpp src/DnsSd.h src/DnsSd.cpp
 target_include_directories(dnssd_test PRIVATE src)
 target_link_libraries(dnssd_test PRIVATE Qt6::Core Qt6::Network Qt6::Qml)
 add_test(NAME dnssd COMMAND dnssd_test)
+
+# What a peer may reach, against the real Library rather than the transport's stub.
+qt_add_executable(content_test tests/content_test.cpp
+    src/LibraryContent.h src/LibraryContent.cpp
+    src/Library.h src/Library.cpp
+    src/EngineClient.h src/EngineClient.cpp)
+target_include_directories(content_test PRIVATE src)
+target_link_libraries(content_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Gui)
+add_test(NAME content COMMAND content_test)

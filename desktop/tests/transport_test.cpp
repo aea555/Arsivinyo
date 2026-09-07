@@ -314,6 +314,47 @@ int main(int argc, char **argv) {
               "naming what the peer holds");
     }
 
+    // ---- get pulls a file the other way -----------------------------------------------
+    //
+    // The reverse of `put`: B asks for an item A listed, and A answers with a put of its
+    // own. Nothing above this exercises A as the sender.
+    {
+        PeerSession *fromB = serviceB.sessions().value(0);
+        PeerSession *onB = fromB;
+
+        // Something only A has.
+        const QByteArray payload = QByteArray(300000, 'q');
+        QFile source(filesA.path() + "/pulled.m4a");
+        source.open(QIODevice::WriteOnly);
+        source.write(payload);
+        source.close();
+
+        bool landed = false;
+        QObject::connect(onB, &PeerSession::fileReceived, &app,
+                         [&landed](const QString &, const QString &) { landed = true; });
+
+        check(fromB->requestItem(QStringLiteral("pulled.m4a")), "a get is issued");
+        check(waitFor([&] { return landed; }, 20000), "and the item arrives");
+
+        QFile received(filesB.path() + "/pulled.m4a");
+        check(received.open(QIODevice::ReadOnly), "where the requester put it");
+        check(received.readAll() == payload, "byte for byte");
+        received.close();
+        QObject::disconnect(onB, &PeerSession::fileReceived, &app, nullptr);
+    }
+
+    // ---- a get for something the peer does not have ------------------------------------
+    {
+        PeerSession *fromB = serviceB.sessions().value(0);
+        QString failure;
+        QObject::connect(fromB, &PeerSession::transferFailed, &app,
+                         [&failure](const QString &why) { failure = why; });
+        check(fromB->requestItem(QStringLiteral("../../../etc/passwd")), "a get is issued");
+        check(waitFor([&] { return !failure.isEmpty(); }),
+              "a path dressed up as an id resolves to nothing");
+        QObject::disconnect(fromB, &PeerSession::transferFailed, &app, nullptr);
+    }
+
     // ---- download hands over a URL ----------------------------------------------------
     {
         PeerSession *fromB = serviceB.sessions().value(0);
