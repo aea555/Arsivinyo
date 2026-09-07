@@ -62,27 +62,47 @@ class PeerRegistry(private val file: File) {
       // Re-pairing keeps the original time, so the list does not reshuffle when a device
       // is paired again after a reinstall.
       val peer = Peer(publicKey, name, address, existing?.pairedAt ?: System.currentTimeMillis())
+      val before = peers.toMutableList()
       peers.removeAll { it.publicKey.contentEquals(publicKey) }
       peers.add(peer)
       peers.sortBy { it.pairedAt }
-      save()
+      // A pairing that cannot be written down is not a pairing. Reporting success here
+      // would tell the user they are paired and then lose it on the next start, which is
+      // worse than refusing now.
+      if (!save()) {
+        peers = before
+        return false
+      }
       true
     }
 
   fun forget(fingerprint: String): Boolean = synchronized(lock) {
-    val before = peers.size
+    val before = peers.toMutableList()
     peers.removeAll { it.fingerprint == fingerprint }
-    if (peers.size == before) return false
-    save()
+    if (peers.size == before.size) return false
+    // Same reasoning as remember: a device still on disk is still paired after a restart,
+    // so saying it was forgotten when the write failed would be a lie with consequences.
+    if (!save()) {
+      peers = before
+      return false
+    }
     true
   }
 
-  fun noteAddress(publicKey: ByteArray, address: String) = synchronized(lock) {
-    if (address.isEmpty()) return
-    val existing = peers.firstOrNull { it.publicKey.contentEquals(publicKey) } ?: return
-    if (existing.lastAddress == address) return
-    peers[peers.indexOf(existing)] = existing.copy(lastAddress = address)
-    save()
+  /**
+   * Record where a peer was last reached, so it can be tried again without discovery.
+   *
+   * Unlike [remember] and [forget] this does not report a failed write. The address is a
+   * convenience — losing it costs a round of discovery, not a pairing.
+   */
+  fun noteAddress(publicKey: ByteArray, address: String) {
+    synchronized(lock) {
+      if (address.isEmpty()) return
+      val existing = peers.firstOrNull { it.publicKey.contentEquals(publicKey) } ?: return
+      if (existing.lastAddress == address) return
+      peers[peers.indexOf(existing)] = existing.copy(lastAddress = address)
+      save()
+    }
   }
 
   private fun load() {
@@ -105,7 +125,8 @@ class PeerRegistry(private val file: File) {
     peers.sortBy { it.pairedAt }
   }
 
-  private fun save() {
+  /** @return false if the list could not be written, leaving the file as it was. */
+  private fun save(): Boolean {
     val array = JSONArray()
     for (peer in peers) {
       array.put(JSONObject()
@@ -114,7 +135,7 @@ class PeerRegistry(private val file: File) {
         .put("address", peer.lastAddress)
         .put("pairedAt", peer.pairedAt))
     }
-    runCatching {
+    return runCatching {
       file.parentFile?.mkdirs()
       // Write beside the file and rename, so an interrupted save cannot leave a
       // half-written list that would drop every pairing on the next start.
@@ -122,9 +143,10 @@ class PeerRegistry(private val file: File) {
       temp.writeText(array.toString())
       if (!temp.renameTo(file)) {
         file.delete()
-        temp.renameTo(file)
+        if (!temp.renameTo(file)) return false
       }
-    }
+      true
+    }.getOrElse { false }
   }
 
   private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }

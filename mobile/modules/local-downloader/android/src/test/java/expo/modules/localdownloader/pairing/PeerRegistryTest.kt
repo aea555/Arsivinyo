@@ -126,6 +126,37 @@ class PeerRegistryTest {
   }
 
   @Test
+  fun aPairingThatCannotBeWrittenIsNotReportedAsPaired() {
+    val registry = PeerRegistry(file)
+    registry.remember(key(1), "Desktop", "a")
+
+    // Block the temporary file the save writes through, by putting a directory in its
+    // place. Nothing can be written from here on.
+    file.parentFile?.mkdirs()
+    File(file.parentFile, "${file.name}.tmp").mkdirs()
+
+    assertFalse("a pairing that cannot be stored must not report success",
+      registry.remember(key(2), "Laptop", "b"))
+    assertFalse("and must not appear paired in this run either",
+      registry.isPaired(key(2)))
+    assertEquals("the list is left as it was", 1, registry.all().size)
+    assertTrue("the existing pairing survives", registry.isPaired(key(1)))
+  }
+
+  @Test
+  fun aForgetThatCannotBeWrittenIsNotReportedAsForgotten() {
+    val registry = PeerRegistry(file)
+    registry.remember(key(1), "Desktop", "a")
+    File(file.parentFile, "${file.name}.tmp").mkdirs()
+
+    // A device still on disk is still paired after a restart, so reporting it forgotten
+    // would leave the user believing they had revoked access they had not.
+    assertFalse(registry.forget(Ed25519Keys.fingerprint(key(1))))
+    assertTrue("it is still trusted", registry.isPaired(key(1)))
+    assertTrue("in this run and the next", PeerRegistry(file).isPaired(key(1)))
+  }
+
+  @Test
   fun theFileIsReplacedWholeRatherThanEditedInPlace() {
     val registry = PeerRegistry(file)
     registry.remember(key(1), "Desktop", "a")
