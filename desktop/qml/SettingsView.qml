@@ -17,12 +17,17 @@ Item {
     required property var library
 
     ScrollView {
+        id: scroller
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
+        // The scrollbar is drawn over the content, so the content has to stop short of it.
+        // Sizing the column to the view's full width put the cards under the bar.
+        rightPadding: 16
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
         ColumnLayout {
-            width: settings.width
+            width: scroller.availableWidth
             spacing: 26
 
             // ---- appearance --------------------------------------------------------

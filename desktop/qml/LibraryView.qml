@@ -188,7 +188,9 @@ Item {
             spacing: 4
             model: view.library
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ScrollBar.vertical: ScrollBar { id: listBar; policy: ScrollBar.AsNeeded }
+            // The bar is drawn over the list, so rows stop short of it when it is there.
+            readonly property int gutter: listBar.visible ? 14 : 0
 
             delegate: Pressable {
                 id: row
@@ -201,7 +203,7 @@ Item {
                 required property bool favourite
                 required property string presetId
 
-                width: list.width
+                width: list.width - list.gutter
                 height: 60
                 radius: 10
                 selected: view.selectedId === songId

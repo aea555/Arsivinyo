@@ -53,8 +53,16 @@ Item {
         }
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: scroller
         anchors.fill: parent
+        contentWidth: availableWidth
+        clip: true
+        rightPadding: 16
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+    ColumnLayout {
+        width: scroller.availableWidth
         spacing: 12
 
         // ---- this device ---------------------------------------------------------
@@ -269,8 +277,9 @@ Item {
 
         ListView {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredHeight: Math.min(contentHeight, 420)
             visible: devices.browsingPeer.length > 0
+            interactive: false
             clip: true
             spacing: 4
             model: devices.browsedItems
@@ -480,7 +489,9 @@ Item {
             }
         }
 
-        Item { Layout.fillHeight: true; visible: devices.browsingPeer.length === 0 }
+        Item { implicitHeight: 8 }
+    }
+
     }
 
     // ---- send a link ---------------------------------------------------------------------
