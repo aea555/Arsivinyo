@@ -53,7 +53,19 @@ mkdir -p "$WORK_DIR"
 
 # Assembling this list walks the whole Gradle cache, which is slow, so it is kept between
 # runs and only rebuilt on request.
-if [ ! -s "$CP_CACHE" ] || [ "${REFRESH_CP:-0}" = "1" ]; then
+# Gradle removes artifacts when it cleans or upgrades, and a cached path that no longer
+# exists is simply dropped from the compiler's classpath — which surfaces as dozens of
+# "unresolved reference" errors in files the change had nothing to do with. Checking that
+# every entry still exists costs a few milliseconds and turns that into a silent rebuild.
+cache_is_stale() {
+  [ -s "$CP_CACHE" ] || return 0
+  while IFS= read -r entry; do
+    [ -e "$entry" ] || return 0
+  done < "$CP_CACHE"
+  return 1
+}
+
+if cache_is_stale || [ "${REFRESH_CP:-0}" = "1" ]; then
   echo "Collecting classpath..."
   {
     echo "$ANDROID_JAR"
