@@ -117,6 +117,17 @@ class VaultLoopbackServer(
     existing.evictedAt = System.currentTimeMillis()
   }
 
+  /**
+   * Issues a new thumbnail token, so every URL handed out before now stops working.
+   *
+   * The token was minted once per server start, so a thumbnail URL given to the image loader
+   * kept resolving after the vault locked. Locking has to take those back.
+   */
+  @Synchronized
+  fun rotateThumbnailToken() {
+    if (thumbnailTokenInternal != null) thumbnailTokenInternal = newToken()
+  }
+
   fun invalidateAllVideoSessions() {
     val now = System.currentTimeMillis()
     videoSessions.values.forEach { it.evictedAt = now }

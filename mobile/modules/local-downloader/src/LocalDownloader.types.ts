@@ -330,6 +330,29 @@ export interface LocalPrivateAuthResult {
   reason?: string;
 }
 
+/**
+ * How long the vault will stay open.
+ *
+ * Counts and timestamps only — never an entry id, a title, or anything about the loopback
+ * server's URL, which its own documentation says to treat as a secret.
+ */
+export interface LocalPrivateVaultLockState {
+  unlocked: boolean;
+  /** Milliseconds since the epoch. Zero when locked. */
+  expiresAt: number;
+  idleExpiresAt: number;
+  lastAuthAt: number;
+  /** Long operations holding the vault open: a playing video, an export, a migration. */
+  leaseCount: number;
+}
+
+export type LocalPrivateUnlockResult = LocalPrivateAuthResult & LocalPrivateVaultLockState;
+
+export interface LocalPrivateLockResult extends LocalPrivateVaultLockState {
+  /** False when something holds a lease, so nothing was interrupted. */
+  locked: boolean;
+}
+
 export interface LocalPrivateVideoItem {
   id: string;
   title: string;

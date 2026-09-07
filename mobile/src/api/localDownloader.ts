@@ -21,6 +21,9 @@ import LocalDownloaderModule, {
   type LocalImpersonationSelfTestResult,
   type LocalPrivateAuthPurpose,
   type LocalPrivateAuthResult,
+  type LocalPrivateLockResult,
+  type LocalPrivateUnlockResult,
+  type LocalPrivateVaultLockState,
   type LocalPrivateCopyToPublicResult,
   type LocalPrivateImportResult,
   type LocalPrivateMigrationCancelResult,
@@ -136,6 +139,32 @@ export async function setLocalAudioModeEnabled(enabled: boolean): Promise<{ enab
 export async function authenticateLocalPrivateAccess(purpose: LocalPrivateAuthPurpose): Promise<LocalPrivateAuthResult> {
   ensureAndroid();
   return LocalDownloaderModule.authenticatePrivateAccess({ purpose });
+}
+
+/**
+ * Open the vault.
+ *
+ * The gate is native now: any vault call can come back with `PRIVATE_VAULT_LOCKED`, and this
+ * is what answers it. `PRIVATE_STEP_UP_REQUIRED` means the session is open but the prompt is
+ * stale, which happens on a delete or an export — the same call fixes both.
+ */
+export async function unlockLocalPrivateVault(
+  purpose: LocalPrivateAuthPurpose = 'view',
+): Promise<LocalPrivateUnlockResult> {
+  ensureAndroid();
+  return LocalDownloaderModule.unlockPrivateVault({ purpose });
+}
+
+/** Returns `locked: false` when a video, an export or a migration is still holding it open. */
+export async function lockLocalPrivateVault(): Promise<LocalPrivateLockResult> {
+  ensureAndroid();
+  return LocalDownloaderModule.lockPrivateVault();
+}
+
+/** Answers while locked, so the lock indicator can always be drawn. */
+export async function getLocalPrivateVaultLockState(): Promise<LocalPrivateVaultLockState> {
+  ensureAndroid();
+  return LocalDownloaderModule.getPrivateVaultLockState();
 }
 
 export async function listLocalPrivateVideos(): Promise<LocalPrivateVideoItem[]> {

@@ -60,7 +60,7 @@ SRC_TEST="$MODULE/src/test/java/expo/modules/localdownloader"
 
 # Each entry is "<test class>|<source files...>". Add a line to cover a new suite.
 BACKUP_SOURCES="$SRC_MAIN/backup/BackupFormat.kt $SRC_MAIN/backup/BackupCrypto.kt $SRC_MAIN/backup/BackupContainer.kt $SRC_MAIN/backup/BackupSections.kt $SRC_MAIN/backup/BackupPorts.kt $SRC_MAIN/backup/BackupPipeline.kt"
-VAULT_SOURCES="$SRC_MAIN/vault/VaultIndexCodec.kt"
+VAULT_SOURCES="$SRC_MAIN/vault/VaultIndexCodec.kt $SRC_MAIN/vault/VaultSession.kt $SRC_MAIN/vault/VaultAuthPolicy.kt"
 SCHEDULER_SOURCES="$SRC_MAIN/scheduler/PriorityGate.kt $SRC_MAIN/scheduler/DownloadStages.kt"
 PAIRING_SOURCES="$SRC_MAIN/pairing/PairingWire.kt $SRC_MAIN/pairing/Ed25519Keys.kt $SRC_MAIN/pairing/PairingAuth.kt $SRC_MAIN/pairing/PeerRegistry.kt $SRC_MAIN/pairing/PairingIdentity.kt $SRC_MAIN/pairing/PeerLink.kt $SRC_MAIN/pairing/PeerContent.kt $SRC_MAIN/pairing/PeerSession.kt $SRC_MAIN/pairing/PairingService.kt"
 SUITES=(
@@ -76,6 +76,8 @@ SUITES=(
   "expo.modules.localdownloader.backup.BackupSectionsTest|$SRC_TEST/backup/BackupSectionsTest.kt"
   "expo.modules.localdownloader.backup.BackupPortsTest|$SRC_TEST/backup/BackupPortsTest.kt"
   "expo.modules.localdownloader.backup.BackupPipelineTest|$SRC_TEST/backup/BackupPipelineTest.kt"
+  "expo.modules.localdownloader.vault.VaultSessionTest|$VAULT_SOURCES $SRC_TEST/vault/VaultSessionTest.kt"
+  "expo.modules.localdownloader.vault.VaultAuthPolicyTest|$VAULT_SOURCES $SRC_TEST/vault/VaultAuthPolicyTest.kt"
   "expo.modules.localdownloader.vault.VaultIndexCodecTest|$VAULT_SOURCES $SRC_TEST/vault/VaultIndexCodecTest.kt"
   "expo.modules.localdownloader.crypto.CryptoVectorsTest|$BACKUP_SOURCES $VAULT_SOURCES $SRC_TEST/crypto/CryptoVectorsTest.kt"
 )

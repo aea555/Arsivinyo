@@ -73,7 +73,9 @@ import expo.modules.localdownloader.backup.BackupPorts
 import expo.modules.localdownloader.backup.BackupSecretException
 import expo.modules.localdownloader.backup.BackupSections
 import expo.modules.localdownloader.vault.VaultCipherV4
+import expo.modules.localdownloader.vault.VaultAuthPolicy
 import expo.modules.localdownloader.vault.VaultIndexCodec
+import expo.modules.localdownloader.vault.VaultSession
 import java.security.KeyStore
 import java.security.SecureRandom
 import java.time.Instant
@@ -339,7 +341,17 @@ class LocalDownloaderModule : Module() {
 
   private val vaultLoopbackLock = Any()
   @Volatile private var vaultLoopbackServer: VaultLoopbackServer? = null
-  @Volatile private var cachedVaultDekV4: ByteArray? = null
+  /**
+   * How long the vault stays open, and who is holding it that way.
+   *
+   * This replaces a plain cached key. The key used to live for the whole process and the
+   * biometric prompt was a screen in front of it — one that anything with bridge access could
+   * simply decline to ask for.
+   */
+  private val vaultSession = VaultSession()
+
+  /** Keyed by loopback session token, so a dropped session releases exactly its own lease. */
+  private val playbackLeases = java.util.concurrent.ConcurrentHashMap<String, VaultSession.Lease>()
   @Volatile private var activeMigrationCancel: VaultMigrator.CancelToken? = null
   @Volatile private var lastMigrationProgress: VaultMigrator.Progress? = null
   private val ytDlpUpdateLock = Any()
@@ -478,12 +490,37 @@ class LocalDownloaderModule : Module() {
       emitBackgroundStateChanged()
     }
 
+    /**
+     * Lock when the app goes away, unless something is holding the key.
+     *
+     * The vault used to re-lock only when its screen unmounted, so leaving the app with it
+     * open left the key live indefinitely. A running export or a playing video keeps its
+     * lease and is not interrupted.
+     */
+    OnActivityEntersBackground {
+      runCatching {
+        if (vaultSession.lock("background")) {
+          // Any thumbnail URL already handed out stops working, so a screenshot of the
+          // recents list cannot be used to fetch one afterwards.
+          runCatching {
+            vaultLoopbackServer?.rotateThumbnailToken()
+            vaultLoopbackServer?.invalidateAllVideoSessions()
+          }
+        }
+      }
+    }
+
     OnDestroy {
       if (activeModule === this@LocalDownloaderModule) {
         activeModule = null
       }
       runCatching { activeMigrationCancel?.cancel() }
       runCatching { stopVaultLoopbackServer() }
+      runCatching {
+        playbackLeases.values.forEach { vaultSession.endLease(it) }
+        playbackLeases.clear()
+        vaultSession.forceLock()
+      }
       syncForegroundNotification("idle", "Stopping background notification")
       appContext.reactContext?.let { DownloadNotificationController.stop(it) }
       emitBackgroundStateChanged()
@@ -617,6 +654,21 @@ class LocalDownloaderModule : Module() {
         "reason" to auth.second
       )
     }
+
+    /** Opens the vault. The screen calls this when native reports PRIVATE_VAULT_LOCKED. */
+    AsyncFunction("unlockPrivateVault") { input: Map<String, Any?> ->
+      val purpose = (input["purpose"] as? String)?.trim().orEmpty().ifBlank { "view" }
+      unlockPrivateVaultInternal(purpose)
+    }
+
+    /** Refused while an export, a migration or a video is holding the key. */
+    AsyncFunction("lockPrivateVault") {
+      val locked = vaultSession.lock("requested")
+      mapOf("locked" to locked) + privateVaultLockStateInternal()
+    }
+
+    /** Answers while locked, or the lock indicator could never be drawn. */
+    AsyncFunction("getPrivateVaultLockState") { privateVaultLockStateInternal() }
 
     AsyncFunction("listPrivateVideos") {
       listPrivateVideosInternal()
@@ -829,11 +881,18 @@ class LocalDownloaderModule : Module() {
       // A backup carrying the vault decrypts every video in it — the widest read of private
       // content the app can perform. It is gated here, in native code, because the screen
       // that starts it asks for nothing at all.
+      var exportLease: VaultSession.Lease? = null
       if (wanted.contains(BackupFormat.SECTION_VAULT)) {
         val (granted, reason) = authenticatePrivateAccessInternal("bundleExport")
         if (!granted) {
           return@AsyncFunction mapOf("success" to false, "code" to (reason ?: "PRIVATE_AUTH_FAILED"))
         }
+        // A whole-vault export is minutes of decrypting. The lease keeps the key available
+        // for the length of it, so the window lapsing part way through cannot abandon it.
+        exportLease = runCatching { vaultSession.beginLease(VaultAuthPolicy.OP_BACKUP_EXPORT) }
+          .getOrElse {
+            return@AsyncFunction mapOf("success" to false, "code" to "PRIVATE_VAULT_LOCKED")
+          }
       }
 
       val picked = pickBackupDocument(
@@ -955,6 +1014,7 @@ class LocalDownloaderModule : Module() {
         mapOf("success" to false, "code" to "BACKUP_WRITE_FAILED", "message" to message)
       } finally {
         secrets.forEach { BackupCrypto.wipe(it.secret) }
+        vaultSession.endLease(exportLease)
       }
     }
 
@@ -1342,20 +1402,27 @@ class LocalDownloaderModule : Module() {
     AsyncFunction("getVaultDiagnostics") {
       val server = vaultLoopbackServer
       val snapshot = server?.snapshot()
-      val (v3Count, v4Count, otherCount) = synchronized(privateVaultLock) {
-        val index = readPrivateVaultIndex()
-        val items = index.optJSONArray("items") ?: JSONArray()
-        var v3 = 0; var v4 = 0; var other = 0
-        for (i in 0 until items.length()) {
-          val entry = privateVideoEntryFromJson(items.optJSONObject(i)) ?: continue
-          when (entry.cipherVersion) {
-            PRIVATE_STORE_VERSION_V4 -> v4 += 1
-            PRIVATE_STORE_VERSION_V3 -> v3 += 1
-            else -> other += 1
+      // Counting needs the key now that the listing is encrypted. Nulls rather than zeros
+      // when locked: a zero here would read as an empty vault.
+      val counts: Triple<Int, Int, Int>? = synchronized(privateVaultLock) {
+        runCatching {
+          val index = readPrivateVaultIndex()
+          val items = index.optJSONArray("items") ?: JSONArray()
+          var v3 = 0; var v4 = 0; var other = 0
+          for (i in 0 until items.length()) {
+            val entry = privateVideoEntryFromJson(items.optJSONObject(i)) ?: continue
+            when (entry.cipherVersion) {
+              PRIVATE_STORE_VERSION_V4 -> v4 += 1
+              PRIVATE_STORE_VERSION_V3 -> v3 += 1
+              else -> other += 1
+            }
           }
-        }
-        Triple(v3, v4, other)
+          Triple(v3, v4, other)
+        }.getOrNull()
       }
+      val v3Count = counts?.first
+      val v4Count = counts?.second
+      val otherCount = counts?.third
       mapOf(
         "loopbackRunning" to (snapshot?.isRunning == true),
         "loopbackPort" to snapshot?.port,
@@ -1366,6 +1433,7 @@ class LocalDownloaderModule : Module() {
           "v3" to v3Count,
           "other" to otherCount,
         ),
+        "lock" to privateVaultLockStateInternal(),
         "migration" to mapOf(
           "running" to (activeMigrationCancel?.let { !it.isCancelled() } ?: false),
           "lastProcessed" to lastMigrationProgress?.processed,
@@ -3252,7 +3320,7 @@ class LocalDownloaderModule : Module() {
     val encrypted = File(privateVaultObjectsDir(create = false), entry.encFileName)
     if (!encrypted.exists()) return null
     return runCatching {
-      VaultCipherV4.plaintextLength(encrypted, entry.id, getOrCreateVaultDekV4())
+      VaultCipherV4.plaintextLength(encrypted, entry.id, requireVaultDek(VaultAuthPolicy.OP_LIST))
     }.getOrNull()
   }
 
@@ -5466,7 +5534,7 @@ class LocalDownloaderModule : Module() {
     }
 
     override fun openV4EncryptingStream(output: OutputStream, entryId: String): OutputStream {
-      val dek = getOrCreateVaultDekV4()
+      val dek = requireVaultDek(VaultAuthPolicy.OP_MIGRATE)
       return VaultCipherV4.openEncryptingStream(output, entryId, dek)
     }
 
@@ -5520,7 +5588,12 @@ class LocalDownloaderModule : Module() {
     override fun objectsDir(): File = privateVaultObjectsDir(create = true)
   }
 
-  private fun startPrivateVaultMigrationInternal(): Map<String, Any?> {
+  private fun startPrivateVaultMigrationInternal(): Map<String, Any?> = vaultSession.withLease(
+    VaultAuthPolicy.OP_MIGRATE
+  ) { runPrivateVaultMigration() }
+
+  /** Re-encrypts every v3 item. Minutes to hours, so it runs inside a lease. */
+  private fun runPrivateVaultMigration(): Map<String, Any?> {
     val context = appContext.reactContext ?: return mapOf("success" to false, "code" to "PRIVATE_MODE_UNAVAILABLE")
     val candidates = vaultMigratorHost.loadMigrationCandidates()
     if (candidates.isEmpty()) {
@@ -5863,6 +5936,9 @@ class LocalDownloaderModule : Module() {
       return try {
         val server = ensureVaultLoopbackServer()
         val session = server.registerVideoSession(entry.id)
+        // A film longer than the unlock window must not stall part way through. The lease is
+        // released when the loopback server drops the session, or when the module shuts down.
+        playbackLeases[session.token] = vaultSession.beginLease("playback")
         val url = server.videoUrl(session)
           ?: throw IllegalStateException("PRIVATE_VIDEO_NOT_FOUND")
         privateTrace(traceId, "prepare internal v4 streaming uri assigned session=${session.token.take(6)}…")
@@ -5948,26 +6024,35 @@ class LocalDownloaderModule : Module() {
     }
   }
 
-  private fun countPrivateVaultItems(): Int {
+  /**
+   * Null when the vault is locked, never zero.
+   *
+   * Counting the listing needs the key now that it is encrypted, and the diagnostics screen
+   * has to render regardless. Reporting zero would read as an empty vault.
+   */
+  private fun countPrivateVaultItems(): Int? {
     return synchronized(privateVaultLock) {
-      val index = readPrivateVaultIndex()
-      val items = index.optJSONArray("items") ?: JSONArray()
-      items.length()
+      runCatching {
+        val index = readPrivateVaultIndex()
+        (index.optJSONArray("items") ?: JSONArray()).length()
+      }.getOrNull()
     }
   }
 
-  private fun countPrivateVaultLegacyItems(): Int {
+  private fun countPrivateVaultLegacyItems(): Int? {
     return synchronized(privateVaultLock) {
-      val index = readPrivateVaultIndex()
-      val items = index.optJSONArray("items") ?: JSONArray()
-      var legacy = 0
-      for (i in 0 until items.length()) {
-        val entry = privateVideoEntryFromJson(items.optJSONObject(i)) ?: continue
-        if (entry.cipherVersion == PRIVATE_STORE_VERSION_V1) {
-          legacy += 1
+      runCatching {
+        val index = readPrivateVaultIndex()
+        val items = index.optJSONArray("items") ?: JSONArray()
+        var legacy = 0
+        for (i in 0 until items.length()) {
+          val entry = privateVideoEntryFromJson(items.optJSONObject(i)) ?: continue
+          if (entry.cipherVersion == PRIVATE_STORE_VERSION_V1) {
+            legacy += 1
+          }
         }
-      }
-      legacy
+        legacy
+      }.getOrNull()
     }
   }
 
@@ -6017,23 +6102,52 @@ class LocalDownloaderModule : Module() {
     }
   }
 
-  private fun getOrCreateVaultDekV4(): ByteArray {
-    cachedVaultDekV4?.let { return it }
+  /**
+   * Unwraps the vault key from the Keystore.
+   *
+   * The only place the master key is touched. Everything else works from the session's copy,
+   * which is what makes a window on the master key affordable: no hot path ever comes back
+   * here, so a lapsed window cannot stall a video part way through.
+   */
+  private fun unwrapVaultDekFromKeystore(): ByteArray {
     synchronized(privateVaultIoLock) {
-      cachedVaultDekV4?.let { return it }
       val vaultRoot = privateVaultRoot(create = true)
       try {
-        val dek = VaultCipherV4.getOrCreateVaultDek(vaultRoot) { getOrCreatePrivateVaultMasterKeyV2() }
-        cachedVaultDekV4 = dek
-        return dek
+        return VaultCipherV4.getOrCreateVaultDek(vaultRoot) { getOrCreatePrivateVaultMasterKeyV2() }
       } catch (kpe: KeyPermanentlyInvalidatedException) {
         throw IllegalStateException("PRIVATE_KEY_INVALIDATED: ${kpe.message}", kpe)
       }
     }
   }
 
+  /** Opens the session. Called once per unlock, after the user has actually authenticated. */
+  private fun openVaultSession(authAt: Long = System.currentTimeMillis()) {
+    val dek = unwrapVaultDekFromKeystore()
+    try {
+      vaultSession.unlock(dek, authAt)
+    } finally {
+      dek.fill(0)
+    }
+  }
+
+  /**
+   * The vault key for one operation, subject to the session window and the policy table.
+   *
+   * Callers get their own copy and should wipe it. Handing out the session's array and then
+   * wiping it on lock would truncate whatever was mid-stream, with no error to explain it.
+   */
+  private fun requireVaultDek(operation: String): ByteArray {
+    try {
+      return vaultSession.requireDek(operation)
+    } catch (locked: VaultSession.VaultLocked) {
+      throw IllegalStateException("PRIVATE_VAULT_LOCKED")
+    } catch (stale: VaultSession.StepUpRequired) {
+      throw IllegalStateException("PRIVATE_STEP_UP_REQUIRED")
+    }
+  }
+
   private fun encryptFileForPrivateVaultV4(source: File, output: File, entryId: String) {
-    val dek = getOrCreateVaultDekV4()
+    val dek = requireVaultDek(VaultAuthPolicy.OP_IMPORT)
     source.inputStream().use { input ->
       output.outputStream().use { fileOut ->
         VaultCipherV4.encryptStream(input, fileOut, entryId, dek)
@@ -6048,14 +6162,14 @@ class LocalDownloaderModule : Module() {
   }
 
   private fun decryptPrivateVaultFileV4ToStream(source: File, output: OutputStream, entryId: String) {
-    val dek = getOrCreateVaultDekV4()
+    val dek = requireVaultDek(VaultAuthPolicy.OP_PLAY)
     source.inputStream().use { input ->
       VaultCipherV4.decryptStream(input, output, entryId, dek)
     }
   }
 
   private fun encryptThumbnailBytesV4(jpegBytes: ByteArray, entryId: String, thumbName: String): String? {
-    val dek = getOrCreateVaultDekV4()
+    val dek = requireVaultDek(VaultAuthPolicy.OP_IMPORT)
     val target = File(privateVaultThumbsDir(create = true), thumbName)
     val tmp = File(target.parentFile, "$thumbName.tmp")
     return try {
@@ -6135,6 +6249,9 @@ class LocalDownloaderModule : Module() {
       runCatching { vaultLoopbackServer?.stop() }
       vaultLoopbackServer = null
     }
+    // Every playback session died with it, so nothing is holding the key open any more.
+    playbackLeases.values.forEach { vaultSession.endLease(it) }
+    playbackLeases.clear()
   }
 
   private val vaultLoopbackProvider = object : VaultLoopbackProvider {
@@ -6144,7 +6261,7 @@ class LocalDownloaderModule : Module() {
       val file = File(privateVaultObjectsDir(create = false), entry.encFileName)
       if (!file.exists() || !file.isFile) return null
       return try {
-        val dek = getOrCreateVaultDekV4()
+        val dek = requireVaultDek(VaultAuthPolicy.OP_PLAY)
         val channel = VaultCipherV4.openDecryptingChannel(file, entryId, dek)
         val plaintextLength = channel.size()
         val contentType = entry.mimeType.ifBlank { guessMimeType(entry.title) }
@@ -6239,7 +6356,7 @@ class LocalDownloaderModule : Module() {
     writePrivateVaultIndex(parsed)
 
     val verified = runCatching {
-      JSONObject(VaultIndexCodec.open(getOrCreateVaultDekV4(), privateVaultIndexFileV2().readBytes()))
+      JSONObject(VaultIndexCodec.open(requireVaultDek(VaultAuthPolicy.OP_LIST), privateVaultIndexFileV2().readBytes()))
     }.getOrNull()
     val sameItems = verified?.optJSONArray("items")?.length() == parsed.optJSONArray("items")?.length()
     if (verified == null || !sameItems) {
@@ -6276,7 +6393,7 @@ class LocalDownloaderModule : Module() {
       return initial
     }
     return runCatching {
-      val parsed = JSONObject(VaultIndexCodec.open(getOrCreateVaultDekV4(), encrypted.readBytes()))
+      val parsed = JSONObject(VaultIndexCodec.open(requireVaultDek(VaultAuthPolicy.OP_LIST), encrypted.readBytes()))
       if (!parsed.has("items")) {
         parsed.put("items", JSONArray())
       }
@@ -6303,7 +6420,7 @@ class LocalDownloaderModule : Module() {
   private fun writePrivateVaultIndex(index: JSONObject) {
     // Sealed under a key derived from the vault's own DEK, so it inherits whatever protects
     // that — including, later, an auth-bound master key — with no second key to migrate.
-    val sealed = VaultIndexCodec.seal(getOrCreateVaultDekV4(), index.toString())
+    val sealed = VaultIndexCodec.seal(requireVaultDek(VaultAuthPolicy.OP_LIST), index.toString())
     atomicWriteBytes(privateVaultIndexFileV2(createParent = true), sealed)
   }
 
@@ -7407,7 +7524,41 @@ class LocalDownloaderModule : Module() {
       return false to (reason[0] ?: "PRIVATE_AUTH_FAILED")
     }
     debug("[PRIVATE] auth success purpose=$purpose")
-    return true to null
+    // The prompt is now what opens the session, rather than a screen in front of a key that
+    // was already cached. A prompt for a destructive action also refreshes the step-up clock.
+    return runCatching {
+      if (vaultSession.snapshot().unlocked) {
+        vaultSession.noteFreshAuth()
+      } else {
+        openVaultSession()
+      }
+      true to null
+    }.getOrElse { failure ->
+      debug("[PRIVATE] auth succeeded but the vault would not open: ${failure.message}")
+      val code = failure.message?.substringBefore(":") ?: "PRIVATE_STORAGE_UNAVAILABLE"
+      false to code
+    }
+  }
+
+  /** Opens the vault, prompting if it is not already open. */
+  private fun unlockPrivateVaultInternal(purpose: String): Map<String, Any?> {
+    val (granted, reason) = authenticatePrivateAccessInternal(purpose)
+    return mapOf("granted" to granted, "reason" to reason) + privateVaultLockStateInternal()
+  }
+
+  /**
+   * Counts and timestamps only. Never entry ids, never titles, and never the loopback token or
+   * its URL — the loopback server's own documentation is explicit that the URL is a secret.
+   */
+  private fun privateVaultLockStateInternal(): Map<String, Any?> {
+    val state = vaultSession.snapshot()
+    return mapOf(
+      "unlocked" to state.unlocked,
+      "expiresAt" to state.expiresAt,
+      "idleExpiresAt" to state.idleExpiresAt,
+      "lastAuthAt" to state.lastAuthAt,
+      "leaseCount" to state.leaseCount,
+    )
   }
 
   private fun isPrivateAuthAvailable(context: Context): Boolean {

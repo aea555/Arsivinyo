@@ -29,6 +29,9 @@ import type {
   LocalDownloadStartResult,
   LocalPrivateAuthPurpose,
   LocalPrivateAuthResult,
+  LocalPrivateLockResult,
+  LocalPrivateUnlockResult,
+  LocalPrivateVaultLockState,
   LocalPrivateModeState,
   LocalPrivateVideoItem,
   LocalImpersonationSelfTestResult,
@@ -76,6 +79,9 @@ type LocalDownloaderNativeModule = {
   getAudioFormat(): Promise<LocalAudioFormatState>;
   setAudioFormat(input: { format: LocalAudioFormat }): Promise<LocalAudioFormatState>;
   authenticatePrivateAccess(input: { purpose: LocalPrivateAuthPurpose }): Promise<LocalPrivateAuthResult>;
+  unlockPrivateVault(input: { purpose: LocalPrivateAuthPurpose }): Promise<LocalPrivateUnlockResult>;
+  lockPrivateVault(): Promise<LocalPrivateLockResult>;
+  getPrivateVaultLockState(): Promise<LocalPrivateVaultLockState>;
   listPrivateVideos(): Promise<LocalPrivateVideoItem[]>;
   deletePrivateVideo(input: { id: string }): Promise<{ success: boolean }>;
   copyPrivateVideoToPublicGallery(input: { id: string }): Promise<LocalPrivateCopyToPublicResult>;
@@ -195,6 +201,9 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       getAudioFormat: async () => unsupported(),
       setAudioFormat: async () => unsupported(),
       authenticatePrivateAccess: async () => unsupported(),
+      unlockPrivateVault: async () => unsupported(),
+      lockPrivateVault: async () => unsupported(),
+      getPrivateVaultLockState: async () => unsupported(),
       listPrivateVideos: async () => unsupported(),
       deletePrivateVideo: async () => unsupported(),
       copyPrivateVideoToPublicGallery: async () => unsupported(),
