@@ -66,6 +66,27 @@ class DiscoveryInstrumentedTest {
   }
 
   @Test
+  fun aDeviceThatAnnouncesDoesNotListItself() {
+    // The case the app actually runs, and the one the other test here does not cover: a
+    // single instance that both announces and looks. The finder there passes port 0 and so
+    // publishes nothing, which means its "never lists itself" check asserts the absence of
+    // something that was never on the network.
+    val own = Ed25519Keys.fingerprint(Ed25519Keys.generate()!!.second)
+
+    val sawSomething = CountDownLatch(1)
+    announcer = Discovery(context).apply {
+      onPeerFound = { sawSomething.countDown() }
+    }
+    assertTrue(announcer!!.start(own, "Alone", 7443))
+
+    // Give discovery long enough to resolve whatever is out there, including this device.
+    sawSomething.await(30, TimeUnit.SECONDS)
+
+    assertTrue("a device that announces must not then discover itself",
+      announcer!!.peers().none { it.fingerprint == own })
+  }
+
+  @Test
   fun stoppingClearsWhatWasFound() {
     val announced = Ed25519Keys.fingerprint(Ed25519Keys.generate()!!.second)
     announcer = Discovery(context)
