@@ -4202,21 +4202,14 @@ class LocalDownloaderModule : Module() {
     val context = appContext.reactContext
       ?: return mapOf("restarted" to false, "reason" to "NO_CONTEXT")
 
-    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
-      ?: return mapOf("restarted" to false, "reason" to "NO_LAUNCH_INTENT")
-
-    // makeRestartActivityTask clears the task and starts fresh, which is what makes the
-    // new process come up clean rather than restoring the one being replaced.
-    val restart = Intent.makeRestartActivityTask(launch.component).apply {
-      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Handed to a helper in its own process. Starting the launcher from here and then
+    // exiting only closed the app: the process died before the system finished bringing
+    // the activity up, and a dead process cannot start one either.
+    val restart = Intent(context, RestartActivity::class.java).apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+      putExtra(RestartActivity.EXTRA_PID, android.os.Process.myPid())
     }
     context.startActivity(restart)
-
-    // Give the activity a moment to be handed to the system before this process goes.
-    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-      Runtime.getRuntime().exit(0)
-    }, RESTART_DELAY_MS)
-
     return mapOf("restarted" to true)
   }
 
@@ -8793,8 +8786,6 @@ class LocalDownloaderModule : Module() {
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
-    /** Long enough for the launch intent to reach the system before this process exits. */
-    private const val RESTART_DELAY_MS = 350L
     private const val COOKIE_KEY_ALIAS = "arsivinyo.local.cookies.v1"
     private const val PRIVATE_VAULT_KEY_ALIAS_V1 = "arsivinyo.local.private.v1"
     private const val PRIVATE_VAULT_MASTER_KEY_ALIAS_V2 = "arsivinyo.local.private.master.v2"

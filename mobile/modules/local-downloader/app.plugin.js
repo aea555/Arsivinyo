@@ -22,6 +22,7 @@ const QUICK_CAPTURE_ACTIVITY_NAME = 'expo.modules.localdownloader.QuickDownloadC
 const PRIVATE_IMPORT_ACTIVITY_NAME = 'expo.modules.localdownloader.PrivateVaultImportActivity';
 const SOUNDS_IMPORT_ACTIVITY_NAME = 'expo.modules.localdownloader.SoundsImportActivity';
 const BACKUP_DOCUMENT_ACTIVITY_NAME = 'expo.modules.localdownloader.BackupDocumentActivity';
+const RESTART_ACTIVITY_NAME = 'expo.modules.localdownloader.RestartActivity';
 
 const TAGS = {
   buildscriptRepo: {
@@ -293,6 +294,17 @@ function addAndroidManifestChanges(config) {
       'android:exported': 'false',
       'android:excludeFromRecents': 'true',
       'android:launchMode': 'singleTask',
+      'android:taskAffinity': '',
+      'android:theme': '@android:style/Theme.Translucent.NoTitleBar',
+    });
+
+    // Restarting the app after a yt-dlp update. It runs in its own process on purpose:
+    // whatever kills the main one has to still be alive afterwards to start it again.
+    ensureApplicationEntry(mainApplication, 'activity', RESTART_ACTIVITY_NAME, {
+      'android:exported': 'false',
+      'android:excludeFromRecents': 'true',
+      'android:process': ':restart',
+      'android:launchMode': 'singleInstance',
       'android:taskAffinity': '',
       'android:theme': '@android:style/Theme.Translucent.NoTitleBar',
     });
