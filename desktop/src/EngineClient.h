@@ -28,6 +28,9 @@ class EngineClient : public QObject {
     Q_PROPERTY(QString ytDlpVersion READ ytDlpVersion NOTIFY ytDlpVersionChanged)
     Q_PROPERTY(QString enginePath READ enginePath CONSTANT)
     Q_PROPERTY(QString downloadDir READ downloadDir CONSTANT)
+    Q_PROPERTY(bool updatingYtDlp READ updatingYtDlp NOTIFY ytDlpUpdateChanged)
+    Q_PROPERTY(QString ytDlpUpdateStatus READ ytDlpUpdateStatus NOTIFY ytDlpUpdateChanged)
+    Q_PROPERTY(double ytDlpUpdateProgress READ ytDlpUpdateProgress NOTIFY ytDlpUpdateChanged)
 
 public:
     explicit EngineClient(QObject *parent = nullptr);
@@ -44,6 +47,12 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void download(const QString &url, const QString &outputDir, bool audioOnly);
     Q_INVOKABLE void cancel();
+    /** Fetch the newest yt-dlp. It takes effect when the engine next starts. */
+    Q_INVOKABLE void updateYtDlp();
+
+    bool updatingYtDlp() const { return m_updatingYtDlp; }
+    QString ytDlpUpdateStatus() const { return m_ytDlpUpdateStatus; }
+    double ytDlpUpdateProgress() const { return m_ytDlpUpdateProgress; }
 
     /** What is on the clipboard, if it looks like a link. QML has no clipboard access. */
     Q_INVOKABLE QString clipboardUrl() const;
@@ -51,6 +60,7 @@ public:
     Q_INVOKABLE QString hostOf(const QString &url) const;
 
 signals:
+    void ytDlpUpdateChanged();
     void readyChanged();
     void busyChanged();
     void statusChanged();
@@ -64,11 +74,17 @@ private:
     void handleEvent(const QJsonObject &event);
     void send(const QJsonObject &request);
     static QString resolveEnginePath();
+    /** Arguments for [resolveEnginePath], empty for a frozen sidecar. */
+    static QStringList resolveEngineArgs(const QString &path);
     static QString resolveDownloadDir();
 
     QProcess m_process;
     QString m_enginePath;
+    QStringList m_engineArgs;
     QString m_downloadDir;
+    bool m_updatingYtDlp = false;
+    QString m_ytDlpUpdateStatus;
+    double m_ytDlpUpdateProgress = 0;
     QString m_activeId;
     QString m_status;
     QString m_ytDlpVersion;

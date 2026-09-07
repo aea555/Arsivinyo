@@ -104,7 +104,7 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 32
+        anchors.margins: 36
         spacing: 0
 
         RowLayout {
@@ -116,8 +116,8 @@ ApplicationWindow {
                 font.pixelSize: 20
             }
             Item { Layout.fillWidth: true }
-            ThemePicker {}
             Rectangle {
+                visible: engine.busy || engine.ytDlpVersion.length > 0
                 implicitHeight: 24
                 // Capped: an engine error is a sentence, not a version string.
                 implicitWidth: Math.min(badge.implicitWidth, 320) + 20
@@ -130,13 +130,10 @@ ApplicationWindow {
                     // A failure has to be visible. Reading only `ready` made a missing
                     // engine look identical to one still starting, so the app sat on
                     // "starting…" forever while knowing exactly what was wrong.
-                    text: engine.ytDlpVersion ? "yt-dlp " + engine.ytDlpVersion
-                          : engine.ready ? qsTr("engine ready")
-                          : engine.status.length ? engine.status
-                          : qsTr("starting…")
-                    color: engine.ready ? Theme.textMuted
-                           : engine.status.length ? Theme.error
-                           : Theme.textSubtle
+                    text: engine.busy ? engine.status
+                          : engine.ytDlpVersion ? "yt-dlp " + engine.ytDlpVersion
+                          : ""
+                    color: Theme.textMuted
                     elide: Text.ElideRight
                     width: Math.min(implicitWidth, 320)
                     font.family: Fonts.body
@@ -145,7 +142,7 @@ ApplicationWindow {
             }
         }
 
-        Item { height: 18 }
+        Item { height: 24 }
 
         // Two views rather than a sidebar: the app does two things, and a sidebar for
         // two entries is furniture.
@@ -153,7 +150,7 @@ ApplicationWindow {
             Layout.alignment: Qt.AlignHCenter
             spacing: 4
             Repeater {
-                model: [qsTr("Download"), qsTr("Library"), qsTr("Devices")]
+                model: [qsTr("Download"), qsTr("Library"), qsTr("Devices"), qsTr("Settings")]
                 Pressable {
                     required property int index
                     required property string modelData
@@ -177,7 +174,7 @@ ApplicationWindow {
             }
         }
 
-        Item { height: 18 }
+        Item { height: 26 }
 
         StackLayout {
             Layout.fillWidth: true
@@ -241,18 +238,27 @@ ApplicationWindow {
                 spacing: 0
                 Repeater {
                     model: [qsTr("Video"), qsTr("Audio")]
-                    Text {
+                    Pressable {
                         required property int index
                         required property string modelData
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        text: modelData
-                        color: (index === 1) === root.audioMode ? Theme.text : Theme.textSubtle
-                        font.family: Fonts.body
-                        font.pixelSize: 13
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        TapHandler { onTapped: if (!engine.busy) root.audioMode = (index === 1) }
+                        radius: 8
+                        selected: (index === 1) === root.audioMode
+                        interactive: !engine.busy
+                        onClicked: root.audioMode = (index === 1)
+                        Text {
+                            anchors.fill: parent
+                            text: modelData
+                            color: (index === 1) === root.audioMode ? Theme.text
+                                 : parent.hovered ? Theme.textMuted
+                                 : Theme.textSubtle
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            font.family: Fonts.body
+                            font.pixelSize: 13
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
             }
@@ -278,6 +284,13 @@ ApplicationWindow {
                     root.resultMessage = text
                     clearResult.restart()
                 }
+            }
+
+            // Last, because a StackLayout's child order is what `currentIndex` selects and
+            // the tab labels above are read in the same order.
+            SettingsView {
+                engine: engine
+                library: library
             }
         }
 
@@ -328,8 +341,9 @@ ApplicationWindow {
             Layout.fillWidth: true
             text: root.tab === 0 ? engine.downloadDir
                   : root.tab === 1 ? library.musicDir
-                  : (pairing.listening ? qsTr("Listening on port ") + pairing.port
-                                       : qsTr("Not listening"))
+                  : root.tab === 2 ? (pairing.listening ? qsTr("Listening on port ") + pairing.port
+                                                        : qsTr("Not listening"))
+                  : ""
             color: Theme.textSubtle
             font.family: Fonts.body
             font.pixelSize: 11

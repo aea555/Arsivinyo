@@ -149,6 +149,34 @@ def _run_preflight(request_id: str, req: Dict[str, Any]) -> None:
         emit({"id": request_id, "type": "result", "ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
 
+def _run_ytdlp_update(request_id: str, req: Dict[str, Any]) -> None:
+    """Fetch the newest yt-dlp and queue it for the next start.
+
+    The phone can update its extractor without a new build, because extractors break far
+    more often than the app around them. This is the same thing for the desktop.
+    """
+    try:
+        import ytdlp_updater
+
+        def report(stage: str, done: int, total: int) -> None:
+            emit({"id": request_id, "type": "ytDlpProgress",
+                  "stage": stage, "done": done, "total": total})
+
+        root = req.get("root") or _bundle_root()
+        result = ytdlp_updater.install_override(root, report)
+        emit({"id": request_id, "type": "result", "ok": True, "result": result})
+    except Exception as exc:
+        emit({"id": request_id, "type": "result", "ok": False,
+              "error": f"{type(exc).__name__}: {exc}"})
+
+
+def _bundle_root() -> str:
+    """Where yt-dlp lives: beside the executable when frozen, beside this file otherwise."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def _handle(req: Dict[str, Any]) -> None:
     request_id = str(req.get("id", ""))
     op = req.get("op")
@@ -171,9 +199,17 @@ def _handle(req: Dict[str, Any]) -> None:
     elif op == "diagnostics":
         emit({"id": request_id, "type": "result", "ok": True, "result": json.loads(_engine().get_runtime_diagnostics())})
     elif op == "version":
-        import yt_dlp  # resolved through sys.path, never frozen in — see freeze.py
+        # Absent rather than fatal: a fresh install has no yt-dlp until it is fetched, and
+        # the app needs to say so instead of failing to start.
+        try:
+            import yt_dlp  # resolved through sys.path, never frozen in — see freeze.py
+            version = yt_dlp.version.__version__
+        except Exception:
+            version = None
         emit({"id": request_id, "type": "result", "ok": True,
-              "result": {"ytDlp": yt_dlp.version.__version__, "frozen": bool(getattr(sys, "frozen", False))}})
+              "result": {"ytDlp": version, "frozen": bool(getattr(sys, "frozen", False))}})
+    elif op == "updateYtDlp":
+        _spawn(_run_ytdlp_update, request_id, req)
     else:
         emit({"id": request_id, "type": "result", "ok": False, "error": f"UNKNOWN_OP:{op}"})
 

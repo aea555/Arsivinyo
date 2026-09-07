@@ -12,7 +12,10 @@
 #include <QUrl>
 
 EngineClient::EngineClient(QObject *parent)
-    : QObject(parent), m_enginePath(resolveEnginePath()), m_downloadDir(resolveDownloadDir()) {
+    : QObject(parent),
+      m_enginePath(resolveEnginePath()),
+      m_engineArgs(resolveEngineArgs(m_enginePath)),
+      m_downloadDir(resolveDownloadDir()) {
     connect(&m_process, &QProcess::readyReadStandardOutput, this, &EngineClient::onStdout);
     connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         m_status = QStringLiteral("engine failed to start: %1").arg(m_process.errorString());
@@ -40,7 +43,25 @@ QString EngineClient::resolveEnginePath() {
         const QFileInfo candidate(dir.filePath(name));
         if (candidate.isExecutable()) return candidate.absoluteFilePath();
     }
+
+    // Failing that, run the engine from source. A checkout has no frozen sidecar until
+    // someone builds one, and refusing to start over that leaves a developer staring at an
+    // error for a file that was never meant to exist yet.
+    QDir search(QCoreApplication::applicationDirPath());
+    for (int up = 0; up < 5; ++up) {
+        // bootstrap.py, not host.py: the bootstrap is what puts yt-dlp on sys.path and
+        // applies a downloaded override. Starting the host directly leaves no extractor.
+        const QFileInfo boot(search.filePath(QStringLiteral("shared/engine/bootstrap.py")));
+        if (boot.isFile()) return boot.absoluteFilePath();
+        if (!search.cdUp()) break;
+    }
     return {};
+}
+
+QStringList EngineClient::resolveEngineArgs(const QString &path) {
+    // A frozen sidecar runs itself; the source host needs an interpreter in front of it.
+    if (!path.endsWith(QStringLiteral(".py"))) return {};
+    return {path};
 }
 
 QString EngineClient::resolveDownloadDir() {
@@ -59,7 +80,20 @@ void EngineClient::start() {
         emit statusChanged();
         return;
     }
-    m_process.start(m_enginePath, {});
+    if (m_engineArgs.isEmpty()) {
+        m_process.start(m_enginePath, {});
+    } else {
+        m_process.start(QStringLiteral("python3"), m_engineArgs);
+    }
+}
+
+void EngineClient::updateYtDlp() {
+    if (m_updatingYtDlp || m_process.state() != QProcess::Running) return;
+    m_updatingYtDlp = true;
+    m_ytDlpUpdateProgress = 0;
+    m_ytDlpUpdateStatus = QStringLiteral("checking");
+    emit ytDlpUpdateChanged();
+    send({{"id", "ytdlp"}, {"op", "updateYtDlp"}});
 }
 
 void EngineClient::send(const QJsonObject &request) {
@@ -146,6 +180,32 @@ void EngineClient::handleEvent(const QJsonObject &event) {
             m_status = message;
             emit statusChanged();
         }
+        return;
+    }
+
+    if (type == "ytDlpProgress") {
+        m_ytDlpUpdateStatus = event.value("stage").toString();
+        const double total = event.value("total").toDouble();
+        m_ytDlpUpdateProgress = total > 0 ? event.value("done").toDouble() / total : 0;
+        emit ytDlpUpdateChanged();
+        return;
+    }
+
+    if (type == "result" && event.value("id").toString() == QLatin1String("ytdlp")) {
+        m_updatingYtDlp = false;
+        m_ytDlpUpdateProgress = 0;
+        if (event.value("ok").toBool()) {
+            const QJsonObject result = event.value("result").toObject();
+            const QString status = result.value("status").toString();
+            const QString version = result.value("version").toString();
+            m_ytDlpUpdateStatus = status == QLatin1String("current")
+                ? QStringLiteral("already on %1").arg(version)
+                // Queued, not live: yt-dlp is already imported, so it lands on restart.
+                : QStringLiteral("%1 installed — restart the engine").arg(version);
+        } else {
+            m_ytDlpUpdateStatus = event.value("error").toString();
+        }
+        emit ytDlpUpdateChanged();
         return;
     }
 
