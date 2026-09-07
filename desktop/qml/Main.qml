@@ -117,16 +117,26 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Rectangle {
                 implicitHeight: 24
-                implicitWidth: badge.implicitWidth + 20
+                // Capped: an engine error is a sentence, not a version string.
+                implicitWidth: Math.min(badge.implicitWidth, 320) + 20
                 radius: 12
                 color: Theme.surface
                 border.color: Theme.border
                 Text {
                     id: badge
                     anchors.centerIn: parent
+                    // A failure has to be visible. Reading only `ready` made a missing
+                    // engine look identical to one still starting, so the app sat on
+                    // "starting…" forever while knowing exactly what was wrong.
                     text: engine.ytDlpVersion ? "yt-dlp " + engine.ytDlpVersion
-                                              : (engine.ready ? qsTr("engine ready") : qsTr("starting…"))
-                    color: engine.ready ? Theme.textMuted : Theme.textSubtle
+                          : engine.ready ? qsTr("engine ready")
+                          : engine.status.length ? engine.status
+                          : qsTr("starting…")
+                    color: engine.ready ? Theme.textMuted
+                           : engine.status.length ? Theme.error
+                           : Theme.textSubtle
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, 320)
                     font.family: Fonts.body
                     font.pixelSize: 11
                 }
@@ -170,9 +180,16 @@ ApplicationWindow {
             Layout.fillHeight: true
             currentIndex: root.tab
 
-            ColumnLayout {
-                spacing: 0
-                Item { Layout.fillHeight: true }
+            // Wrapped in an Item whose layout is anchored, rather than a bare
+            // ColumnLayout: a StackLayout leaves its child at its implicit width, so the
+            // column was only as wide as the button and centring inside it did nothing —
+            // the button sat against the left edge. LibraryView and DevicesView already
+            // have this shape, which is why they fill correctly.
+            Item {
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
+                    Item { Layout.fillHeight: true }
                 DownloadButton {
             Layout.alignment: Qt.AlignHCenter
             state_: engine.busy ? "busy"
@@ -236,7 +253,8 @@ ApplicationWindow {
                 }
             }
                 }
-                Item { Layout.fillHeight: true }
+                    Item { Layout.fillHeight: true }
+                }
             }
 
             LibraryView {

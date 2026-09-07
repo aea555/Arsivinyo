@@ -129,3 +129,15 @@ qt_add_executable(address_test tests/address_test.cpp src/LocalAddress.h src/Loc
 target_include_directories(address_test PRIVATE src)
 target_link_libraries(address_test PRIVATE Qt6::Core Qt6::Network)
 add_test(NAME address COMMAND address_test)
+
+# A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
+# and not a test: it needs another device on the network to talk to.
+if(ARSIVINYO_DEV_TOOLS)
+    qt_add_executable(pair_probe tools/pair_probe.cpp
+        src/DeviceIdentity.h src/DeviceIdentity.cpp
+        src/SessionCertificate.h src/SessionCertificate.cpp
+        src/PeerLink.h src/PeerLink.cpp
+        ${ARSIVINYO_PAIRING}/wire.cpp)
+    target_include_directories(pair_probe PRIVATE src ${ARSIVINYO_PAIRING})
+    target_link_libraries(pair_probe PRIVATE Qt6::Core Qt6::Network Qt6::Qml PkgConfig::LIBCRYPTO)
+endif()
