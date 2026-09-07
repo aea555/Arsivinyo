@@ -348,6 +348,29 @@ export interface LocalPrivateVaultLockState {
 
 export type LocalPrivateUnlockResult = LocalPrivateAuthResult & LocalPrivateVaultLockState;
 
+/** Which key opens the vault, and whether there is a way in that is not this device. */
+export interface LocalVaultKeyState {
+  /** 'keystore-v2' is the original key; 'keystore-v3' requires a recent unlock. */
+  activeSlot: string | null;
+  authBound: boolean;
+  hasRecoverySlot: boolean;
+  /** True once the original, unbound key has been destroyed. */
+  fullyMigrated: boolean;
+}
+
+export type LocalVaultKeyOutcome =
+  | 'ALREADY_V3'
+  | 'MIGRATED'
+  | 'FAILED'
+  | 'ROLLED_BACK'
+  | 'UNRECOVERABLE';
+
+export interface LocalVaultKeyResult extends LocalVaultKeyState {
+  success: boolean;
+  outcome?: LocalVaultKeyOutcome;
+  code?: string | null;
+}
+
 export interface LocalPrivateLockResult extends LocalPrivateVaultLockState {
   /** False when something holds a lease, so nothing was interrupted. */
   locked: boolean;

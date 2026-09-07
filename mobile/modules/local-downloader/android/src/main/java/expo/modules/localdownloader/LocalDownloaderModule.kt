@@ -75,6 +75,8 @@ import expo.modules.localdownloader.backup.BackupSections
 import expo.modules.localdownloader.vault.VaultCipherV4
 import expo.modules.localdownloader.vault.VaultAuthPolicy
 import expo.modules.localdownloader.vault.VaultIndexCodec
+import expo.modules.localdownloader.vault.VaultKeyBox
+import expo.modules.localdownloader.vault.VaultKeystoreKeys
 import expo.modules.localdownloader.vault.VaultSession
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -669,6 +671,67 @@ class LocalDownloaderModule : Module() {
 
     /** Answers while locked, or the lock indicator could never be drawn. */
     AsyncFunction("getPrivateVaultLockState") { privateVaultLockStateInternal() }
+
+    /** Which key opens the vault, and whether there is a way in that is not this device. */
+    AsyncFunction("getVaultKeyState") { vaultKeyStateInternal() }
+
+    /**
+     * Move the vault onto a key the Keystore will not use without a recent unlock.
+     *
+     * Roughly sixty bytes move; the videos are never re-encrypted. The old key is kept until
+     * the new one has been used and a recovery passphrase exists.
+     */
+    AsyncFunction("upgradeVaultKey") { upgradeVaultKeyInternal() }
+
+    /** Destroy the old key. Refused without a recovery passphrase unless forced. */
+    AsyncFunction("finaliseVaultKeyUpgrade") { input: Map<String, Any?> ->
+      finaliseVaultKeyInternal(force = (input["force"] as? Boolean) == true)
+    }
+
+    /**
+     * Set a passphrase that opens the vault when the device key cannot.
+     *
+     * The only defence against the screen lock being removed, which deletes a hardware-bound
+     * key permanently and cannot be prevented by any setting.
+     */
+    AsyncFunction("setVaultRecoveryPassphrase") { input: Map<String, Any?> ->
+      val passphrase = (input["passphrase"] as? String).orEmpty()
+      if (passphrase.length < 14) {
+        return@AsyncFunction mapOf("success" to false, "code" to "PRIVATE_RECOVERY_TOO_SHORT")
+      }
+      val (granted, reason) = authenticatePrivateAccessInternal("migrate")
+      if (!granted) {
+        return@AsyncFunction mapOf("success" to false, "code" to (reason ?: "PRIVATE_AUTH_FAILED"))
+      }
+      val characters = passphrase.toCharArray()
+      try {
+        vaultKeyBox().addRecoverySlot(characters)
+        mapOf("success" to true) + vaultKeyStateInternal()
+      } catch (error: Throwable) {
+        mapOf("success" to false, "code" to (error.message ?: "PRIVATE_RECOVERY_FAILED"))
+      } finally {
+        characters.fill('\u0000')
+      }
+    }
+
+    /** Open the vault with the recovery passphrase, when the device key is gone. */
+    AsyncFunction("unlockVaultWithRecovery") { input: Map<String, Any?> ->
+      val passphrase = (input["passphrase"] as? String).orEmpty()
+      val characters = passphrase.toCharArray()
+      try {
+        val dek = vaultKeyBox().unlockWithRecovery(characters)
+        try {
+          vaultSession.unlock(dek, System.currentTimeMillis())
+        } finally {
+          dek.fill(0)
+        }
+        mapOf("success" to true) + privateVaultLockStateInternal() + vaultKeyStateInternal()
+      } catch (error: Throwable) {
+        mapOf("success" to false, "code" to (error.message ?: "PRIVATE_RECOVERY_FAILED"))
+      } finally {
+        characters.fill('\u0000')
+      }
+    }
 
     AsyncFunction("listPrivateVideos") {
       listPrivateVideosInternal()
@@ -6102,6 +6165,21 @@ class LocalDownloaderModule : Module() {
     }
   }
 
+  private val vaultKeystoreKeys by lazy { VaultKeystoreKeys() }
+
+  /** Files under `private_vault/keys/`, which is all the key box owns. */
+  private fun vaultKeyBox(): VaultKeyBox {
+    val dir = File(privateVaultRoot(create = true), PRIVATE_VAULT_KEYS_DIRNAME).apply { mkdirs() }
+    val store = object : VaultKeyBox.Store {
+      override fun read(name: String): ByteArray? =
+        File(dir, name).takeIf { it.isFile }?.readBytes()
+      override fun write(name: String, bytes: ByteArray) = atomicWriteBytes(File(dir, name), bytes)
+      override fun delete(name: String) { File(dir, name).delete() }
+      override fun exists(name: String): Boolean = File(dir, name).isFile
+    }
+    return VaultKeyBox(store, vaultKeystoreKeys)
+  }
+
   /**
    * Unwraps the vault key from the Keystore.
    *
@@ -6112,12 +6190,76 @@ class LocalDownloaderModule : Module() {
   private fun unwrapVaultDekFromKeystore(): ByteArray {
     synchronized(privateVaultIoLock) {
       val vaultRoot = privateVaultRoot(create = true)
-      try {
-        return VaultCipherV4.getOrCreateVaultDek(vaultRoot) { getOrCreatePrivateVaultMasterKeyV2() }
-      } catch (kpe: KeyPermanentlyInvalidatedException) {
-        throw IllegalStateException("PRIVATE_KEY_INVALIDATED: ${kpe.message}", kpe)
+      val box = vaultKeyBox()
+      // A vault with no wrapped key yet is a new one: the old path creates it, under the
+      // unbound key, which is exactly the state the key box's defaults describe.
+      val existing = File(File(vaultRoot, PRIVATE_VAULT_KEYS_DIRNAME), VaultKeyBox.DEK_V4_FILE)
+      if (!existing.isFile && !File(File(vaultRoot, PRIVATE_VAULT_KEYS_DIRNAME), VaultKeyBox.STATE_FILE).isFile) {
+        try {
+          return VaultCipherV4.getOrCreateVaultDek(vaultRoot) { getOrCreatePrivateVaultMasterKeyV2() }
+        } catch (kpe: KeyPermanentlyInvalidatedException) {
+          throw IllegalStateException("PRIVATE_KEY_INVALIDATED: ${kpe.message}", kpe)
+        }
+      }
+      return try {
+        box.dek()
+      } catch (invalidated: VaultKeyBox.MasterKeyError.Invalidated) {
+        // The key is gone: a new fingerprint, or the screen lock removed. While the old wrap
+        // is still there this costs nothing but a fallback.
+        val recovery = box.recoverFromInvalidatedKey()
+        debug("[PRIVATE] key invalidated, recovery=${recovery.outcome} ${recovery.detail ?: ""}")
+        if (recovery.outcome == VaultKeyBox.Outcome.ROLLED_BACK) {
+          box.dek()
+        } else {
+          throw IllegalStateException(recovery.detail ?: "PRIVATE_KEY_INVALIDATED")
+        }
+      } catch (needsAuth: VaultKeyBox.MasterKeyError.AuthRequired) {
+        throw IllegalStateException("PRIVATE_AUTH_REQUIRED")
       }
     }
+  }
+
+  /** Moves the vault onto a key the Keystore will not use without a recent unlock. */
+  private fun upgradeVaultKeyInternal(): Map<String, Any?> {
+    val (granted, reason) = authenticatePrivateAccessInternal("migrate")
+    if (!granted) return mapOf("success" to false, "code" to (reason ?: "PRIVATE_AUTH_FAILED"))
+    val box = vaultKeyBox()
+    val result = runCatching { box.migrateToV3() }.getOrElse {
+      return mapOf("success" to false, "code" to (it.message ?: "PRIVATE_KEY_UPGRADE_FAILED"))
+    }
+    // The session still holds the old key; it opens the same vault either way, but reopening
+    // keeps the two in step.
+    if (result.outcome == VaultKeyBox.Outcome.MIGRATED) runCatching { openVaultSession() }
+    return mapOf(
+      "success" to (result.outcome != VaultKeyBox.Outcome.FAILED),
+      "outcome" to result.outcome.name,
+      "code" to result.detail,
+    ) + vaultKeyStateInternal()
+  }
+
+  /** Destroys the old unbound key. Refused until there is a way back that is not the device. */
+  private fun finaliseVaultKeyInternal(force: Boolean): Map<String, Any?> {
+    val result = runCatching { vaultKeyBox().finalise(force) }.getOrElse {
+      return mapOf("success" to false, "code" to (it.message ?: "PRIVATE_KEY_UPGRADE_FAILED"))
+    }
+    return mapOf(
+      "success" to (result.outcome != VaultKeyBox.Outcome.FAILED),
+      "outcome" to result.outcome.name,
+      "code" to result.detail,
+    ) + vaultKeyStateInternal()
+  }
+
+  private fun vaultKeyStateInternal(): Map<String, Any?> {
+    val box = runCatching { vaultKeyBox() }.getOrNull()
+      ?: return mapOf("activeSlot" to null, "hasRecoverySlot" to false, "fullyMigrated" to false)
+    return runCatching {
+      mapOf(
+        "activeSlot" to box.activeSlot(),
+        "authBound" to (box.activeSlot() == VaultKeyBox.SLOT_KEYSTORE_V3),
+        "hasRecoverySlot" to box.hasRecoverySlot(),
+        "fullyMigrated" to box.isFullyMigrated(),
+      )
+    }.getOrElse { mapOf("activeSlot" to null, "hasRecoverySlot" to false, "fullyMigrated" to false) }
   }
 
   /** Opens the session. Called once per unlock, after the user has actually authenticated. */

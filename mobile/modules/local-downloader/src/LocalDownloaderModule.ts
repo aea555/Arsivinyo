@@ -32,6 +32,8 @@ import type {
   LocalPrivateLockResult,
   LocalPrivateUnlockResult,
   LocalPrivateVaultLockState,
+  LocalVaultKeyResult,
+  LocalVaultKeyState,
   LocalPrivateModeState,
   LocalPrivateVideoItem,
   LocalImpersonationSelfTestResult,
@@ -82,6 +84,11 @@ type LocalDownloaderNativeModule = {
   unlockPrivateVault(input: { purpose: LocalPrivateAuthPurpose }): Promise<LocalPrivateUnlockResult>;
   lockPrivateVault(): Promise<LocalPrivateLockResult>;
   getPrivateVaultLockState(): Promise<LocalPrivateVaultLockState>;
+  getVaultKeyState(): Promise<LocalVaultKeyState>;
+  upgradeVaultKey(): Promise<LocalVaultKeyResult>;
+  finaliseVaultKeyUpgrade(input: { force?: boolean }): Promise<LocalVaultKeyResult>;
+  setVaultRecoveryPassphrase(input: { passphrase: string }): Promise<LocalVaultKeyResult>;
+  unlockVaultWithRecovery(input: { passphrase: string }): Promise<LocalVaultKeyResult>;
   listPrivateVideos(): Promise<LocalPrivateVideoItem[]>;
   deletePrivateVideo(input: { id: string }): Promise<{ success: boolean }>;
   copyPrivateVideoToPublicGallery(input: { id: string }): Promise<LocalPrivateCopyToPublicResult>;
@@ -204,6 +211,11 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       unlockPrivateVault: async () => unsupported(),
       lockPrivateVault: async () => unsupported(),
       getPrivateVaultLockState: async () => unsupported(),
+      getVaultKeyState: async () => unsupported(),
+      upgradeVaultKey: async () => unsupported(),
+      finaliseVaultKeyUpgrade: async () => unsupported(),
+      setVaultRecoveryPassphrase: async () => unsupported(),
+      unlockVaultWithRecovery: async () => unsupported(),
       listPrivateVideos: async () => unsupported(),
       deletePrivateVideo: async () => unsupported(),
       copyPrivateVideoToPublicGallery: async () => unsupported(),

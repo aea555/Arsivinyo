@@ -24,6 +24,8 @@ import LocalDownloaderModule, {
   type LocalPrivateLockResult,
   type LocalPrivateUnlockResult,
   type LocalPrivateVaultLockState,
+  type LocalVaultKeyResult,
+  type LocalVaultKeyState,
   type LocalPrivateCopyToPublicResult,
   type LocalPrivateImportResult,
   type LocalPrivateMigrationCancelResult,
@@ -165,6 +167,45 @@ export async function lockLocalPrivateVault(): Promise<LocalPrivateLockResult> {
 export async function getLocalPrivateVaultLockState(): Promise<LocalPrivateVaultLockState> {
   ensureAndroid();
   return LocalDownloaderModule.getPrivateVaultLockState();
+}
+
+/** Which key opens the vault, and whether a recovery passphrase exists. */
+export async function getLocalVaultKeyState(): Promise<LocalVaultKeyState> {
+  ensureAndroid();
+  return LocalDownloaderModule.getVaultKeyState();
+}
+
+/**
+ * Move the vault onto a key the Keystore will not use without a recent unlock.
+ *
+ * About sixty bytes move — the videos are never re-encrypted. The original key is kept until
+ * it has been proved and a recovery passphrase exists, so this step is reversible.
+ */
+export async function upgradeLocalVaultKey(): Promise<LocalVaultKeyResult> {
+  ensureAndroid();
+  return LocalDownloaderModule.upgradeVaultKey();
+}
+
+/** Destroy the original key. Refused without a recovery passphrase unless forced. */
+export async function finaliseLocalVaultKeyUpgrade(force = false): Promise<LocalVaultKeyResult> {
+  ensureAndroid();
+  return LocalDownloaderModule.finaliseVaultKeyUpgrade({ force });
+}
+
+/**
+ * Set a passphrase that opens the vault when this device's key cannot.
+ *
+ * Removing the screen lock deletes a hardware-bound key permanently and no setting prevents
+ * it. This is the only way back from that.
+ */
+export async function setLocalVaultRecoveryPassphrase(passphrase: string): Promise<LocalVaultKeyResult> {
+  ensureAndroid();
+  return LocalDownloaderModule.setVaultRecoveryPassphrase({ passphrase });
+}
+
+export async function unlockLocalVaultWithRecovery(passphrase: string): Promise<LocalVaultKeyResult> {
+  ensureAndroid();
+  return LocalDownloaderModule.unlockVaultWithRecovery({ passphrase });
 }
 
 export async function listLocalPrivateVideos(): Promise<LocalPrivateVideoItem[]> {
