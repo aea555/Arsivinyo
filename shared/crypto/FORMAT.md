@@ -103,6 +103,41 @@ both re-wrap 32 bytes and touch no content. That is the whole point of the desig
 reason **removing the last slot has to be refused**: nothing would be left that can unwrap it,
 and every encrypted file would be lost.
 
+## The `.avsbck` container
+
+The backup format the phone already writes. Both apps implement it now, which is what makes
+`shared/pairing/PROTOCOL.md`'s claim true — it names a backup as the only supported route for
+vault contents between devices, and until this the desktop could not open one.
+
+```
+magic "AVSBCK\0" | formatVersion u16 | headerLength u32 | header JSON   <- all plaintext
+then, per section, in the order the header lists them:
+  repeat { chunkLength u32 | chunk }  terminated by u32 0
+  -- the concatenated chunks are ONE streaming-AEAD stream, AAD = the section id
+  and inside that stream:
+    repeat {
+      entryHeaderLength u32 | entry header JSON
+      repeat { chunkLength u32 | chunk } terminated by u32 0     <- the payload
+      trailerLength u32 | trailer JSON
+    } terminated by u32 0
+```
+
+Sections carry no offsets, because a section's ciphertext length is not known until it has
+been written and the stream it is written to is not always seekable. Self-delimiting chunks
+cost four bytes a megabyte and leave both directions forward-only.
+
+The header is plaintext and versioned on purpose: a backup outlives the build that wrote it,
+and a future version has to be able to read today's KDF parameters. Nothing authenticates it,
+which is inherited rather than chosen — the binding is indirect. Changing a section's id
+changes both its key and its associated data, and changing a slot's salt or parameters makes
+the verifier mismatch. What is *not* protected is the advisory `itemCount`, `plaintextBytes`
+and `producer`, so an edited header can make a preview lie.
+
+Each entry's trailer records the plaintext size and SHA-256, checked as the payload streams
+past. That is what catches an item truncated at export: its own bytes would hash consistently
+against a hash taken over the same truncation, so the writer marks it incomplete and the
+reader refuses it.
+
 ## What this defends against
 
 | Defended | Not defended |

@@ -24,6 +24,8 @@ class of bug — silent divergence — that a transfer model simply does not hav
 **Not a vault channel.** A vault is confined to the device that made it. Its keys are
 bound to that device's keystore and are not exportable by design. A `.avsbck` backup is
 the supported way to move vault contents, and it is a deliberate, password-protected act.
+Both apps read and write that format now — see `shared/crypto/FORMAT.md`. Until they did,
+this paragraph described a route that only existed at one end.
 
 **Not a remote control.** `download` hands over a URL. It does not expose the peer's
 settings, library management, or vault.

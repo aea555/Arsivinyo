@@ -75,7 +75,7 @@ SUITES=(
   "expo.modules.localdownloader.backup.BackupSectionsTest|$SRC_TEST/backup/BackupSectionsTest.kt"
   "expo.modules.localdownloader.backup.BackupPortsTest|$SRC_TEST/backup/BackupPortsTest.kt"
   "expo.modules.localdownloader.backup.BackupPipelineTest|$SRC_TEST/backup/BackupPipelineTest.kt"
-  "expo.modules.localdownloader.crypto.CryptoVectorsTest|$SRC_TEST/crypto/CryptoVectorsTest.kt"
+  "expo.modules.localdownloader.crypto.CryptoVectorsTest|$BACKUP_SOURCES $SRC_TEST/crypto/CryptoVectorsTest.kt"
 )
 
 rm -rf "$WORK_DIR"

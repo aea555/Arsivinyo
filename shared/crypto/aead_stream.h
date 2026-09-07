@@ -89,6 +89,39 @@ class StreamEncryptor {
     bool m_finished = false;
 };
 
+/**
+ * Forward-only decryption, for a stream whose length is not known ahead of time — a backup
+ * section arrives as length-prefixed chunks and ends when the chunks do.
+ *
+ * A segment's nonce depends on whether it is the last one, so this cannot decrypt a segment
+ * until it knows whether more follow. It reads one byte past each segment to find out.
+ */
+class StreamDecryptor {
+ public:
+    /** Sequential read. `got` below `length` means the source is exhausted. */
+    using Source = std::function<bool(uint8_t *out, std::size_t length, std::size_t *got)>;
+
+    static std::unique_ptr<StreamDecryptor> Create(const uint8_t *key, std::size_t keyLength,
+                                                   const std::string &associatedData,
+                                                   Source source, std::string *error);
+
+    /** Reads up to `length` plaintext bytes. `got` below `length` means end of stream. */
+    bool Read(uint8_t *out, std::size_t length, std::size_t *got, std::string *error);
+
+ private:
+    StreamDecryptor() = default;
+    bool FillSegment(std::string *error);
+
+    SecretBytes m_streamKey;
+    uint8_t m_noncePrefix[kNoncePrefixBytes]{};
+    Source m_source;
+    Bytes m_pending;        // ciphertext read ahead of the current segment
+    Bytes m_plain;          // the decrypted segment being handed out
+    std::size_t m_offset = 0;
+    uint64_t m_segmentIndex = 0;
+    bool m_done = false;
+};
+
 /** Random access for playback. Decrypts whole segments and caches the most recent one. */
 class SeekableStreamReader {
  public:

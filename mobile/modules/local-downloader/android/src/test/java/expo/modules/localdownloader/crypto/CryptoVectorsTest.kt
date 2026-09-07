@@ -2,6 +2,10 @@ package expo.modules.localdownloader.crypto
 
 import com.google.crypto.tink.subtle.AesGcmHkdfStreaming
 import com.google.crypto.tink.subtle.Hkdf
+import expo.modules.localdownloader.backup.BackupContainer
+import expo.modules.localdownloader.backup.BackupCrypto
+import expo.modules.localdownloader.backup.BackupFormat
+import expo.modules.localdownloader.backup.BackupSections
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 import org.json.JSONArray
@@ -219,7 +223,112 @@ class CryptoVectorsTest {
     }
     root.put("aead_stream", aead)
 
+    // --- a whole .avsbck container -----------------------------------------------------------
+    // The desktop has to open backups the phone wrote: the pairing protocol names them as the
+    // only route for vault contents between devices, and the desktop cannot read one today.
+    // Nothing short of a real file from the real writer proves that it can.
+    val container = buildContainer()
+    val entries = JSONArray()
+    readContainer(container) { sectionId, entryHeader, digest ->
+      entries.put(
+        JSONObject().put("section", sectionId).put("name", entryHeader.name)
+          .put("kind", entryHeader.kind).put("size", entryHeader.size).put("sha256", digest)
+      )
+    }
+    root.put(
+      "container",
+      JSONObject()
+        .put("why", "a complete backup written by the shipping writer, so the C++ reader is " +
+          "held to a real file rather than to its own idea of the format")
+        .put("passphrase", CONTAINER_SECRET)
+        .put("secretKind", BackupFormat.SECRET_KIND_PASSPHRASE)
+        .put("base64", base64(container))
+        .put("entries", entries)
+    )
+
     return root
+  }
+
+  /** Standard base64, so neither side needs android.util.Base64. */
+  private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
+
+  private fun unbase64(text: String): ByteArray = java.util.Base64.getDecoder().decode(text)
+
+  /** A small backup with two sections, so section ordering and keying are both exercised. */
+  private fun buildContainer(): ByteArray {
+    val settings = JSONObject().put("theme", "dark").put("variant", "zinc").toString()
+      .toByteArray(Charsets.UTF_8)
+    val track = patternBytes(9000, 7L)
+    val cover = patternBytes(300, 8L)
+
+    val out = ByteArrayOutputStream()
+    BackupContainer.write(
+      output = out,
+      secrets = listOf(containerSecret()),
+      sections = listOf(
+        BackupContainer.PlannedSection(
+          id = BackupFormat.SECTION_SETTINGS,
+          itemCount = 1,
+          plaintextBytes = settings.size.toLong(),
+        ) { sink ->
+          sink.add(
+            BackupFormat.EntryHeader(
+              BackupSections.BLOB_APP_SETTINGS, settings.size.toLong(),
+              BackupSections.KIND_BLOB,
+              JSONObject().put("blobId", BackupSections.BLOB_APP_SETTINGS),
+            )
+          ) { it.write(settings) }
+        },
+        BackupContainer.PlannedSection(
+          id = BackupFormat.SECTION_MUSIC,
+          itemCount = 2,
+          plaintextBytes = (track.size + cover.size).toLong(),
+        ) { sink ->
+          sink.add(
+            BackupFormat.EntryHeader(
+              "cover.jpg", cover.size.toLong(), BackupSections.KIND_THUMBNAIL,
+              JSONObject().put("ownerId", "track-1"),
+            )
+          ) { it.write(cover) }
+          sink.add(
+            BackupFormat.EntryHeader(
+              "A Track.flac", track.size.toLong(), BackupSections.KIND_MEDIA,
+              JSONObject().put("songId", "track-1").put("title", "A Track"),
+            )
+          ) { it.write(track) }
+        },
+      ),
+      appVersion = "0.0.0-vectors",
+      appVersionCode = 1,
+      createdAt = 1700000000000L,
+      // Cheap on purpose: this file is opened by every run of two test suites.
+      kdf = BackupCrypto.KdfParams(memoryKiB = 8192, iterations = 1, parallelism = 4),
+    )
+    return out.toByteArray()
+  }
+
+  private fun containerSecret() = BackupContainer.SlotSecret(
+    BackupFormat.DEFAULT_KEY_SLOT,
+    CONTAINER_SECRET.toCharArray(),
+    BackupFormat.SECRET_KIND_PASSPHRASE,
+  )
+
+  private fun readContainer(
+    bytes: ByteArray,
+    onEntry: (String, BackupFormat.EntryHeader, String) -> Unit,
+  ) {
+    val input = bytes.inputStream()
+    val containerHeader = BackupContainer.peek(input)
+    BackupContainer.read(
+      input = input,
+      header = containerHeader,
+      secrets = listOf(containerSecret()),
+      sectionsToRestore = containerHeader.sections.map { it.id }.toSet(),
+    ) { entry ->
+      val payload = entry.payload.readBytes()
+      entry.verifiedTrailer()
+      onEntry(entry.sectionId, entry.header, hex(sha256(payload)))
+    }
   }
 
   // ---- the tests -------------------------------------------------------------------------
@@ -255,6 +364,24 @@ class CryptoVectorsTest {
   }
 
   @Test
+  fun theRecordedContainerStillOpens() {
+    if (!vectorsFile.exists()) return
+    val spec = JSONObject(vectorsFile.readText()).getJSONObject("container")
+    val expected = spec.getJSONArray("entries")
+    val seen = mutableListOf<String>()
+    readContainer(unbase64(spec.getString("base64"))) { sectionId, entryHeader, digest ->
+      seen.add(sectionId + "/" + entryHeader.name + "/" + entryHeader.kind + "/" +
+        entryHeader.size + "/" + digest)
+    }
+    val want = (0 until expected.length()).map {
+      val e = expected.getJSONObject(it)
+      e.getString("section") + "/" + e.getString("name") + "/" + e.getString("kind") + "/" +
+        e.getLong("size") + "/" + e.getString("sha256")
+    }
+    assertEquals("the recorded container no longer reads back the same", want, seen)
+  }
+
+  @Test
   fun theRecordedCiphertextsStillDecrypt() {
     if (!vectorsFile.exists()) return
     val cases = JSONObject(vectorsFile.readText()).getJSONArray("aead_stream")
@@ -280,5 +407,6 @@ class CryptoVectorsTest {
   private companion object {
     const val SEGMENT = 1 shl 20
     const val AAD = "vault"
+    const val CONTAINER_SECRET = "a correct horse battery staple"
   }
 }

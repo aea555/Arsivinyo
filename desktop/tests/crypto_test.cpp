@@ -181,6 +181,25 @@ static void testAeadStream(const QJsonArray &cases) {
                           &back, &error) &&
             back == plaintext;
         check(roundTrip, QString("aead %1 bytes: decrypts back").arg(length));
+
+        // Forward-only, the way a backup section is read: the length is not known ahead of
+        // time, so each segment is decrypted only once the next byte says whether it is last.
+        std::size_t consumed = 0;
+        auto source = [&ciphertext, &consumed](uint8_t *out, std::size_t want, std::size_t *got) {
+            const std::size_t take = std::min(want, ciphertext.size() - consumed);
+            std::memcpy(out, ciphertext.data() + consumed, take);
+            consumed += take;
+            *got = take;
+            return true;
+        };
+        auto decryptor =
+            StreamDecryptor::Create(key.data(), key.size(), aad, source, &error);
+        Bytes streamed(length);
+        std::size_t produced = 0;
+        const bool streamedOk = decryptor != nullptr &&
+                                decryptor->Read(streamed.data(), length, &produced, &error) &&
+                                produced == length && streamed == plaintext;
+        check(streamedOk, QString("aead %1 bytes: decrypts forward-only").arg(length));
     }
 }
 

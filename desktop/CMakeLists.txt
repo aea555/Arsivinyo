@@ -246,6 +246,19 @@ target_include_directories(playback_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
 target_link_libraries(playback_test PRIVATE Qt6::Core Qt6::Qml Qt6::Multimedia PkgConfig::LIBCRYPTO)
 add_test(NAME playback COMMAND playback_test)
 
+# Reading a .avsbck the phone wrote. The container in VECTORS.json came out of the shipping
+# Kotlin writer, so this is checked against a real file rather than against itself.
+qt_add_executable(backup_test tests/backup_test.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/secret.cpp ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/avsbck.cpp)
+target_include_directories(backup_test PRIVATE ${ARSIVINYO_CRYPTO_DIR})
+target_compile_definitions(backup_test PRIVATE
+    ARSIVINYO_CRYPTO_VECTORS="${ARSIVINYO_CRYPTO_DIR}/VECTORS.json")
+target_link_libraries(backup_test PRIVATE Qt6::Core PkgConfig::LIBCRYPTO)
+add_test(NAME backup COMMAND backup_test)
+
 # A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
 # and not a test: it needs another device on the network to talk to.
 if(ARSIVINYO_DEV_TOOLS)

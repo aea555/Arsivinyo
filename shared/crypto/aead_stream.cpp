@@ -289,4 +289,96 @@ bool DecryptBuffer(const uint8_t *key, std::size_t keyLength, const std::string 
     return got == out->size();
 }
 
+
+
+// ---- StreamDecryptor ---------------------------------------------------------------------
+
+std::unique_ptr<StreamDecryptor> StreamDecryptor::Create(const uint8_t *key,
+                                                         std::size_t keyLength,
+                                                         const std::string &associatedData,
+                                                         Source source, std::string *error) {
+    if (source == nullptr) {
+        if (error) *error = "a decryptor needs a source";
+        return nullptr;
+    }
+    uint8_t header[kHeaderBytes];
+    std::size_t got = 0;
+    if (!source(header, kHeaderBytes, &got) || got != kHeaderBytes) {
+        if (error) *error = "the stream ended before its header";
+        return nullptr;
+    }
+    if (header[0] != static_cast<uint8_t>(kHeaderBytes)) {
+        if (error) *error = "unrecognised stream header";
+        return nullptr;
+    }
+    std::unique_ptr<StreamDecryptor> decryptor(new StreamDecryptor());
+    if (!DeriveStreamKey(key, keyLength, header + 1, associatedData, &decryptor->m_streamKey,
+                         error)) {
+        return nullptr;
+    }
+    std::memcpy(decryptor->m_noncePrefix, header + 1 + kHeaderSaltBytes, kNoncePrefixBytes);
+    decryptor->m_source = std::move(source);
+    return decryptor;
+}
+
+bool StreamDecryptor::FillSegment(std::string *error) {
+    if (m_done) return true;
+
+    // Segment 0 shares its 1 MiB with the header, so its ciphertext is that much shorter.
+    const std::size_t want =
+        (m_segmentIndex == 0 ? kCiphertextSegmentBytes - kHeaderBytes : kCiphertextSegmentBytes) -
+        m_pending.size();
+
+    Bytes chunk(want + 1);
+    std::size_t got = 0;
+    if (!m_source(chunk.data(), want + 1, &got)) {
+        if (error) *error = "could not read the stream";
+        return false;
+    }
+    m_pending.insert(m_pending.end(), chunk.begin(), chunk.begin() + static_cast<long>(got));
+
+    const std::size_t segmentLength =
+        m_segmentIndex == 0 ? kCiphertextSegmentBytes - kHeaderBytes : kCiphertextSegmentBytes;
+    // One byte past the segment tells us whether another follows, which the nonce depends on.
+    const bool last = m_pending.size() <= segmentLength;
+    const std::size_t take = last ? m_pending.size() : segmentLength;
+    if (take < kTagBytes) {
+        if (error) *error = "the stream ended mid-segment";
+        return false;
+    }
+
+    Bytes plain(take - kTagBytes);
+    uint8_t nonce[12];
+    SegmentNonce(m_noncePrefix, m_segmentIndex, last, nonce);
+    if (!GcmOpen(m_streamKey.data(), nonce, nullptr, 0, m_pending.data(), take, plain.data(),
+                 error)) {
+        return false;
+    }
+    m_pending.erase(m_pending.begin(), m_pending.begin() + static_cast<long>(take));
+    m_plain = std::move(plain);
+    m_offset = 0;
+    ++m_segmentIndex;
+    if (last) m_done = true;
+    return true;
+}
+
+bool StreamDecryptor::Read(uint8_t *out, std::size_t length, std::size_t *got,
+                           std::string *error) {
+    if (got) *got = 0;
+    std::size_t produced = 0;
+    while (produced < length) {
+        if (m_offset >= m_plain.size()) {
+            if (m_done) break;
+            if (!FillSegment(error)) return false;
+            if (m_plain.empty() && m_done) break;
+        }
+        const std::size_t take = std::min(m_plain.size() - m_offset, length - produced);
+        std::memcpy(out + produced, m_plain.data() + m_offset, take);
+        m_offset += take;
+        produced += take;
+    }
+    if (got) *got = produced;
+    return true;
+}
+
 }  // namespace arsivinyo::crypto
