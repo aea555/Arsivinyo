@@ -7,6 +7,18 @@
 #include <QTimer>
 
 int main(int argc, char *argv[]) {
+    // Ask for the desktop's own file dialog before the application is constructed, which
+    // is when Qt resolves the platform theme. Left alone, Qt falls back to its GTK3
+    // helper and opens the old GTK chooser: light-themed whatever the desktop is set to,
+    // and not the dialog anything else on the system shows.
+    //
+    // Only when nothing has been chosen already, so an explicit setting still wins, and
+    // only where a portal exists to answer — the theme falls back by itself if not.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORMTHEME") &&
+        !qEnvironmentVariableIsEmpty("XDG_CURRENT_DESKTOP")) {
+        qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
+    }
+
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Arsivinyo"));
     app.setOrganizationName(QStringLiteral("Arsivinyo"));
