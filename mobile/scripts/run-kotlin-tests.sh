@@ -61,12 +61,13 @@ SRC_TEST="$MODULE/src/test/java/expo/modules/localdownloader"
 # Each entry is "<test class>|<source files...>". Add a line to cover a new suite.
 BACKUP_SOURCES="$SRC_MAIN/backup/BackupFormat.kt $SRC_MAIN/backup/BackupCrypto.kt $SRC_MAIN/backup/BackupContainer.kt $SRC_MAIN/backup/BackupSections.kt $SRC_MAIN/backup/BackupPorts.kt $SRC_MAIN/backup/BackupPipeline.kt"
 SCHEDULER_SOURCES="$SRC_MAIN/scheduler/PriorityGate.kt $SRC_MAIN/scheduler/DownloadStages.kt"
-PAIRING_SOURCES="$SRC_MAIN/pairing/PairingWire.kt $SRC_MAIN/pairing/Ed25519Keys.kt $SRC_MAIN/pairing/PairingAuth.kt $SRC_MAIN/pairing/PeerRegistry.kt $SRC_MAIN/pairing/PairingIdentity.kt $SRC_MAIN/pairing/PeerLink.kt"
+PAIRING_SOURCES="$SRC_MAIN/pairing/PairingWire.kt $SRC_MAIN/pairing/Ed25519Keys.kt $SRC_MAIN/pairing/PairingAuth.kt $SRC_MAIN/pairing/PeerRegistry.kt $SRC_MAIN/pairing/PairingIdentity.kt $SRC_MAIN/pairing/PeerLink.kt $SRC_MAIN/pairing/PeerContent.kt $SRC_MAIN/pairing/PeerSession.kt"
 SUITES=(
   "expo.modules.localdownloader.pairing.PairingWireTest|$PAIRING_SOURCES $SRC_TEST/pairing/PairingWireTest.kt"
   "expo.modules.localdownloader.pairing.PairingAuthTest|$PAIRING_SOURCES $SRC_TEST/pairing/PairingAuthTest.kt"
   "expo.modules.localdownloader.pairing.PeerRegistryTest|$PAIRING_SOURCES $SRC_TEST/pairing/PeerRegistryTest.kt"
-  "expo.modules.localdownloader.pairing.PeerLinkTest|$PAIRING_SOURCES $SRC_TEST/pairing/PeerLinkTest.kt"
+  "expo.modules.localdownloader.pairing.PeerLinkTest|$PAIRING_SOURCES $SRC_TEST/pairing/LoopbackPeers.kt $SRC_TEST/pairing/PeerLinkTest.kt"
+  "expo.modules.localdownloader.pairing.PeerSessionTest|$PAIRING_SOURCES $SRC_TEST/pairing/LoopbackPeers.kt $SRC_TEST/pairing/PeerSessionTest.kt"
   "expo.modules.localdownloader.scheduler.PriorityGateTest|$SCHEDULER_SOURCES $SRC_TEST/scheduler/PriorityGateTest.kt"
   "expo.modules.localdownloader.backup.BackupFormatTest|$BACKUP_SOURCES $SRC_TEST/backup/BackupFormatTest.kt"
   "expo.modules.localdownloader.backup.BackupContainerTest|$SRC_TEST/backup/BackupContainerTest.kt"
@@ -85,6 +86,9 @@ for suite in "${SUITES[@]}"; do
   read -r -a suite_sources <<< "${suite#*|}"
   SOURCES+=("${suite_sources[@]}")
 done
+
+# A helper shared by two suites appears in both lists; the compiler is given one copy.
+mapfile -t SOURCES < <(printf '%s\n' "${SOURCES[@]}" | awk '!seen[$0]++')
 
 echo "Compiling ${#SOURCES[@]} source file(s) with Kotlin $KOTLIN_VERSION..."
 # -no-stdlib/-no-reflect: the compiler looks for a Kotlin *home* directory that does not
