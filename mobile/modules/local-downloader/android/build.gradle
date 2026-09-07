@@ -12,6 +12,7 @@ android {
   // fails for a reason that has nothing to do with the code.
   ndkVersion rootProject.ext.ndkVersion
   defaultConfig {
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
     versionCode 1
@@ -82,4 +83,10 @@ dependencies {
   // reaches the APK — `testImplementation`, not `implementation`.
   testImplementation "org.bouncycastle:bcpkix-jdk18on:1.79"
   testImplementation "org.bouncycastle:bcutil-jdk18on:1.79"
+
+  // The session TLS key lives in the Android Keystore, which is a platform provider and
+  // does not exist off a device. Its tests therefore have to be instrumented ones.
+  // Only the runner that launches instrumented tests — the tests themselves are plain
+  // JUnit and need no Context, so nothing else from androidx.test is pulled in.
+  androidTestImplementation "androidx.test:runner:1.6.2"
 }

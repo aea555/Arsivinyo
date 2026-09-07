@@ -24,6 +24,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODULE="$REPO_ROOT/modules/local-downloader/android"
 SRC="$MODULE/src/main/java/expo/modules/localdownloader"
+# Instrumented tests only run on a device, so nothing else here compiles them. Including
+# them means a test handed over for the maintainer to run at least builds.
+SRC_ANDROID_TEST="$MODULE/src/androidTest/java/expo/modules/localdownloader"
 GRADLE_CACHE="${GRADLE_USER_HOME:-$HOME/.gradle}/caches"
 WORK_DIR="${TMPDIR:-/tmp}/arsivinyo-kotlin-typecheck"
 CP_CACHE="$WORK_DIR/classpath.txt"
@@ -77,7 +80,8 @@ if cache_is_stale || [ "${REFRESH_CP:-0}" = "1" ]; then
     find "$GRADLE_CACHE" -type f \
       \( -name "lifecycle-common-*.jar" -o -name "annotation-jvm-*.jar" -o -name "annotation-*.jar" \
       -o -name "kotlin-stdlib-jdk*.jar" -o -name "nanohttpd-*.jar" -o -name "chaquopy_java-*.jar" \
-      -o -name "bcprov-jdk18on-*.jar" -o -name "tink-android-*.jar" \) 2>/dev/null | grep -v sources
+      -o -name "bcprov-jdk18on-*.jar" -o -name "tink-android-*.jar" \
+      -o -name "junit-4.13.2.jar" -o -name "hamcrest-core-1.3.jar" \) 2>/dev/null | grep -v sources
     # Expo modules are built from node_modules rather than resolved from the cache.
     find "$REPO_ROOT/node_modules" -path "*/build/intermediates/compile_library_classes_jar/release/*/classes.jar" \
       -type f 2>/dev/null
@@ -96,6 +100,10 @@ else
   SOURCES=()
   while IFS= read -r -d '' file; do SOURCES+=("$file"); done \
     < <(find "$SRC" -name "*.kt" -print0)
+  if [ -d "$SRC_ANDROID_TEST" ]; then
+    while IFS= read -r -d '' file; do SOURCES+=("$file"); done \
+      < <(find "$SRC_ANDROID_TEST" -name "*.kt" -print0)
+  fi
 fi
 
 echo "Typechecking ${#SOURCES[@]} source file(s) with Kotlin $KOTLIN_VERSION..."
