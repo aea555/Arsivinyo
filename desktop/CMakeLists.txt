@@ -209,6 +209,40 @@ target_include_directories(cookie_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
 target_link_libraries(cookie_test PRIVATE Qt6::Core Qt6::Qml PkgConfig::LIBCRYPTO)
 add_test(NAME cookie COMMAND cookie_test)
 
+# The vault. The assertions that matter are negative: the object must not contain the file's
+# contents, and the index must not contain its title.
+qt_add_executable(vault_test tests/vault_test.cpp
+    src/Vault.h src/Vault.cpp
+    src/SecretStore.h src/SecretStore.cpp src/DataDir.h
+    ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp)
+target_include_directories(vault_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
+target_link_libraries(vault_test PRIVATE Qt6::Core Qt6::Qml PkgConfig::LIBCRYPTO)
+add_test(NAME vault COMMAND vault_test)
+
+# Whether the media backend will play from a decrypting QIODevice. This decides the design:
+# if it will, the desktop needs no loopback server, no port and no token, and the plaintext
+# never leaves the process.
+qt_add_executable(playback_test tests/playback_test.cpp
+    src/Vault.h src/Vault.cpp
+    src/VaultDevice.h src/VaultDevice.cpp
+    src/SecretStore.h src/SecretStore.cpp src/DataDir.h
+    ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp)
+target_include_directories(playback_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
+target_link_libraries(playback_test PRIVATE Qt6::Core Qt6::Qml Qt6::Multimedia PkgConfig::LIBCRYPTO)
+add_test(NAME playback COMMAND playback_test)
+
 # A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
 # and not a test: it needs another device on the network to talk to.
 if(ARSIVINYO_DEV_TOOLS)
