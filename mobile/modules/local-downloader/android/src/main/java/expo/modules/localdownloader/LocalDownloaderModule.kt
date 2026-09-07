@@ -825,6 +825,16 @@ class LocalDownloaderModule : Module() {
         return@AsyncFunction mapOf("success" to false, "code" to "BACKUP_NO_SECRET")
       }
 
+      // A backup carrying the vault decrypts every video in it — the widest read of private
+      // content the app can perform. It is gated here, in native code, because the screen
+      // that starts it asks for nothing at all.
+      if (wanted.contains(BackupFormat.SECTION_VAULT)) {
+        val (granted, reason) = authenticatePrivateAccessInternal("bundleExport")
+        if (!granted) {
+          return@AsyncFunction mapOf("success" to false, "code" to (reason ?: "PRIVATE_AUTH_FAILED"))
+        }
+      }
+
       val picked = pickBackupDocument(
         BackupDocumentActivity.MODE_CREATE,
         (input["suggestedName"] as? String)?.trim()?.ifBlank { null }
@@ -1018,6 +1028,15 @@ class LocalDownloaderModule : Module() {
       val secrets = backupSecretsFrom(input["secrets"])
       if (secrets.isEmpty()) {
         return@AsyncFunction mapOf("success" to false, "code" to "BACKUP_NO_SECRET")
+      }
+
+      // Restoring a vault section writes into the vault. Narrower than an export, but it is
+      // still the private store being changed by whoever holds the phone.
+      if (wanted.contains(BackupFormat.SECTION_VAULT)) {
+        val (granted, reason) = authenticatePrivateAccessInternal("bundleImport")
+        if (!granted) {
+          return@AsyncFunction mapOf("success" to false, "code" to (reason ?: "PRIVATE_AUTH_FAILED"))
+        }
       }
 
       val results = mutableListOf<BackupSections.ItemResult>()
@@ -2314,6 +2333,11 @@ class LocalDownloaderModule : Module() {
                 runCatching { File(filePath).delete() }
               }.onFailure { privateError ->
                 val privateMessage = privateError.message ?: "PRIVATE_STORAGE_WRITE_FAILED"
+                // The vault would not take it, so the only copy left is the plaintext one
+                // in the cache. The user asked for this to be private; leaving it readable
+                // because the encrypted write failed is the wrong way round. A FAILURE is
+                // terminal, so nothing downstream still needs the file.
+                runCatching { File(filePath).delete() }
                 updateStatus(taskId, "FAILURE", filename, filePath, sizeMb, "PRIVATE_STORAGE_WRITE_FAILED", privateMessage)
                 emitProgress(taskId, "FAILURE", "error", privateMessage)
                 addError("PRIVATE_STORAGE_WRITE_FAILED: task=$taskId message=$privateMessage")
@@ -6217,7 +6241,11 @@ class LocalDownloaderModule : Module() {
       }
       parsed
     }.getOrElse {
-      defaultPrivateVaultIndex()
+      // An index that will not parse must never quietly become an empty one. The videos
+      // are still encrypted in objects/, and the next mutation calls writePrivateVaultIndex
+      // — so returning a default here would persist the emptiness and orphan every file in
+      // the vault. Refuse instead, and let the caller surface it.
+      throw IllegalStateException("PRIVATE_INDEX_UNREADABLE")
     }
   }
 
@@ -7599,8 +7627,10 @@ class LocalDownloaderModule : Module() {
         parsed
       }
       .getOrElse {
+        // Same reasoning as the vault index: an unreadable index that reads as empty is
+        // written back as empty by the next import, losing every profile-to-domain binding.
         addError("CUSTOM_COOKIE_INDEX_READ_FAILED: ${it.message}")
-        emptyIndex
+        throw IllegalStateException("COOKIE_INDEX_UNREADABLE")
       }
   }
 
@@ -7849,10 +7879,19 @@ class LocalDownloaderModule : Module() {
   private fun atomicWriteBytes(target: File, data: ByteArray) {
     target.parentFile?.mkdirs()
     val temp = File(target.parentFile, ".${target.name}.${UUID.randomUUID()}.tmp")
-    temp.outputStream().use { it.write(data) }
+    temp.outputStream().use { stream ->
+      stream.write(data)
+      stream.flush()
+      // Without the sync the rename can reach the disk before the bytes do, so a power loss
+      // leaves an empty file where a valid one used to be.
+      stream.fd.sync()
+    }
     if (!temp.renameTo(target)) {
-      target.outputStream().use { it.write(data) }
+      // Never rewrite the target in place as a fallback. That turns a failed rename into a
+      // half-written file, and for an index a half-written file is unrecoverable. The old
+      // one is still intact, so leave it alone and report the failure.
       temp.delete()
+      throw IllegalStateException("ATOMIC_WRITE_FAILED: ${target.name}")
     }
   }
 
