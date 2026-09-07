@@ -16,6 +16,7 @@ Item {
 
     required property var engine
     required property var library
+    required property var cookies
 
     /** Version to install once confirmed; empty string means the newest. */
     property string pendingVersion: ""
@@ -28,6 +29,27 @@ Item {
         folderKey = key
         folderDialog.currentFolder = "file://" + current
         folderDialog.open()
+    }
+
+    /** Which site an imported cookie file is for, and why the last import was refused. */
+    property string cookiePlatform: ""
+    property string cookieError: ""
+
+    function pickCookies(platform) {
+        cookiePlatform = platform
+        cookieError = ""
+        cookieDialog.open()
+    }
+
+    FileDialog {
+        id: cookieDialog
+        title: qsTr("Choose a cookies.txt")
+        nameFilters: [qsTr("Cookie files (*.txt *.json)"), qsTr("All files (*)")]
+        onAccepted: {
+            // A bad file is refused here rather than at download time, where it would look
+            // like the site rejecting you.
+            settings.cookieError = settings.cookies.importFile(settings.cookiePlatform, selectedFile)
+        }
     }
 
     FolderDialog {
@@ -230,6 +252,95 @@ Item {
                             }
                         }
                     }
+                }
+            }
+
+            // ---- cookies -----------------------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Text {
+                    text: qsTr("Cookies")
+                    color: Theme.textSubtle
+                    font.family: Fonts.body
+                    font.pixelSize: 11
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    // Worth saying plainly: without these most sites refuse a downloader
+                    // outright, or start refusing after a handful of requests.
+                    text: qsTr("Sites you are signed in to download more reliably. Export a cookies.txt from your browser and import it here.")
+                    color: Theme.textSubtle
+                    font.family: Fonts.body
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                Repeater {
+                    model: settings.cookies
+                    Pressable {
+                        id: cookieRow
+                        required property string platform
+                        required property string label
+                        required property bool hasCookies
+                        Layout.fillWidth: true
+                        implicitHeight: 48
+                        radius: 10
+                        baseColor: Theme.surface
+                        border.color: hovered ? Theme.borderSubtle : Theme.border
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                        onClicked: settings.pickCookies(platform)
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 14
+                            spacing: 12
+
+                            Rectangle {
+                                implicitWidth: 8
+                                implicitHeight: 8
+                                radius: 4
+                                color: hasCookies ? Theme.success : Theme.surfaceActive
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: label
+                                color: Theme.text
+                                font.family: Fonts.body
+                                font.pixelSize: 13
+                            }
+
+                            TextAction {
+                                visible: hasCookies
+                                text: qsTr("Remove")
+                                accentColor: Theme.error
+                                font.pixelSize: 12
+                                onClicked: settings.cookies.clear(platform)
+                            }
+
+                            Text {
+                                text: hasCookies ? qsTr("Replace") : qsTr("Import")
+                                color: cookieRow.hovered ? Theme.accent : Theme.textSubtle
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                font.family: Fonts.body
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: settings.cookieError.length > 0
+                    text: settings.cookieError
+                    color: Theme.error
+                    font.family: Fonts.body
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
                 }
             }
 

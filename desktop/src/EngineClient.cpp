@@ -158,8 +158,12 @@ void EngineClient::download(const QString &url, const QString &outputDir, bool a
     emit busyChanged();
     emit progressChanged();
     emit statusChanged();
-    send({{"id", m_activeId}, {"op", "download"}, {"url", url},
-          {"outputDir", outputDir}, {"audioOnly", audioOnly}});
+    QJsonObject request{{"id", m_activeId}, {"op", "download"}, {"url", url},
+                        {"outputDir", outputDir}, {"audioOnly", audioOnly}};
+    // Without this the engine downloads signed out, which most sites rate-limit and some
+    // refuse outright. The desktop was sending no cookies at all.
+    if (!m_cookiesDir.isEmpty()) request.insert("cookiesDir", m_cookiesDir);
+    send(request);
 }
 
 void EngineClient::cancel() {

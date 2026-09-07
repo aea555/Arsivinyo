@@ -54,6 +54,9 @@ public:
     /** Stop and start, so a queued yt-dlp takes effect. */
     Q_INVOKABLE void restart();
     Q_INVOKABLE void download(const QString &url, const QString &outputDir, bool audioOnly);
+
+    /** Where per-site cookie files live. The engine picks the right one from the URL. */
+    void setCookiesDir(const QString &dir) { m_cookiesDir = dir; }
     Q_INVOKABLE void cancel();
     /** Fetch the newest yt-dlp. It takes effect when the engine next starts. */
     Q_INVOKABLE void updateYtDlp();
@@ -101,6 +104,7 @@ private:
     QString m_enginePath;
     QStringList m_engineArgs;
     QString m_downloadDir;
+    QString m_cookiesDir;
     bool m_updatingYtDlp = false;
     QString m_ytDlpUpdateStatus;
     double m_ytDlpUpdateProgress = 0;

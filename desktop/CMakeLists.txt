@@ -59,6 +59,7 @@ qt_add_qml_module(arsivinyo-desktop
         src/PeerContent.h
         src/PeerSession.h src/PeerSession.cpp
         src/PairingService.h src/PairingService.cpp
+        src/CookieStore.h src/CookieStore.cpp
         src/LibraryContent.h src/LibraryContent.cpp
         src/LocalAddress.h src/LocalAddress.cpp
         src/DnsSd.h src/DnsSd.cpp

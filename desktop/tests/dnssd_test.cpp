@@ -154,20 +154,36 @@ int main(int argc, char **argv) {
         if (!bound) {
             std::printf("  skip  live discovery (multicast unavailable here)\n");
         } else {
+            auto sees = [](const Discovery &d, const QString &fingerprint) {
+                for (int i = 0; i < d.rowCount(); ++i)
+                    if (d.data(d.index(i), Discovery::FingerprintRole).toString() == fingerprint)
+                        return true;
+                return false;
+            };
+
             QElapsedTimer timer;
             timer.start();
-            while (timer.elapsed() < 5000 && (a.rowCount() == 0 || b.rowCount() == 0))
+            while (timer.elapsed() < 15000 &&
+                   !(sees(a, QStringLiteral("bbbb2222")) && sees(b, QStringLiteral("aaaa1111"))))
                 QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
 
-            check(a.rowCount() >= 1, "a responder finds the other");
+            // Find the row by fingerprint rather than taking the first. A real app on the
+            // same network announces the same service type, so row 0 is whoever answered
+            // first — which made this pass or fail depending on what else was running.
+            int found = -1;
+            for (int i = 0; i < a.rowCount(); ++i) {
+                if (a.data(a.index(i), Discovery::FingerprintRole).toString() ==
+                    QLatin1String("bbbb2222")) {
+                    found = i;
+                    break;
+                }
+            }
+            check(found >= 0, "a responder finds the other");
             check(b.rowCount() >= 1, "and is found by it");
-            if (a.rowCount() >= 1) {
-                const QModelIndex row = a.index(0);
-                check(a.data(row, Discovery::FingerprintRole).toString() ==
-                          QLatin1String("bbbb2222"),
-                      "carrying the peer's fingerprint");
+            if (found >= 0) {
+                const QModelIndex row = a.index(found);
                 check(a.data(row, Discovery::NameRole).toString() == QLatin1String("DeviceB"),
-                      "and its name");
+                      "carrying its name");
                 check(a.data(row, Discovery::PortRole).toInt() == 7442, "and its port");
             }
             // A device must not list itself, or the UI offers to pair with this machine.

@@ -33,6 +33,7 @@ ApplicationWindow {
         }
     }
     Library { id: library }
+    CookieStore { id: cookies }
 
     // Pairing. The identity is a singleton — one keypair per install — while the peer
     // list, the transport and what a peer may reach are ordinary objects wired together
@@ -82,6 +83,8 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        // Set before the engine starts, so the first download already has them.
+        engine.setCookiesDir(cookies.directory)
         engine.start()
         library.scan()
         // 0 asks the system for a free port, which is then advertised over mDNS. A fixed
@@ -297,6 +300,7 @@ ApplicationWindow {
             SettingsView {
                 engine: engine
                 library: library
+                cookies: cookies
             }
         }
 
