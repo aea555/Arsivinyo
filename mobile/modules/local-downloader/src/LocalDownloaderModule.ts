@@ -166,7 +166,10 @@ type LocalDownloaderNativeModule = {
   saveToMediaStore(input: LocalSaveToMediaStoreInput): Promise<LocalSaveToMediaStoreResult>;
   getYtDlpUpdateStatus(): Promise<LocalYtDlpUpdateStatus>;
   checkYtDlpUpdate(): Promise<LocalYtDlpUpdateCheckResult>;
-  updateYtDlp(): Promise<LocalYtDlpUpdateResult>;
+  /** @param version undefined for the newest stable release. */
+  updateYtDlp(version?: string): Promise<LocalYtDlpUpdateResult>;
+  /** Recent stable releases, newest first. */
+  listYtDlpVersions(): Promise<{ versions: string[] }>;
   clearYtDlpOverride(): Promise<{ success: boolean; requiresRestart?: boolean }>;
 };
 
@@ -274,6 +277,7 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       getYtDlpUpdateStatus: async () => unsupported(),
       checkYtDlpUpdate: async () => unsupported(),
       updateYtDlp: async () => unsupported(),
+      listYtDlpVersions: async () => unsupported(),
       clearYtDlpOverride: async () => unsupported(),
     };
 const emitter: any = Platform.OS === 'android' ? new EventEmitter(NativeLocalDownloader as never) : null;

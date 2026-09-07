@@ -294,9 +294,15 @@
     "restartNow": "Şimdi yeniden başlat",
     "restartHint": "Yeniden başlatarak güncellemeyi tamamlayın",
     "restartBlocked": "Bir indirme sürüyor. Bitmesini bekleyip yeniden başlatın.",
-    "ytDlpUseBundled": "Uygulamayla gelen yt-dlp'yi kullan",
-    "ytDlpUseBundledHint": "İndirilen güncellemeyi atıp {{version}} sürümüne dön",
-    "ytDlpClearedRestart": "Uygulamayla gelen yt-dlp'ye dönüldü. Uygulamak için yeniden başlatın."
+    "ytDlpClearedRestart": "Uygulamayla gelen yt-dlp'ye dönüldü. Uygulamak için yeniden başlatın.",
+    "ytDlpChooseVersion": "yt-dlp sürümü seç",
+    "ytDlpChooseVersionHint": "Belirli bir sürümü kur ya da uygulamayla gelene dön",
+    "ytDlpVersionSheetTitle": "yt-dlp sürümü",
+    "ytDlpBundledLabel": "Uygulamayla gelen",
+    "ytDlpVersionsNeedNetwork": "Sürümleri listelemek için bağlantı gerekir.",
+    "ytDlpSwitchConfirmTitle": "yt-dlp değiştirilsin mi?",
+    "ytDlpSwitchConfirmBody": "Bu, {{version}} sürümünü kurar ve yeniden başlatma gerektirir.",
+    "ytDlpInUse": "kullanımda"
   },
   "failureLogs": {
     "title": "Son hatalar",

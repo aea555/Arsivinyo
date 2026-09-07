@@ -294,9 +294,15 @@
     "restartNow": "Restart now",
     "restartHint": "Finish the update by restarting",
     "restartBlocked": "A download is running. Wait for it to finish, then restart.",
-    "ytDlpUseBundled": "Use the bundled yt-dlp",
-    "ytDlpUseBundledHint": "Discard the downloaded update and go back to {{version}}",
-    "ytDlpClearedRestart": "Reverted to the bundled yt-dlp. Restart to apply it."
+    "ytDlpClearedRestart": "Reverted to the bundled yt-dlp. Restart to apply it.",
+    "ytDlpChooseVersion": "Choose a yt-dlp version",
+    "ytDlpChooseVersionHint": "Install a specific release, or go back to the bundled one",
+    "ytDlpVersionSheetTitle": "yt-dlp version",
+    "ytDlpBundledLabel": "Bundled with the app",
+    "ytDlpVersionsNeedNetwork": "A connection is needed to list versions.",
+    "ytDlpSwitchConfirmTitle": "Switch yt-dlp?",
+    "ytDlpSwitchConfirmBody": "This installs {{version}} and needs a restart.",
+    "ytDlpInUse": "in use"
   },
   "failureLogs": {
     "title": "Recent failures",

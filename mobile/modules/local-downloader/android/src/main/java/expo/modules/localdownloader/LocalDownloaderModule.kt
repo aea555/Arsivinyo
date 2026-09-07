@@ -1713,8 +1713,12 @@ class LocalDownloaderModule : Module() {
       checkYtDlpUpdateInternal()
     }
 
-    AsyncFunction("updateYtDlp") {
-      updateYtDlpInternal()
+    AsyncFunction("updateYtDlp") { version: String? ->
+      updateYtDlpInternal(version?.takeIf { it.isNotBlank() })
+    }
+
+    AsyncFunction("listYtDlpVersions") {
+      listYtDlpVersionsInternal()
     }
 
     AsyncFunction("restartApp") {
@@ -4090,7 +4094,7 @@ class LocalDownloaderModule : Module() {
     return status
   }
 
-  private fun updateYtDlpInternal(): Map<String, Any?> {
+  private fun updateYtDlpInternal(wanted: String? = null): Map<String, Any?> {
     synchronized(ytDlpUpdateLock) {
       if (ytDlpUpdateRunning) {
         return mapOf("status" to "running", "success" to false, "code" to "UPDATE_ALREADY_RUNNING", "requiresRestart" to false)
@@ -4112,9 +4116,11 @@ class LocalDownloaderModule : Module() {
       emitYtDlpUpdateProgress("checking")
       cleanupYtDlpUpdateScratch()
       val before = buildYtDlpUpdateStatusMap(fetchActiveFromPython = true)
-      val release = fetchLatestYtDlpRelease()
+      val release = fetchYtDlpRelease(wanted)
       val current = before["effectiveInstalledVersion"] as? String
-      if (!isNewerYtDlpVersion(release.version, current)) {
+      // Only the "give me the newest" path can be a no-op. Asking for a specific version
+      // is a choice, including an older one, so it is never refused as not newer.
+      if (wanted == null && !isNewerYtDlpVersion(release.version, current)) {
         emitYtDlpUpdateProgress("up_to_date", version = release.version)
         return mapOf(
           "status" to "up_to_date",
@@ -4149,6 +4155,9 @@ class LocalDownloaderModule : Module() {
           .put("source", "pypi")
           .put("filename", release.filename)
       )
+      // One downloaded version is kept. Without this every switch left an unpacked copy
+      // behind — megabytes a time, in app storage, never reclaimed.
+      pruneYtDlpVersions(context, release.version, installed)
       manifest.put("schemaVersion", 1)
       manifest.put("installed", installed)
       manifest.put("pendingVersion", release.version)
@@ -4565,6 +4574,19 @@ class LocalDownloaderModule : Module() {
     val rootPath = root.canonicalPath
     val candidatePath = candidate.canonicalPath
     return candidatePath == rootPath || candidatePath.startsWith(rootPath + File.separator)
+  }
+
+  /** Delete every downloaded yt-dlp except [keep], and forget them in the manifest. */
+  private fun pruneYtDlpVersions(context: Context, keep: String, installed: JSONObject) {
+    val versionsRoot = File(ytDlpOverrideRoot(context), "versions")
+    versionsRoot.listFiles()?.forEach { dir ->
+      if (dir.isDirectory && dir.name != keep) {
+        safeDeleteYtDlpPath(context, dir)
+      }
+    }
+    for (name in installed.keys().asSequence().toList()) {
+      if (name != keep) installed.remove(name)
+    }
   }
 
   private fun ytDlpOverrideRoot(context: Context): File = File(context.filesDir, YT_DLP_OVERRIDE_DIRNAME)

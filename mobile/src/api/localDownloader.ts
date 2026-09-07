@@ -348,9 +348,10 @@ export async function checkLocalYtDlpUpdate(): Promise<LocalYtDlpUpdateCheckResu
   return LocalDownloaderModule.checkYtDlpUpdate();
 }
 
-export async function updateLocalYtDlp(): Promise<LocalYtDlpUpdateResult> {
+/** @param version omit for the newest stable release; pass one to switch to it. */
+export async function updateLocalYtDlp(version?: string): Promise<LocalYtDlpUpdateResult> {
   ensureAndroid();
-  return LocalDownloaderModule.updateYtDlp();
+  return LocalDownloaderModule.updateYtDlp(version);
 }
 
 /**
@@ -368,6 +369,12 @@ export async function restartLocalApp(): Promise<{
   activeTaskIds?: string[];
 }> {
   return LocalDownloaderModule.restartApp();
+}
+
+/** Recent stable yt-dlp releases, newest first. Needs a connection. */
+export async function listLocalYtDlpVersions(): Promise<string[]> {
+  const result = await LocalDownloaderModule.listYtDlpVersions();
+  return result.versions ?? [];
 }
 
 export async function clearLocalYtDlpOverride(): Promise<{ success: boolean; requiresRestart?: boolean }> {

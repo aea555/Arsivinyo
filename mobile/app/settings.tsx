@@ -29,6 +29,7 @@ import {
   startLocalPrivateVaultMigration,
   updateLocalYtDlp,
   clearLocalYtDlpOverride,
+  listLocalYtDlpVersions,
   restartLocalApp,
 } from '@/src/api';
 import { AppText as Text, AppTextInput as TextInput, ConfirmModal, SettingsItem, ThemePicker } from '@/src/components';
@@ -99,6 +100,10 @@ export default function SettingsScreen() {
   const [pendingCustomDelete, setPendingCustomDelete] = useState<PendingCustomDelete>(null);
   /** Set when something has been staged that only takes effect on the next launch. */
   const [pendingRestart, setPendingRestart] = useState<string | null>(null);
+  const [versionPickerOpen, setVersionPickerOpen] = useState(false);
+  const [ytDlpVersions, setYtDlpVersions] = useState<string[] | null>(null);
+  /** '' means the bundled copy; a version string means install that one. */
+  const [pendingYtDlpChoice, setPendingYtDlpChoice] = useState<string | null>(null);
 
   const [showCustomImportModal, setShowCustomImportModal] = useState(false);
   const [customImportDomain, setCustomImportDomain] = useState('');
@@ -643,6 +648,18 @@ export default function SettingsScreen() {
    * keeps shadowing whatever the new APK bundles. Without this there was no way back to
    * the bundled copy from inside the app at all.
    */
+  const openVersionPicker = useCallback(async () => {
+    setVersionPickerOpen(true);
+    setYtDlpVersions(null);
+    try {
+      setYtDlpVersions(await listLocalYtDlpVersions());
+    } catch {
+      // Left as an empty list: the sheet says a connection is needed rather than
+      // pretending there are no releases.
+      setYtDlpVersions([]);
+    }
+  }, []);
+
   const handleClearYtDlpOverride = useCallback(async () => {
     const result = await clearLocalYtDlpOverride();
     if (!result.success) {
@@ -654,6 +671,35 @@ export default function SettingsScreen() {
     // and giving them only a dismiss button leaves them to find it themselves.
     setPendingRestart(t('settings.ytDlpClearedRestart'));
   }, [refreshYtDlpUpdateStatus, showError, t]);
+
+  /** Apply a choice from the picker: '' is the bundled copy, otherwise a version. */
+  const applyYtDlpChoice = useCallback(async (choice: string) => {
+    setPendingYtDlpChoice(null);
+    setVersionPickerOpen(false);
+    if (choice === '') {
+      await handleClearYtDlpOverride();
+      return;
+    }
+    setYtDlpUpdating(true);
+    setYtDlpUpdateProgress({ phase: 'checking' });
+    try {
+      const result = await updateLocalYtDlp(choice);
+      await refreshYtDlpUpdateStatus();
+      if (result.status === 'installed' && result.installedVersion) {
+        setPendingRestart(
+          t('settings.ytDlpUpdateRestartRequired', { version: result.installedVersion })
+        );
+      } else if (result.status === 'blocked' || result.code === 'DOWNLOAD_ACTIVE') {
+        showError(t('settings.ytDlpUpdateDownloadActive'));
+      } else if (result.status !== 'up_to_date') {
+        showError(result.message ?? result.code ?? t('settings.ytDlpUpdateFailedGeneric'));
+      }
+    } catch (error) {
+      showError(getErrorMessage(error instanceof Error ? error.message : 'UNKNOWN_ERROR'));
+    } finally {
+      setYtDlpUpdating(false);
+    }
+  }, [handleClearYtDlpOverride, refreshYtDlpUpdateStatus, showError, t]);
 
   const handleRestart = useCallback(async () => {
     setPendingRestart(null);
@@ -851,16 +897,12 @@ export default function SettingsScreen() {
               rightElement={ytDlpUpdating ? <ActivityIndicator size="small" color={colors.accent} /> : undefined}
               showArrow={!ytDlpUpdateDisabled}
             />
-            {ytDlpUpdateStatus?.source === 'override' && (
-              <SettingsItem
-                icon="arrow-undo-outline"
-                title={t('settings.ytDlpUseBundled')}
-                subtitle={t('settings.ytDlpUseBundledHint', {
-                  version: ytDlpUpdateStatus?.bundledVersion ?? 'unknown',
-                })}
-                onPress={handleClearYtDlpOverride}
-              />
-            )}
+            <SettingsItem
+              icon="git-branch-outline"
+              title={t('settings.ytDlpChooseVersion')}
+              subtitle={t('settings.ytDlpChooseVersionHint')}
+              onPress={openVersionPicker}
+            />
             {(ytDlpUpdateStatus?.pendingVersion || ytDlpUpdateStatus?.requiresRestart) && (
               <SettingsItem
                 icon="refresh-outline"
@@ -1221,6 +1263,100 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
+      {/* Choosing a yt-dlp version. One is kept, so picking replaces what is there. */}
+      <Modal
+        visible={versionPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVersionPickerOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              {t('settings.ytDlpVersionSheetTitle')}
+            </Text>
+
+            <ScrollView style={styles.versionList}>
+              <Pressable
+                onPress={() => setPendingYtDlpChoice('')}
+                style={[styles.versionRow, { borderBottomColor: colors.border }]}
+              >
+                <Text style={[styles.versionLabel, { color: colors.text }]}>
+                  {t('settings.ytDlpBundledLabel')}
+                </Text>
+                {ytDlpUpdateStatus?.source !== 'override' && (
+                  <Text style={[styles.versionBadge, { color: colors.accent }]}>
+                    {t('settings.ytDlpInUse')}
+                  </Text>
+                )}
+              </Pressable>
+
+              {ytDlpVersions === null && (
+                <Text style={[styles.versionHint, { color: colors.textSubtle }]}>
+                  {t('common.loading')}
+                </Text>
+              )}
+              {ytDlpVersions?.length === 0 && (
+                <Text style={[styles.versionHint, { color: colors.textSubtle }]}>
+                  {t('settings.ytDlpVersionsNeedNetwork')}
+                </Text>
+              )}
+              {ytDlpVersions?.map((version) => {
+                const inUse =
+                  ytDlpUpdateStatus?.source === 'override' &&
+                  ytDlpUpdateStatus?.activeVersion === version;
+                return (
+                  <Pressable
+                    key={version}
+                    onPress={() => setPendingYtDlpChoice(version)}
+                    style={[styles.versionRow, { borderBottomColor: colors.border }]}
+                  >
+                    <Text style={[styles.versionLabel, { color: colors.text }]}>{version}</Text>
+                    {inUse && (
+                      <Text style={[styles.versionBadge, { color: colors.accent }]}>
+                        {t('settings.ytDlpInUse')}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Pressable
+              onPress={() => setVersionPickerOpen(false)}
+              style={[styles.modalCloseButton, { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
+            >
+              <Text style={[styles.modalCloseText, { color: colors.text }]}>
+                {t('common.cancel')}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <ConfirmModal
+        visible={pendingYtDlpChoice !== null}
+        config={
+          pendingYtDlpChoice !== null
+            ? {
+                title: t('settings.ytDlpSwitchConfirmTitle'),
+                message: t('settings.ytDlpSwitchConfirmBody', {
+                  version:
+                    pendingYtDlpChoice === ''
+                      ? t('settings.ytDlpBundledLabel')
+                      : pendingYtDlpChoice,
+                }),
+                confirm: t('common.ok'),
+                destructive: false,
+              }
+            : null
+        }
+        onCancel={() => setPendingYtDlpChoice(null)}
+        onConfirm={() => {
+          void applyYtDlpChoice(pendingYtDlpChoice ?? '');
+        }}
+      />
+
       <ConfirmModal
         visible={pendingRestart !== null}
         config={
@@ -1454,6 +1590,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   autoPresetLabel: { fontSize: 15, flex: 1 },
+  versionList: { maxHeight: 320 },
+  versionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  versionLabel: { fontSize: 15 },
+  versionBadge: { fontSize: 12 },
+  versionHint: { fontSize: 13, paddingVertical: 16 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
