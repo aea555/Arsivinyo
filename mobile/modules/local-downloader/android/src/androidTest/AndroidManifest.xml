@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    The handshake test opens a loopback socket, and Android gates socket creation on this
+    permission whatever the address — 127.0.0.1 included. The app declares it, but an
+    instrumented test for a library module builds its own APK from this manifest and the
+    library's, never the app's, so it has to be declared again here.
+  -->
+  <uses-permission android:name="android.permission.INTERNET" />
+</manifest>
