@@ -70,8 +70,12 @@ object SessionKeys {
     val builder = KeyGenParameterSpec.Builder(
       ALIAS, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
       .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
-      .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA384,
-                  KeyProperties.DIGEST_SHA512)
+      // DIGEST_NONE is the one that matters. Conscrypt hashes the handshake itself and
+      // asks the Keystore to sign the finished digest, so a key that only authorises
+      // SHA-256 cannot be used for TLS at all — the handshake dies with nothing more
+      // informative than a read error at both ends.
+      .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256,
+                  KeyProperties.DIGEST_SHA384, KeyProperties.DIGEST_SHA512)
       // The subject is not meaningful — nothing verifies a name here — but a certificate
       // has to carry one.
       .setCertificateSubject(X500Principal("CN=arsivinyo"))
