@@ -17,10 +17,13 @@ Item {
     required property var engine
     required property var library
     required property var cookies
+    required property var secrets
 
     /** Version to install once confirmed; empty string means the newest. */
     property string pendingVersion: ""
     property string pendingLabel: ""
+
+    property string securityError: ""
 
     /** Which folder the dialog is choosing for: "downloads" or "music". */
     property string folderKey: ""
@@ -344,6 +347,148 @@ Item {
                 }
             }
 
+            // ---- security ----------------------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Text {
+                    text: qsTr("Security")
+                    color: Theme.textSubtle
+                    font.family: Fonts.body
+                    font.pixelSize: 11
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: settings.secrets.configured
+                          ? (settings.secrets.remembered
+                             ? qsTr("Encrypted, and unlocked automatically on this computer. Anyone who can read your disk can also read the key beside it.")
+                             : qsTr("Encrypted with your passphrase. It is asked for once per run, the first time something needs it."))
+                          : qsTr("Cookies are stored as they came from your browser. Set a passphrase to encrypt them.")
+                    color: Theme.textSubtle
+                    font.family: Fonts.body
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                Pressable {
+                    id: passphraseRow
+                    Layout.fillWidth: true
+                    implicitHeight: 48
+                    radius: 10
+                    baseColor: Theme.surface
+                    border.color: hovered ? Theme.borderSubtle : Theme.border
+                    Behavior on border.color { ColorAnimation { duration: 120 } }
+                    onClicked: settings.secrets.configured ? changeSheet.ask()
+                                                           : settings.secrets.requestUnlock("")
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        spacing: 12
+                        Text {
+                            text: settings.secrets.configured ? qsTr("Change passphrase")
+                                                              : qsTr("Set a passphrase")
+                            color: Theme.text
+                            font.family: Fonts.body
+                            font.pixelSize: 13
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: settings.secrets.unlocked ? qsTr("unlocked") : qsTr("locked")
+                            color: Theme.textSubtle
+                            font.family: Fonts.body
+                            font.pixelSize: 12
+                        }
+                    }
+                }
+
+                Pressable {
+                    id: rememberRow
+                    visible: settings.secrets.configured
+                    Layout.fillWidth: true
+                    implicitHeight: 62
+                    radius: 10
+                    baseColor: Theme.surface
+                    border.color: hovered ? Theme.borderSubtle : Theme.border
+                    Behavior on border.color { ColorAnimation { duration: 120 } }
+                    onClicked: {
+                        if (!settings.secrets.unlocked) {
+                            settings.secrets.requestUnlock(qsTr("to change how this computer unlocks"))
+                            return
+                        }
+                        settings.securityError = settings.secrets.setRemembered(!settings.secrets.remembered)
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        spacing: 12
+                        ColumnLayout {
+                            spacing: 2
+                            Text {
+                                text: qsTr("Remember on this computer")
+                                color: Theme.text
+                                font.family: Fonts.body
+                                font.pixelSize: 13
+                            }
+                            Text {
+                                // Said plainly rather than dressed up: this is convenience.
+                                text: qsTr("Convenience, not protection — the key is kept beside the data.")
+                                color: Theme.textSubtle
+                                font.family: Fonts.body
+                                font.pixelSize: 11
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: settings.secrets.remembered ? qsTr("on") : qsTr("off")
+                            color: settings.secrets.remembered ? Theme.accent : Theme.textSubtle
+                            font.family: Fonts.body
+                            font.pixelSize: 12
+                        }
+                    }
+                }
+
+                RowLayout {
+                    visible: settings.secrets.configured
+                    Layout.fillWidth: true
+                    spacing: 18
+                    TextAction {
+                        text: qsTr("Export a recovery key")
+                        font.pixelSize: 12
+                        onClicked: {
+                            if (!settings.secrets.unlocked) {
+                                settings.secrets.requestUnlock(qsTr("to write a recovery key"))
+                                return
+                            }
+                            recoveryDialog.open()
+                        }
+                    }
+                    TextAction {
+                        text: qsTr("Lock now")
+                        accentColor: Theme.textMuted
+                        font.pixelSize: 12
+                        enabled: settings.secrets.unlocked
+                        onClicked: settings.secrets.lock()
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: settings.securityError.length > 0
+                    text: settings.securityError
+                    color: Theme.error
+                    font.family: Fonts.body
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             // ---- engine ------------------------------------------------------------
             ColumnLayout {
                 Layout.fillWidth: true
@@ -631,6 +776,101 @@ Item {
     }
 
     // ---- confirming a change of extractor ------------------------------------------
+    // Changing the passphrase re-wraps the master key and leaves every encrypted file
+    // alone, so this is cheap — but the old one is still required, or anyone at an unlocked
+    // window could lock the owner out.
+    Modal {
+        id: changeSheet
+        anchors.fill: parent
+        title: qsTr("Change passphrase")
+        cardWidth: 460
+
+        function ask() {
+            oldField.text = ""
+            newField.text = ""
+            changeError.text = ""
+            open()
+            oldField.forceActiveFocus()
+        }
+
+        function submit() {
+            changeError.text = settings.secrets.changePassphrase(oldField.text, newField.text)
+            if (changeError.text.length === 0) changeSheet.close()
+        }
+
+        TextField {
+            id: oldField
+            Layout.fillWidth: true
+            echoMode: TextInput.Password
+            placeholderText: qsTr("Current passphrase")
+            color: Theme.text
+            font.family: Fonts.body
+            font.pixelSize: 12
+            selectByMouse: true
+            selectionColor: Theme.accent
+            selectedTextColor: Theme.background
+            background: Rectangle {
+                radius: 8
+                color: Theme.background
+                border.color: oldField.activeFocus ? Theme.accent : Theme.border
+            }
+            HoverHandler { cursorShape: Qt.IBeamCursor }
+        }
+        TextField {
+            id: newField
+            Layout.fillWidth: true
+            echoMode: TextInput.Password
+            placeholderText: qsTr("New passphrase")
+            color: Theme.text
+            font.family: Fonts.body
+            font.pixelSize: 12
+            selectByMouse: true
+            selectionColor: Theme.accent
+            selectedTextColor: Theme.background
+            onAccepted: changeSheet.submit()
+            background: Rectangle {
+                radius: 8
+                color: Theme.background
+                border.color: newField.activeFocus ? Theme.accent : Theme.border
+            }
+            HoverHandler { cursorShape: Qt.IBeamCursor }
+        }
+        Text {
+            id: changeError
+            Layout.fillWidth: true
+            visible: text.length > 0
+            color: Theme.error
+            font.family: Fonts.body
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 18
+            TextAction {
+                text: qsTr("Cancel")
+                accentColor: Theme.textMuted
+                font.pixelSize: 13
+                onClicked: changeSheet.close()
+            }
+            TextAction {
+                text: qsTr("Change it")
+                font.pixelSize: 13
+                enabled: oldField.text.length > 0 && newField.text.length > 0
+                onClicked: changeSheet.submit()
+            }
+        }
+    }
+
+    FileDialog {
+        id: recoveryDialog
+        title: qsTr("Save a recovery key")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("Recovery key (*.key)")]
+        selectedFile: "file://" + settings.engine.downloadDir + "/arsivinyo-recovery.key"
+        onAccepted: settings.securityError = settings.secrets.exportRecoveryKey(selectedFile)
+    }
+
     Rectangle {
         id: confirmDialog
         visible: false

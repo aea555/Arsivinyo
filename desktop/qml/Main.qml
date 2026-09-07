@@ -20,7 +20,6 @@ ApplicationWindow {
 
     EngineClient {
         id: engine
-        cookiesDir: cookies.directory
         onFinished: (ok, message, filePath, thumbnailPath) => {
             root.resultOk = ok
             if (ok && filePath.length) {
@@ -31,10 +30,19 @@ ApplicationWindow {
                 root.resultMessage = ok ? qsTr("Saved") : (message.length ? message : qsTr("Download failed"))
             }
             clearResult.restart()
+            // The plain-text copies exist only for the length of a run.
+            cookies.sweepRuntime()
         }
     }
     Library { id: library }
-    CookieStore { id: cookies }
+    CookieStore { id: cookies; secrets: secrets }
+
+    // The keybox. Nothing prompts at launch: whatever needs a key asks for one, and with
+    // "remember on this device" set it is already open by the time anything looks.
+    SecretStore {
+        id: secrets
+        onUnlockRequested: (reason) => unlockSheet.ask(reason)
+    }
 
     // Pairing. The identity is a singleton — one keypair per install — while the peer
     // list, the transport and what a peer may reach are ordinary objects wired together
@@ -209,7 +217,15 @@ ApplicationWindow {
             onActivated: {
                 if (engine.busy) { engine.cancel(); return }
                 if (!root.pendingUrl.length) return
+                // Cookies are encrypted at rest and the engine is a separate process that
+                // opens the file itself, so a run gets its own decrypted copy. This asks
+                // only when there is something to decrypt.
+                if (cookies.count && !secrets.unlocked) {
+                    secrets.requestUnlock(qsTr("to use your saved cookies"))
+                    return
+                }
                 root.resultMessage = ""
+                engine.cookiesDir = cookies.prepareRuntime()
                 engine.download(root.pendingUrl, engine.downloadDir, root.audioMode)
             }
                 }
@@ -297,6 +313,7 @@ ApplicationWindow {
             // Last, because a StackLayout's child order is what `currentIndex` selects and
             // the tab labels above are read in the same order.
             SettingsView {
+                secrets: secrets
                 engine: engine
                 library: library
                 cookies: cookies
@@ -362,5 +379,12 @@ ApplicationWindow {
     }
 
     property bool audioMode: false
+    // Above everything else, so it covers whichever view asked for it.
+    UnlockSheet {
+        id: unlockSheet
+        store: secrets
+        anchors.fill: parent
+    }
+
     property int tab: 0
 }

@@ -44,7 +44,7 @@ set_source_files_properties(qml/Theme.qml qml/Fonts.qml PROPERTIES QT_QML_SINGLE
 qt_add_qml_module(arsivinyo-desktop
     URI Arsivinyo
     VERSION 1.0
-    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml qml/PlayerBar.qml qml/DevicesView.qml qml/Pressable.qml qml/TextAction.qml qml/SettingsView.qml
+    QML_FILES qml/Main.qml qml/Theme.qml qml/Fonts.qml qml/DownloadButton.qml qml/LibraryView.qml qml/PlayerBar.qml qml/DevicesView.qml qml/Pressable.qml qml/TextAction.qml qml/SettingsView.qml qml/Modal.qml qml/UnlockSheet.qml
     RESOURCES
         qml/fonts/Monda_400Regular.ttf
         qml/fonts/Monda_600SemiBold.ttf
@@ -61,6 +61,15 @@ qt_add_qml_module(arsivinyo-desktop
         src/PeerSession.h src/PeerSession.cpp
         src/PairingService.h src/PairingService.cpp
         src/CookieStore.h src/CookieStore.cpp
+        src/SecretStore.h src/SecretStore.cpp
+        src/DataDir.h
+        ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+        ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp
         src/LibraryContent.h src/LibraryContent.cpp
         src/LocalAddress.h src/LocalAddress.cpp
         src/DnsSd.h src/DnsSd.cpp
@@ -77,7 +86,7 @@ qt_add_qml_module(arsivinyo-desktop
 # The generated QML type registration includes headers as <EngineClient.h>, guarded by
 # __has_include. Without src/ on the include path the guard quietly fails and the type is
 # never declared, which surfaces much later as an unrelated template error.
-target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP} ${ARSIVINYO_PAIRING_DIR})
+target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP} ${ARSIVINYO_PAIRING_DIR} ${ARSIVINYO_CRYPTO_DIR})
 
 # The app is not usable without an extractor, so the fetch is part of building it.
 add_dependencies(arsivinyo-desktop arsivinyo-ytdlp)
@@ -183,6 +192,22 @@ qt_add_executable(secret_test tests/secret_test.cpp
 target_include_directories(secret_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
 target_link_libraries(secret_test PRIVATE Qt6::Core Qt6::Qml PkgConfig::LIBCRYPTO)
 add_test(NAME secret COMMAND secret_test)
+
+# Cookie jars at rest. The point of the test is the negative: the stored file must not
+# contain the session token it was made from.
+qt_add_executable(cookie_test tests/cookie_test.cpp
+    src/CookieStore.h src/CookieStore.cpp
+    src/SecretStore.h src/SecretStore.cpp src/DataDir.h
+    ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp)
+target_include_directories(cookie_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
+target_link_libraries(cookie_test PRIVATE Qt6::Core Qt6::Qml PkgConfig::LIBCRYPTO)
+add_test(NAME cookie COMMAND cookie_test)
 
 # A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
 # and not a test: it needs another device on the network to talk to.
