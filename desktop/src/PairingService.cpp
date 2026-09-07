@@ -10,6 +10,7 @@
 
 #include <QJsonArray>
 
+#include "LocalAddress.h"
 #include "wire.h"
 
 using namespace arsivinyo::pairing;
@@ -29,14 +30,6 @@ protected:
 };
 
 /** The first non-loopback address, which is what a peer on the LAN can reach. */
-QString localAddress() {
-    for (const QHostAddress &address : QNetworkInterface::allAddresses()) {
-        if (address.isLoopback() || address.protocol() != QAbstractSocket::IPv4Protocol) continue;
-        return address.toString();
-    }
-    return QStringLiteral("127.0.0.1");
-}
-
 }  // namespace
 
 QString PairingService::fingerprintOf(const QByteArray &publicKey) {
@@ -276,7 +269,7 @@ QString PairingService::pairingPayload() const {
         {"id", m_identity->fingerprint()},
         {"key", QString::fromLatin1(m_identity->publicKey().toHex())},
         {"name", m_identity->deviceName()},
-        {"host", localAddress()},
+        {"host", localaddress::OfThisMachine()},
         {"port", port()},
     };
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));

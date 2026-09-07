@@ -6,6 +6,7 @@
 #include <QNetworkInterface>
 
 #include "DnsSd.h"
+#include "LocalAddress.h"
 
 namespace {
 
@@ -14,14 +15,6 @@ constexpr quint16 kMulticastPort = 5353;
 
 /** Records are announced with a 120 s TTL; drop a peer once it is well past that. */
 constexpr qint64 kStaleSeconds = 300;
-
-QString localAddress() {
-    for (const QHostAddress &address : QNetworkInterface::allAddresses()) {
-        if (address.isLoopback() || address.protocol() != QAbstractSocket::IPv4Protocol) continue;
-        return address.toString();
-    }
-    return QStringLiteral("127.0.0.1");
-}
 
 }  // namespace
 
@@ -40,7 +33,7 @@ bool Discovery::start(const QString &fingerprint, const QString &name, quint16 p
     m_fingerprint = fingerprint;
     m_name = name;
     m_port = port;
-    m_address = localAddress();
+    m_address = localaddress::OfThisMachine();
 
     m_socket = new QUdpSocket(this);
     // Shared, because other mDNS responders — an Avahi daemon, another copy of this app —

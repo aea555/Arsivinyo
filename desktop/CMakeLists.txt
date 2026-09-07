@@ -46,6 +46,7 @@ qt_add_qml_module(arsivinyo-desktop
         src/PeerSession.h src/PeerSession.cpp
         src/PairingService.h src/PairingService.cpp
         src/LibraryContent.h src/LibraryContent.cpp
+        src/LocalAddress.h src/LocalAddress.cpp
         src/DnsSd.h src/DnsSd.cpp
         src/Discovery.h src/Discovery.cpp
         ${ARSIVINYO_PAIRING_DIR}/wire.cpp
@@ -98,6 +99,7 @@ qt_add_executable(transport_test tests/transport_test.cpp
     src/PeerLink.h src/PeerLink.cpp
     src/PeerSession.h src/PeerSession.cpp
     src/PairingService.h src/PairingService.cpp
+    src/LocalAddress.h src/LocalAddress.cpp
     ${ARSIVINYO_PAIRING}/wire.cpp)
 target_include_directories(transport_test PRIVATE src ${ARSIVINYO_PAIRING})
 target_link_libraries(transport_test PRIVATE Qt6::Core Qt6::Network Qt6::Sql Qt6::Qml
@@ -107,7 +109,7 @@ add_test(NAME transport COMMAND transport_test)
 # The DNS-SD codec. Its parser reads whatever is on the network, so the malformed cases
 # matter as much as the well-formed ones.
 qt_add_executable(dnssd_test tests/dnssd_test.cpp src/DnsSd.h src/DnsSd.cpp
-    src/Discovery.h src/Discovery.cpp)
+    src/Discovery.h src/Discovery.cpp src/LocalAddress.h src/LocalAddress.cpp)
 target_include_directories(dnssd_test PRIVATE src)
 target_link_libraries(dnssd_test PRIVATE Qt6::Core Qt6::Network Qt6::Qml)
 add_test(NAME dnssd COMMAND dnssd_test)
@@ -120,3 +122,10 @@ qt_add_executable(content_test tests/content_test.cpp
 target_include_directories(content_test PRIVATE src)
 target_link_libraries(content_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Gui)
 add_test(NAME content COMMAND content_test)
+
+# Which address a peer is told to connect to. Scored over made-up interfaces, so the
+# result does not depend on what the build machine has plugged in.
+qt_add_executable(address_test tests/address_test.cpp src/LocalAddress.h src/LocalAddress.cpp)
+target_include_directories(address_test PRIVATE src)
+target_link_libraries(address_test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME address COMMAND address_test)
