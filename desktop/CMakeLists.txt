@@ -10,6 +10,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Sql Multi
 # Android's; everything here is the same C++ the phone runs.
 set(ARSIVINYO_DSP ${CMAKE_CURRENT_SOURCE_DIR}/../shared/dsp)
 set(ARSIVINYO_PAIRING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../shared/pairing)
+set(ARSIVINYO_CRYPTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../shared/crypto)
 
 # Ed25519. Qt does not expose it, so the identity keys go straight to OpenSSL's EVP.
 find_package(PkgConfig REQUIRED)
@@ -143,10 +144,30 @@ add_test(NAME content COMMAND content_test)
 
 # Which address a peer is told to connect to. Scored over made-up interfaces, so the
 # result does not depend on what the build machine has plugged in.
+
 qt_add_executable(address_test tests/address_test.cpp src/LocalAddress.h src/LocalAddress.cpp)
 target_include_directories(address_test PRIVATE src)
 target_link_libraries(address_test PRIVATE Qt6::Core Qt6::Network)
 add_test(NAME address COMMAND address_test)
+
+# The portable security core, against the vectors the Kotlin implementation also reads.
+# A drift between the two does not mean a failed handshake here — it means a vault that will
+# not open — so the ciphertext is compared byte for byte, not merely round-tripped.
+# The macro is named apart from ARSIVINYO_VECTORS on purpose: a target that ever links both
+# pairing and crypto would otherwise have two different files under one name.
+qt_add_executable(crypto_test tests/crypto_test.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp)
+target_include_directories(crypto_test PRIVATE ${ARSIVINYO_CRYPTO_DIR})
+target_compile_definitions(crypto_test PRIVATE
+    ARSIVINYO_CRYPTO_VECTORS="${ARSIVINYO_CRYPTO_DIR}/VECTORS.json")
+target_link_libraries(crypto_test PRIVATE Qt6::Core PkgConfig::LIBCRYPTO)
+add_test(NAME crypto COMMAND crypto_test)
 
 # A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
 # and not a test: it needs another device on the network to talk to.

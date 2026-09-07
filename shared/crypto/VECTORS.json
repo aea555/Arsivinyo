@@ -1,0 +1,339 @@
+{
+  "hkdf_sha256": [
+    {
+      "salt": null,
+      "why": "a null salt, which is what every subkey derivation uses",
+      "ikm": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "info": "avsbck/verify/v1",
+      "outLength": 32,
+      "out": "aecbe82b6b86a5a65fb7d63cefe3d165076de49789646ff0dc6fbc1c3323c2c3"
+    },
+    {
+      "salt": "0000000000000000000000000000000000000000000000000000000000000000",
+      "why": "32 zero bytes must equal the null salt above, or the two libraries disagree about a default and every subkey diverges",
+      "ikm": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "info": "avsbck/verify/v1",
+      "outLength": 32,
+      "out": "aecbe82b6b86a5a65fb7d63cefe3d165076de49789646ff0dc6fbc1c3323c2c3"
+    },
+    {
+      "salt": "0104070a0d101316191c1f2225282b2e3134373a3d404346494c4f5255585b5e",
+      "why": "a real salt",
+      "ikm": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "info": "avsbck/verify/v1",
+      "outLength": 32,
+      "out": "90a98eb873060b6b9ce990aefef6816be32aa725a9ea1ff21399e6660ea42128"
+    },
+    {
+      "salt": null,
+      "why": "an empty info string",
+      "ikm": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "info": "",
+      "outLength": 32,
+      "out": "ae7bc595517103d9c4d2250eb8d02e92e5e14af5142081ca7063248d035b830e"
+    },
+    {
+      "salt": null,
+      "why": "an output that is not 32 bytes",
+      "ikm": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "info": "avsbck/verify/v1",
+      "outLength": 64,
+      "out": "aecbe82b6b86a5a65fb7d63cefe3d165076de49789646ff0dc6fbc1c3323c2c3c80af3ae6fd74d22cca99368dae159200154bdaad48ec2faf79c315aa24974b0"
+    }
+  ],
+  "argon2id": [
+    {
+      "passwordUtf8": "636f72726563742d686f7273652d626174746572792d737461706c65",
+      "password": "correct-horse-battery-staple",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "parallelism": 4,
+      "why": "the shipped profile; lowering it silently would weaken every keybox",
+      "memoryKiB": 65536,
+      "version": 19,
+      "iterations": 3,
+      "outLength": 32,
+      "out": "868f106f465e0b8721350699b70bcb75a0fbf80b9cfe21ed21b956a470209d93"
+    },
+    {
+      "passwordUtf8": "636f72726563742d686f7273652d626174746572792d737461706c65",
+      "password": "correct-horse-battery-staple",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "parallelism": 4,
+      "why": "the cheap profile the tests use, pinned so it cannot drift either",
+      "memoryKiB": 8192,
+      "version": 19,
+      "iterations": 1,
+      "outLength": 32,
+      "out": "477045c4b38251a45181bfdb79e0c916cb2cd1965146f7fbca2c50ac84940f92"
+    },
+    {
+      "passwordUtf8": "636f72726563742d686f7273652d626174746572792d737461706c65",
+      "password": "correct-horse-battery-staple",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "parallelism": 1,
+      "why": "one lane against four, otherwise identical: proves parallelism is honoured rather than silently ignored, which is the classic Argon2 porting bug",
+      "memoryKiB": 8192,
+      "version": 19,
+      "iterations": 1,
+      "outLength": 32,
+      "out": "284cbf14b3101e63c29b7646a3f70181be58e10dab02941cac192b9dbd008e2a"
+    },
+    {
+      "passwordUtf8": "",
+      "password": "",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "parallelism": 4,
+      "why": "an empty password",
+      "memoryKiB": 8192,
+      "version": 19,
+      "iterations": 1,
+      "outLength": 32,
+      "out": "90e0fbca4a30461f5afb0d8158ed31ce66675fb967a9f77645bc88288f2212da"
+    },
+    {
+      "passwordUtf8": "70c3a4737377c3b6727420f09f949020c3a7c49fc59f",
+      "password": "pässwört 🔐 çğş",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "parallelism": 4,
+      "why": "non-ASCII: Kotlin encodes a CharArray as UTF-8 and C++ must match, or a backup written on one device will not open on the other",
+      "memoryKiB": 8192,
+      "version": 19,
+      "iterations": 1,
+      "outLength": 32,
+      "out": "d9f9598b3ca2365d4e7b8f079a7c7e46d77641f155f5538cf5a5c9f7e19ac1d3"
+    },
+    {
+      "passwordUtf8": "747261696c696e6720737061636520",
+      "password": "trailing space ",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "parallelism": 4,
+      "why": "a trailing space, which is easy to trim by accident",
+      "memoryKiB": 8192,
+      "version": 19,
+      "iterations": 1,
+      "outLength": 32,
+      "out": "484af1cf029de45f6e2ce622d7eb4447898eb601d123d95c1edf71fa2c2e7a20"
+    }
+  ],
+  "avsbck_subkeys": {
+    "masterKey": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+    "verifier": "aecbe82b6b86a5a65fb7d63cefe3d165076de49789646ff0dc6fbc1c3323c2c3",
+    "why": "pins the literal labels, including the trailing slash on the section prefix \u2014 a missing one is invisible inside either implementation",
+    "sections": {
+      "settings": "18e6955e179c3e7d35b0570fb399c7a3ef18191254be4bfe943274c09fc20c1a",
+      "music": "afa78e9fe30d58be03f55bc6afea6c17ae99b4f1269e3778d2a5526ce953e684",
+      "vault": "3e1104e5edbf1ca5278ed801a6c1250230a0fb50f8f6c1afcc79ee4bdd55470b",
+      "cookies": "a607a860acb45d2c53c5b5d643162627337f97aaaa497a525d45bd7ce2a4f9b1"
+    }
+  },
+  "aead_stream": [
+    {
+      "associatedData": "vault",
+      "noncePrefix": "1cfc28efbb601f",
+      "ciphertextSha256": "3b608c4f549aeb060d614e41358465f1fc91b817442ecdb0649d7aa75634aca9",
+      "why": "empty input still costs a header and one empty final segment",
+      "plaintext": {
+        "seed": 0,
+        "pattern": "java-util-random",
+        "length": 0
+      },
+      "ciphertextLength": 56,
+      "headerSalt": "5838dbc155c959d7aaad355136dae6e8e470f6422b7b90e97e1d832563714031",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "90aa5201ae04bf",
+      "ciphertextSha256": "3227032232a8756327882b04f1cd3ae79f6f18299f75f7048be220205eb92d8d",
+      "why": "one byte",
+      "plaintext": {
+        "seed": 1,
+        "pattern": "java-util-random",
+        "length": 1
+      },
+      "ciphertextLength": 57,
+      "headerSalt": "55f0c31804704fa63ea2f74fa977fa66b2ef5ba4edaf8f65a1995fe72226d737",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "ad3561613e70de",
+      "ciphertextSha256": "47a7a76945f5527243bdbc4efb7c4b714934c3af9e336f1568aaa2072c14914a",
+      "why": "a short single segment",
+      "plaintext": {
+        "seed": 100,
+        "pattern": "java-util-random",
+        "length": 100
+      },
+      "ciphertextLength": 156,
+      "headerSalt": "5cb64bf1640a9de794098509e740a4e97fcaa7840047743dac1124d36aeae465",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "9ea7b1e017084f",
+      "ciphertextSha256": "9494c0b55750a0780ee3f9f19ba3e627c789652e96d01a66dc035b44780dd392",
+      "why": "one byte short of filling segment 0",
+      "plaintext": {
+        "seed": 1048519,
+        "pattern": "java-util-random",
+        "length": 1048519
+      },
+      "ciphertextLength": 1048575,
+      "headerSalt": "f29418f684efde0259eb13dc4ddfbdd9bbb07f388f171372e974754f0fd8c010",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "8190ff1866567f",
+      "ciphertextSha256": "a4067a3b1a506aaa0c304e71b0b30e25fe3daac96c93d2cb0a42ca7ea0f0dc15",
+      "why": "segment 0 exactly full: this must stay ONE segment, so the last-segment flag is set on it rather than on an empty segment after it",
+      "plaintext": {
+        "seed": 1048520,
+        "pattern": "java-util-random",
+        "length": 1048520
+      },
+      "ciphertextLength": 1048576,
+      "headerSalt": "862da57fd5d61091647b020c8bfeb15daa36c7f9fb133c834d7fa9ca7d6a159a",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "1636dfedbb829e",
+      "ciphertextSha256": "fe7b391e142e18bba2fd044439f5d8a3b0565f1f45f0f78a7b463fc11a38b5e5",
+      "why": "one byte past segment 0, which forces a second segment",
+      "plaintext": {
+        "seed": 1048521,
+        "pattern": "java-util-random",
+        "length": 1048521
+      },
+      "ciphertextLength": 1048593,
+      "headerSalt": "e976d36fad28307b3c50e0169d6d721a438039f749b0551c1b7c9de61963e11c",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "d175aa55854092",
+      "ciphertextSha256": "e8bee4fe77d5dd7c0899589706e5764365e22d06b01cbb8f941e8e756d5ad0d3",
+      "why": "two segments exactly full",
+      "plaintext": {
+        "seed": 2097080,
+        "pattern": "java-util-random",
+        "length": 2097080
+      },
+      "ciphertextLength": 2097152,
+      "headerSalt": "0be1b588bc38be11b34d5c67756c9501454d9c606a9f8ee0cb1a48d27e782f24",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "associatedData": "vault",
+      "noncePrefix": "96bb0a45194809",
+      "ciphertextSha256": "f71555022cb1585b743d852eb2ff4dd75395041c2b5d9cf1a5bef8f33f6c326e",
+      "why": "three segments, the last holding one byte",
+      "plaintext": {
+        "seed": 2097081,
+        "pattern": "java-util-random",
+        "length": 2097081
+      },
+      "ciphertextLength": 2097169,
+      "headerSalt": "62a7f223df6d4fa6f70afa0570bb5509d8798939d5c5012fe23c8c0343059043",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    }
+  ],
+  "_comment": [
+    "Pinned inputs and outputs for the portable security core.",
+    "Kotlin (Tink + BouncyCastle) and C++ (OpenSSL) are both held to this file.",
+    "Kotlin checks that it can reproduce or decrypt each entry; C++ additionally",
+    "reproduces every ciphertext byte for byte, using the recorded header.",
+    "Regenerate with -Darsivinyo.vectors.write=1 and review the diff."
+  ],
+  "segment_nonce": {
+    "cases": [
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 0,
+        "nonce": "a0a1a2a3a4a5a60000000000"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 0,
+        "nonce": "a0a1a2a3a4a5a60000000001"
+      },
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 1,
+        "nonce": "a0a1a2a3a4a5a60000000100"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 1,
+        "nonce": "a0a1a2a3a4a5a60000000101"
+      },
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 255,
+        "nonce": "a0a1a2a3a4a5a6000000ff00"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 255,
+        "nonce": "a0a1a2a3a4a5a6000000ff01"
+      },
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 256,
+        "nonce": "a0a1a2a3a4a5a60000010000"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 256,
+        "nonce": "a0a1a2a3a4a5a60000010001"
+      },
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 65535,
+        "nonce": "a0a1a2a3a4a5a60000ffff00"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 65535,
+        "nonce": "a0a1a2a3a4a5a60000ffff01"
+      },
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 65536,
+        "nonce": "a0a1a2a3a4a5a60001000000"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 65536,
+        "nonce": "a0a1a2a3a4a5a60001000001"
+      },
+      {
+        "last": false,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 16777216,
+        "nonce": "a0a1a2a3a4a5a60100000000"
+      },
+      {
+        "last": true,
+        "noncePrefix": "a0a1a2a3a4a5a6",
+        "segmentIndex": 16777216,
+        "nonce": "a0a1a2a3a4a5a60100000001"
+      }
+    ],
+    "why": "big-endian segment index and the last-segment flag. Cheap to pin here; through a whole stream the endianness bug only shows after 256 MB"
+  }
+}
