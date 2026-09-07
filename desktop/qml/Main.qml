@@ -243,7 +243,13 @@ ApplicationWindow {
                         required property string modelData
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: 8
+                        // Only the outer corners are round. Two fully rounded pills meeting
+                        // in the middle leave a notch between them.
+                        radius: 0
+                        topLeftRadius: index === 0 ? 8 : 0
+                        bottomLeftRadius: index === 0 ? 8 : 0
+                        topRightRadius: index === 1 ? 8 : 0
+                        bottomRightRadius: index === 1 ? 8 : 0
                         selected: (index === 1) === root.audioMode
                         interactive: !engine.busy
                         onClicked: root.audioMode = (index === 1)

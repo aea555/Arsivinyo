@@ -25,7 +25,7 @@ class Library : public QAbstractListModel {
 
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
-    Q_PROPERTY(QString musicDir READ musicDir CONSTANT)
+    Q_PROPERTY(QString musicDir READ musicDir WRITE setMusicDir NOTIFY musicDirChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
 
 public:
@@ -45,6 +45,8 @@ public:
 
     bool scanning() const { return m_scanning; }
     QString musicDir() const { return m_musicDir; }
+    /** Point the library at another folder. Remembered between runs. */
+    Q_INVOKABLE void setMusicDir(const QString &path);
     QString filter() const { return m_filter; }
     void setFilter(const QString &value);
 
@@ -80,6 +82,7 @@ public:
 
 signals:
     void countChanged();
+    void musicDirChanged();
     void scanningChanged();
     void filterChanged();
     void playlistsChanged();

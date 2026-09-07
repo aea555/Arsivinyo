@@ -28,7 +28,7 @@ class EngineClient : public QObject {
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(QString ytDlpVersion READ ytDlpVersion NOTIFY ytDlpVersionChanged)
     Q_PROPERTY(QString enginePath READ enginePath CONSTANT)
-    Q_PROPERTY(QString downloadDir READ downloadDir CONSTANT)
+    Q_PROPERTY(QString downloadDir READ downloadDir WRITE setDownloadDir NOTIFY downloadDirChanged)
     Q_PROPERTY(bool updatingYtDlp READ updatingYtDlp NOTIFY ytDlpUpdateChanged)
     Q_PROPERTY(QString ytDlpUpdateStatus READ ytDlpUpdateStatus NOTIFY ytDlpUpdateChanged)
     Q_PROPERTY(double ytDlpUpdateProgress READ ytDlpUpdateProgress NOTIFY ytDlpUpdateChanged)
@@ -47,6 +47,8 @@ public:
     QString ytDlpVersion() const { return m_ytDlpVersion; }
     QString enginePath() const { return m_enginePath; }
     QString downloadDir() const { return m_downloadDir; }
+    /** Where finished downloads land. Remembered between runs. */
+    Q_INVOKABLE void setDownloadDir(const QString &path);
 
     Q_INVOKABLE void start();
     /** Stop and start, so a queued yt-dlp takes effect. */
@@ -75,6 +77,7 @@ public:
     Q_INVOKABLE QString hostOf(const QString &url) const;
 
 signals:
+    void downloadDirChanged();
     void ytDlpUpdateChanged();
     void ytDlpVersionsChanged();
     void readyChanged();

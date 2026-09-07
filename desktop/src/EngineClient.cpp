@@ -1,6 +1,7 @@
 #include "EngineClient.h"
 
 #include <QJsonArray>
+#include <QSettings>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -66,8 +67,19 @@ QStringList EngineClient::resolveEngineArgs(const QString &path) {
     return {path};
 }
 
+void EngineClient::setDownloadDir(const QString &path) {
+    const QString cleaned = QUrl(path).isLocalFile() ? QUrl(path).toLocalFile() : path;
+    if (cleaned.isEmpty() || cleaned == m_downloadDir) return;
+    QDir().mkpath(cleaned);
+    m_downloadDir = cleaned;
+    QSettings().setValue(QStringLiteral("folders/downloads"), cleaned);
+    emit downloadDirChanged();
+}
+
 QString EngineClient::resolveDownloadDir() {
     QString dir = QProcessEnvironment::systemEnvironment().value("ARSIVINYO_DOWNLOAD_DIR");
+    // A chosen folder beats the default, but not an explicit environment override.
+    if (dir.isEmpty()) dir = QSettings().value(QStringLiteral("folders/downloads")).toString();
     if (dir.isEmpty())
         dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     if (dir.isEmpty())

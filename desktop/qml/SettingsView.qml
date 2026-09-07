@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Arsivinyo
 
@@ -19,6 +20,24 @@ Item {
     /** Version to install once confirmed; empty string means the newest. */
     property string pendingVersion: ""
     property string pendingLabel: ""
+
+    /** Which folder the dialog is choosing for: "downloads" or "music". */
+    property string folderKey: ""
+
+    function pickFolder(key, current) {
+        folderKey = key
+        folderDialog.currentFolder = "file://" + current
+        folderDialog.open()
+    }
+
+    FolderDialog {
+        id: folderDialog
+        title: qsTr("Choose a folder")
+        onAccepted: {
+            if (settings.folderKey === "downloads") settings.engine.setDownloadDir(selectedFolder)
+            else settings.library.setMusicDir(selectedFolder)
+        }
+    }
 
     /** Changing the extractor needs a restart either way, so it is always confirmed. */
     function confirmYtDlp(version, label) {
@@ -163,37 +182,51 @@ Item {
 
                 Repeater {
                     model: [
-                        { label: qsTr("Downloads"), value: settings.engine.downloadDir },
-                        { label: qsTr("Music"), value: settings.library.musicDir },
+                        { key: "downloads", label: qsTr("Downloads"), value: settings.engine.downloadDir },
+                        { key: "music", label: qsTr("Music"), value: settings.library.musicDir },
                     ]
-                    Rectangle {
+                    Pressable {
+                        id: folderRow
                         required property var modelData
                         Layout.fillWidth: true
                         implicitHeight: 54
                         radius: 10
-                        color: Theme.surface
-                        border.color: Theme.border
+                        baseColor: Theme.surface
+                        border.color: hovered ? Theme.borderSubtle : Theme.border
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                        onClicked: settings.pickFolder(modelData.key, modelData.value)
 
-                        ColumnLayout {
+                        RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 14
                             anchors.rightMargin: 14
-                            spacing: 2
-                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 12
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    text: modelData.label
+                                    color: Theme.text
+                                    font.family: Fonts.body
+                                    font.pixelSize: 13
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.value
+                                    color: Theme.textSubtle
+                                    font.family: Fonts.body
+                                    font.pixelSize: 11
+                                    elide: Text.ElideMiddle
+                                }
+                            }
 
                             Text {
-                                text: modelData.label
-                                color: Theme.text
+                                text: qsTr("Change")
+                                color: folderRow.hovered ? Theme.accent : Theme.textSubtle
+                                Behavior on color { ColorAnimation { duration: 120 } }
                                 font.family: Fonts.body
-                                font.pixelSize: 13
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.value
-                                color: Theme.textSubtle
-                                font.family: Fonts.body
-                                font.pixelSize: 11
-                                elide: Text.ElideMiddle
+                                font.pixelSize: 12
                             }
                         }
                     }
@@ -335,8 +368,8 @@ Item {
                             active: !settings.engine.updatingYtDlp && settings.engine.ready
                             font.pixelSize: 12
                             onClicked: {
-                                versionList.visible = !versionList.visible
-                                if (versionList.visible) settings.engine.refreshYtDlpVersions()
+                                versionSheet.visible = true
+                                settings.engine.refreshYtDlpVersions()
                             }
                         }
 
@@ -349,26 +382,58 @@ Item {
                     }
                 }
 
-                // The versions on PyPI, most recent first, plus the copy the app shipped
-                // with. Only one downloaded version is kept, so switching replaces it.
-                Rectangle {
-                    id: versionList
-                    visible: false
+            }
+
+            Item { Layout.fillHeight: true; Layout.minimumHeight: 12 }
+        }
+    }
+
+    // ---- choosing a version ----------------------------------------------------------
+    //
+    // An overlay, not a panel in the column: inline it opened below the fold on a small
+    // window and had to be scrolled to, which is not a chooser.
+    Rectangle {
+        id: versionSheet
+        visible: false
+        anchors.fill: parent
+        color: Theme.overlay
+        TapHandler { onTapped: versionSheet.visible = false }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 60, 380)
+            implicitHeight: Math.min(sheetBody.implicitHeight + 36, parent.height - 60)
+            radius: 12
+            color: Theme.surface
+            border.color: Theme.border
+            TapHandler {}
+
+            ColumnLayout {
+                id: sheetBody
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 10
+
+                Text {
+                    text: qsTr("yt-dlp version")
+                    color: Theme.text
+                    font.family: Fonts.body
+                    font.pixelSize: 14
+                }
+
+                ScrollView {
                     Layout.fillWidth: true
-                    implicitHeight: versions.implicitHeight + 20
-                    radius: 10
-                    color: Theme.surface
-                    border.color: Theme.border
+                    Layout.fillHeight: true
+                    contentWidth: availableWidth
+                    clip: true
 
                     ColumnLayout {
-                        id: versions
-                        anchors.fill: parent
-                        anchors.margins: 10
+                        width: parent.width
                         spacing: 2
 
                         Pressable {
                             Layout.fillWidth: true
-                            implicitHeight: 32
+                            implicitHeight: 34
                             radius: 8
                             selected: settings.engine.ytDlpSource === "bundled"
                             onClicked: settings.confirmYtDlp("bundled", qsTr("the bundled version"))
@@ -397,8 +462,6 @@ Item {
                             visible: settings.engine.ytDlpVersions.length === 0
                             Layout.fillWidth: true
                             Layout.margins: 8
-                            // Saying it failed while the request is still out is a lie the
-                            // user acts on, so the two states are told apart.
                             text: settings.engine.ytDlpVersionsLoading
                                   ? qsTr("Checking…")
                                   : qsTr("Could not reach PyPI. A connection is needed to change version.")
@@ -416,7 +479,7 @@ Item {
                                     settings.engine.ytDlpSource === "override" &&
                                     settings.engine.ytDlpVersion === modelData
                                 Layout.fillWidth: true
-                                implicitHeight: 32
+                                implicitHeight: 34
                                 radius: 8
                                 selected: inUse
                                 onClicked: settings.confirmYtDlp(modelData, modelData)
@@ -443,9 +506,15 @@ Item {
                         }
                     }
                 }
-            }
 
-            Item { Layout.fillHeight: true; Layout.minimumHeight: 12 }
+                TextAction {
+                    Layout.alignment: Qt.AlignRight
+                    text: qsTr("Cancel")
+                    accentColor: Theme.textMuted
+                    font.pixelSize: 13
+                    onClicked: versionSheet.visible = false
+                }
+            }
         }
     }
 
@@ -502,7 +571,7 @@ Item {
                         font.pixelSize: 13
                         onClicked: {
                             confirmDialog.visible = false
-                            versionList.visible = false
+                            versionSheet.visible = false
                             if (settings.pendingVersion.length)
                                 settings.engine.useYtDlpVersion(settings.pendingVersion)
                             else

@@ -166,7 +166,12 @@ Item {
         }
     }
 
-    HoverHandler { id: hover }
+    HoverHandler {
+        id: hover
+        // The square had a hover tint but no cursor, so it read as decoration rather
+        // than the app's primary action.
+        cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+    }
     TapHandler {
         id: press
         onTapped: control.activated()

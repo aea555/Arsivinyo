@@ -9,6 +9,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
+#include <QSettings>
 #include <QUrl>
 #include <QUuid>
 
@@ -19,7 +20,12 @@ const QStringList kAudioSuffixes = {"flac", "m4a", "mp3", "opus", "ogg", "wav", 
 
 Library::Library(QObject *parent) : QAbstractListModel(parent) {
     // Overridable so a test run does not write into the real music folder.
+    // A folder the user chose wins over the default, but never over an explicit
+    // environment override, which is what the tests use.
     m_musicDir = qEnvironmentVariable("ARSIVINYO_MUSIC_DIR");
+    if (m_musicDir.isEmpty()) {
+        m_musicDir = QSettings().value(QStringLiteral("folders/music")).toString();
+    }
     if (m_musicDir.isEmpty()) {
         QString base = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
         if (base.isEmpty()) base = QDir::homePath() + "/Music";
@@ -459,4 +465,16 @@ QHash<int, QByteArray> Library::roleNames() const {
             {FileNameRole, "fileName"}, {PathRole, "path"}, {DurationRole, "durationSec"},
             {SizeRole, "sizeBytes"}, {ThumbRole, "thumb"}, {FavouriteRole, "favourite"},
             {PresetIdRole, "presetId"}};
+}
+
+void Library::setMusicDir(const QString &path) {
+    const QString cleaned = QUrl(path).isLocalFile() ? QUrl(path).toLocalFile() : path;
+    if (cleaned.isEmpty() || cleaned == m_musicDir) return;
+
+    QDir().mkpath(cleaned);
+    m_musicDir = cleaned;
+    QSettings().setValue(QStringLiteral("folders/music"), cleaned);
+    emit musicDirChanged();
+    // The folder is the library: a different one is a different set of tracks.
+    scan();
 }
