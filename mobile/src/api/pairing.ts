@@ -53,10 +53,22 @@ export function isPairingSupported(): boolean {
   return Platform.OS === 'android';
 }
 
+/**
+ * Fill in anything the native side left out.
+ *
+ * The screen reads these fields unconditionally, so a map missing one crashes the render
+ * rather than degrading. That has happened once already — the event and the function built
+ * the state separately and the event omitted two keys — so the boundary now guarantees the
+ * shape the type promises instead of trusting it.
+ */
+function normalise(state: Partial<LocalPairingState> | null | undefined): LocalPairingState {
+  return { ...EMPTY_PAIRING_STATE, ...(state ?? {}) };
+}
+
 export async function getPairingState(): Promise<LocalPairingState> {
   if (!isPairingSupported()) return EMPTY_PAIRING_STATE;
   try {
-    return await LocalDownloaderModule.pairingState();
+    return normalise(await LocalDownloaderModule.pairingState());
   } catch {
     return EMPTY_PAIRING_STATE;
   }
@@ -162,5 +174,5 @@ export function subscribeToPairingState(
   listener: (state: LocalPairingState) => void
 ): EventSubscription {
   if (!isPairingSupported()) return { remove: () => undefined };
-  return addPairingStateListener(listener);
+  return addPairingStateListener((state) => listener(normalise(state)));
 }

@@ -307,12 +307,12 @@ class LocalDownloaderModule : Module() {
     val created = PairingCoordinator(
       context = context,
       store = soundsStore,
-      onChanged = { runCatching { sendEvent("pairingStateChanged", pairingCoordinator?.state().orEmpty()) } },
+      onChanged = { runCatching { sendEvent("pairingStateChanged", pairingStateMap()) } },
       onDownloadRequested = { url, mediaKind ->
         // Surfaced only. The user decides whether to download what a peer sent.
         lastPeerUrl = url
         lastPeerMediaKind = mediaKind
-        runCatching { sendEvent("pairingStateChanged", pairingCoordinator?.state().orEmpty()) }
+        runCatching { sendEvent("pairingStateChanged", pairingStateMap()) }
       },
     )
     pairingCoordinator = created
@@ -322,6 +322,19 @@ class LocalDownloaderModule : Module() {
   /** The most recent URL a peer asked this phone to fetch, for the screen to offer. */
   @Volatile private var lastPeerUrl: String = ""
   @Volatile private var lastPeerMediaKind: String = ""
+
+  /**
+   * The whole state the pairing screen renders.
+   *
+   * Built in one place and used by both the function and the event. Building it twice is
+   * what let the event omit the URL fields, which the screen reads unconditionally: the
+   * first render worked and the first event after it crashed.
+   */
+  private fun pairingStateMap(): Map<String, Any?> =
+    (pairingCoordinator?.state().orEmpty()) + mapOf(
+      "peerUrl" to lastPeerUrl,
+      "peerMediaKind" to lastPeerMediaKind,
+    )
 
   private val vaultLoopbackLock = Any()
   @Volatile private var vaultLoopbackServer: VaultLoopbackServer? = null
@@ -640,10 +653,8 @@ class LocalDownloaderModule : Module() {
 
     // ---- device pairing --------------------------------------------------------
     AsyncFunction("pairingState") {
-      pairing().state() + mapOf(
-        "peerUrl" to lastPeerUrl,
-        "peerMediaKind" to lastPeerMediaKind,
-      )
+      pairing()
+      pairingStateMap()
     }
 
     AsyncFunction("pairingStart") {
