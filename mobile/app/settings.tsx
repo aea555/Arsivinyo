@@ -28,6 +28,7 @@ import {
   setLocalStickyNotificationEnabled,
   startLocalPrivateVaultMigration,
   updateLocalYtDlp,
+  clearLocalYtDlpOverride,
   restartLocalApp,
 } from '@/src/api';
 import { AppText as Text, AppTextInput as TextInput, ConfirmModal, SettingsItem, ThemePicker } from '@/src/components';
@@ -633,6 +634,21 @@ export default function SettingsScreen() {
     setVaultMigrationFinished(false);
   }, []);
 
+  /**
+   * Go back to the yt-dlp the app shipped with.
+   *
+   * A downloaded override lives in app storage, so it survives reinstalling the app and
+   * keeps shadowing whatever the new APK bundles. Without this there was no way back to
+   * the bundled copy from inside the app at all.
+   */
+  const handleClearYtDlpOverride = useCallback(async () => {
+    const result = await clearLocalYtDlpOverride();
+    if (result.success) {
+      await refreshYtDlpUpdateStatus();
+      showError(t('settings.ytDlpClearedRestart'));
+    }
+  }, [refreshYtDlpUpdateStatus, showError, t]);
+
   const handleRestart = useCallback(async () => {
     // The process is killed to do this, so a transfer in flight would be lost with it.
     const result = await restartLocalApp();
@@ -824,6 +840,16 @@ export default function SettingsScreen() {
               rightElement={ytDlpUpdating ? <ActivityIndicator size="small" color={colors.accent} /> : undefined}
               showArrow={!ytDlpUpdateDisabled}
             />
+            {ytDlpUpdateStatus?.source === 'override' && (
+              <SettingsItem
+                icon="arrow-undo-outline"
+                title={t('settings.ytDlpUseBundled')}
+                subtitle={t('settings.ytDlpUseBundledHint', {
+                  version: ytDlpUpdateStatus?.bundledVersion ?? 'unknown',
+                })}
+                onPress={handleClearYtDlpOverride}
+              />
+            )}
             {(ytDlpUpdateStatus?.pendingVersion || ytDlpUpdateStatus?.requiresRestart) && (
               <SettingsItem
                 icon="refresh-outline"

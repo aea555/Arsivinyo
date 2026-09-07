@@ -293,7 +293,10 @@
     "devicesHint": "Aralarında dosya taşımak için bir bilgisayarla eşleştirin.",
     "restartNow": "Şimdi yeniden başlat",
     "restartHint": "Yeniden başlatarak güncellemeyi tamamlayın",
-    "restartBlocked": "Bir indirme sürüyor. Bitmesini bekleyip yeniden başlatın."
+    "restartBlocked": "Bir indirme sürüyor. Bitmesini bekleyip yeniden başlatın.",
+    "ytDlpUseBundled": "Uygulamayla gelen yt-dlp'yi kullan",
+    "ytDlpUseBundledHint": "İndirilen güncellemeyi atıp {{version}} sürümüne dön",
+    "ytDlpClearedRestart": "Uygulamayla gelen yt-dlp'ye dönüldü. Uygulamak için yeniden başlatın."
   },
   "failureLogs": {
     "title": "Son hatalar",
