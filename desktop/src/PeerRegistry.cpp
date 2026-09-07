@@ -8,17 +8,13 @@
 #include <QStandardPaths>
 #include <QUuid>
 
+#include "DataDir.h"
+
 namespace {
 
 constexpr int kPublicKeyBytes = 32;
 
-QString dataDir() {
-    QString dir = qEnvironmentVariable("ARSIVINYO_DATA_DIR");
-    if (dir.isEmpty()) dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dir.isEmpty()) dir = QDir::homePath() + "/.local/share/Arsivinyo";
-    QDir().mkpath(dir);
-    return dir;
-}
+QString dataDir() { return arsivinyo::dataDirPath(); }
 
 QString hexFingerprint(const QByteArray &publicKey) {
     return QString::fromLatin1(

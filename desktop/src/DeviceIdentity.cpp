@@ -10,19 +10,15 @@
 
 #include "wire.h"
 
+#include "DataDir.h"
+
 namespace {
 
 /** Ed25519: 32-byte public key, 32-byte private seed, 64-byte signature. */
 constexpr int kPublicBytes = 32;
 constexpr int kPrivateBytes = 32;
 
-QString dataDir() {
-    QString dir = qEnvironmentVariable("ARSIVINYO_DATA_DIR");
-    if (dir.isEmpty()) dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dir.isEmpty()) dir = QDir::homePath() + "/.local/share/Arsivinyo";
-    QDir().mkpath(dir);
-    return dir;
-}
+QString dataDir() { return arsivinyo::dataDirPath(); }
 
 }  // namespace
 

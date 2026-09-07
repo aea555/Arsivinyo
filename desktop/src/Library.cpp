@@ -13,6 +13,8 @@
 #include <QUrl>
 #include <QUuid>
 
+#include "DataDir.h"
+
 namespace {
 constexpr auto kFavourites = "favorites";   // spelling matches the phone's reserved id
 const QStringList kAudioSuffixes = {"flac", "m4a", "mp3", "opus", "ogg", "wav", "aac"};
@@ -44,10 +46,7 @@ Library::~Library() {
 }
 
 bool Library::openDatabase() {
-    QString dir = qEnvironmentVariable("ARSIVINYO_DATA_DIR");
-    if (dir.isEmpty()) dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dir.isEmpty()) dir = QDir::homePath() + "/.local/share/Arsivinyo";
-    QDir().mkpath(dir);
+    const QString dir = arsivinyo::dataDirPath();
 
     m_db = QSqlDatabase::addDatabase("QSQLITE", "library");
     m_db.setDatabaseName(dir + "/library.db");

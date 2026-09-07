@@ -8,6 +8,8 @@
 #include <QTextStream>
 #include <QUrl>
 
+#include "DataDir.h"
+
 namespace {
 
 /** The sites the engine knows how to match a URL to. Mirrors COOKIE_PLATFORMS. */
@@ -25,12 +27,7 @@ constexpr Platform kPlatforms[] = {
     {"tiktok", "TikTok"},
 };
 
-QString dataDir() {
-    QString dir = qEnvironmentVariable("ARSIVINYO_DATA_DIR");
-    if (dir.isEmpty()) dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dir.isEmpty()) dir = QDir::homePath() + "/.local/share/Arsivinyo";
-    return dir;
-}
+QString dataDir() { return arsivinyo::dataDirPath(/*create=*/false); }
 
 /**
  * A Netscape cookies.txt is tab-separated with seven fields per line.

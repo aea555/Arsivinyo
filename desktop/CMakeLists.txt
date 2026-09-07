@@ -169,6 +169,21 @@ target_compile_definitions(crypto_test PRIVATE
 target_link_libraries(crypto_test PRIVATE Qt6::Core PkgConfig::LIBCRYPTO)
 add_test(NAME crypto COMMAND crypto_test)
 
+# The keybox as the app uses it: on disk, across restarts, slots added and removed. The
+# property under test is that changing a way in never touches what was encrypted.
+qt_add_executable(secret_test tests/secret_test.cpp
+    src/SecretStore.h src/SecretStore.cpp src/DataDir.h
+    ${ARSIVINYO_CRYPTO_DIR}/secret.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/argon2.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/hkdf.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/gcm.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/aead_stream.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/subkeys.cpp
+    ${ARSIVINYO_CRYPTO_DIR}/keybox.cpp)
+target_include_directories(secret_test PRIVATE src ${ARSIVINYO_CRYPTO_DIR})
+target_link_libraries(secret_test PRIVATE Qt6::Core Qt6::Qml PkgConfig::LIBCRYPTO)
+add_test(NAME secret COMMAND secret_test)
+
 # A hand-run tool for proving the phone and the desktop interoperate. Not part of the app
 # and not a test: it needs another device on the network to talk to.
 if(ARSIVINYO_DEV_TOOLS)
