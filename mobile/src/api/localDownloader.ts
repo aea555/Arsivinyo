@@ -353,6 +353,23 @@ export async function updateLocalYtDlp(): Promise<LocalYtDlpUpdateResult> {
   return LocalDownloaderModule.updateYtDlp();
 }
 
+/**
+ * Relaunch the app.
+ *
+ * A downloaded yt-dlp only becomes active when Python next starts, and Python starts with
+ * the process. Without this the only way to finish an update was to force-stop the app
+ * from Android's own settings.
+ *
+ * Refused while a download is running, since the process is killed to do it.
+ */
+export async function restartLocalApp(): Promise<{
+  restarted: boolean;
+  reason?: string;
+  activeTaskIds?: string[];
+}> {
+  return LocalDownloaderModule.restartApp();
+}
+
 export async function clearLocalYtDlpOverride(): Promise<{ success: boolean; requiresRestart?: boolean }> {
   ensureAndroid();
   return LocalDownloaderModule.clearYtDlpOverride();

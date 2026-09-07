@@ -290,7 +290,10 @@
     "vaultMigrationKeepOpen": "Keep this screen open. The app can run in the background.",
     "vaultMigrationAlreadyCurrent": "Vault is already on the current cipher.",
     "devices": "Devices",
-    "devicesHint": "Pair with a computer to move files between them."
+    "devicesHint": "Pair with a computer to move files between them.",
+    "restartNow": "Restart now",
+    "restartHint": "Finish the update by restarting",
+    "restartBlocked": "A download is running. Wait for it to finish, then restart."
   },
   "failureLogs": {
     "title": "Recent failures",

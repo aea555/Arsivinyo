@@ -74,12 +74,32 @@ QString EngineClient::resolveDownloadDir() {
     return dir;
 }
 
+void EngineClient::restart() {
+    if (m_process.state() != QProcess::NotRunning) {
+        // Closing stdin ends the read loop; the engine finishes what it is doing and
+        // exits, which is what lets a queued yt-dlp be picked up on the way back up.
+        m_process.closeWriteChannel();
+        if (!m_process.waitForFinished(3000)) m_process.kill();
+        m_process.waitForFinished(1000);
+    }
+    m_ready = false;
+    m_ytDlpVersion.clear();
+    emit readyChanged();
+    emit ytDlpVersionChanged();
+    start();
+}
+
 void EngineClient::start() {
+    if (m_process.state() != QProcess::NotRunning) return;
     if (m_enginePath.isEmpty()) {
         m_status = QStringLiteral("engine not found — set ARSIVINYO_ENGINE or ship it beside the app");
         emit statusChanged();
         return;
     }
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("ARSIVINYO_ENGINE_ROOT"), QCoreApplication::applicationDirPath());
+    m_process.setProcessEnvironment(env);
+
     if (m_engineArgs.isEmpty()) {
         m_process.start(m_enginePath, {});
     } else {

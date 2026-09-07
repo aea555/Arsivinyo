@@ -45,6 +45,8 @@ public:
     QString downloadDir() const { return m_downloadDir; }
 
     Q_INVOKABLE void start();
+    /** Stop and start, so a queued yt-dlp takes effect. */
+    Q_INVOKABLE void restart();
     Q_INVOKABLE void download(const QString &url, const QString &outputDir, bool audioOnly);
     Q_INVOKABLE void cancel();
     /** Fetch the newest yt-dlp. It takes effect when the engine next starts. */

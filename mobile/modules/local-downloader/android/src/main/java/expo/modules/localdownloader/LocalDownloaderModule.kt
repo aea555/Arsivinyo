@@ -1717,6 +1717,10 @@ class LocalDownloaderModule : Module() {
       updateYtDlpInternal()
     }
 
+    AsyncFunction("restartApp") {
+      restartAppInternal()
+    }
+
     AsyncFunction("clearYtDlpOverride") {
       clearYtDlpOverrideInternal()
     }
@@ -4174,6 +4178,46 @@ class LocalDownloaderModule : Module() {
         ytDlpUpdateRunning = false
       }
     }
+  }
+
+  /**
+   * Relaunch the app.
+   *
+   * A downloaded yt-dlp is activated by the bootstrap when Python next starts, and Python
+   * starts with the process. Until now the app said "restart to activate it" and offered no
+   * way to do so, which left force-stopping it from Android's settings as the only route.
+   *
+   * Refused while a download is running: the process dies here, and a transfer that has not
+   * finished writing would be lost with it.
+   */
+  private fun restartAppInternal(): Map<String, Any?> {
+    if (activeDownloads.isNotEmpty()) {
+      return mapOf(
+        "restarted" to false,
+        "reason" to "DOWNLOAD_ACTIVE",
+        "activeTaskIds" to activeDownloads.keys.toList(),
+      )
+    }
+
+    val context = appContext.reactContext
+      ?: return mapOf("restarted" to false, "reason" to "NO_CONTEXT")
+
+    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+      ?: return mapOf("restarted" to false, "reason" to "NO_LAUNCH_INTENT")
+
+    // makeRestartActivityTask clears the task and starts fresh, which is what makes the
+    // new process come up clean rather than restoring the one being replaced.
+    val restart = Intent.makeRestartActivityTask(launch.component).apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(restart)
+
+    // Give the activity a moment to be handed to the system before this process goes.
+    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+      Runtime.getRuntime().exit(0)
+    }, RESTART_DELAY_MS)
+
+    return mapOf("restarted" to true)
   }
 
   private fun clearYtDlpOverrideInternal(): Map<String, Any?> {
@@ -8748,6 +8792,9 @@ class LocalDownloaderModule : Module() {
     private val pendingQuickRequests: ArrayDeque<PendingQuickRequest> = ArrayDeque()
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+
+    /** Long enough for the launch intent to reach the system before this process exits. */
+    private const val RESTART_DELAY_MS = 350L
     private const val COOKIE_KEY_ALIAS = "arsivinyo.local.cookies.v1"
     private const val PRIVATE_VAULT_KEY_ALIAS_V1 = "arsivinyo.local.private.v1"
     private const val PRIVATE_VAULT_MASTER_KEY_ALIAS_V2 = "arsivinyo.local.private.master.v2"

@@ -16,6 +16,20 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBCRYPTO REQUIRED IMPORTED_TARGET libcrypto)
 qt_standard_project_setup(REQUIRES 6.5)
 
+# yt-dlp is fetched at build time into the build output, beside where the engine runs.
+# It is a dependency, not source: nothing about it belongs in the repository, and the app
+# updates it in place afterwards anyway.
+set(ARSIVINYO_YTDLP_DIR ${CMAKE_CURRENT_BINARY_DIR}/yt-dlp)
+add_custom_command(
+    OUTPUT ${ARSIVINYO_YTDLP_DIR}/yt_dlp/version.py
+    COMMAND ${CMAKE_COMMAND} -E echo "Fetching yt-dlp into ${CMAKE_CURRENT_BINARY_DIR}"
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../shared/engine/ytdlp_updater.py
+            ${CMAKE_CURRENT_BINARY_DIR}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../shared/engine/ytdlp_updater.py
+    COMMENT "Fetching yt-dlp"
+    VERBATIM)
+add_custom_target(arsivinyo-ytdlp DEPENDS ${ARSIVINYO_YTDLP_DIR}/yt_dlp/version.py)
+
 option(ARSIVINYO_DEV_TOOLS "Build the screenshot hook used while iterating on the UI" OFF)
 
 qt_add_executable(arsivinyo-desktop src/main.cpp)
@@ -62,6 +76,9 @@ qt_add_qml_module(arsivinyo-desktop
 # __has_include. Without src/ on the include path the guard quietly fails and the type is
 # never declared, which surfaces much later as an unrelated template error.
 target_include_directories(arsivinyo-desktop PRIVATE src ${ARSIVINYO_DSP} ${ARSIVINYO_PAIRING_DIR})
+
+# The app is not usable without an extractor, so the fetch is part of building it.
+add_dependencies(arsivinyo-desktop arsivinyo-ytdlp)
 
 target_link_libraries(arsivinyo-desktop PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Multimedia Qt6::Concurrent Qt6::Network PkgConfig::LIBCRYPTO)
 

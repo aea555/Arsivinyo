@@ -243,7 +243,7 @@ Item {
                         TextAction {
                             text: qsTr("Restart")
                             font.pixelSize: 12
-                            onClicked: settings.engine.start()
+                            onClicked: settings.engine.restart()
                         }
                     }
                 }

@@ -4,6 +4,7 @@ export {
     cancelLocalPrivateVaultMigration,
     checkLocalYtDlpUpdate,
     clearLocalYtDlpOverride,
+    restartLocalApp,
     clearLocalPrivatePlaybackCache,
     copyLocalPrivateVideoToPublicGallery,
     createLocalVaultFolder,

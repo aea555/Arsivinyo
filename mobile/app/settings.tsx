@@ -28,6 +28,7 @@ import {
   setLocalStickyNotificationEnabled,
   startLocalPrivateVaultMigration,
   updateLocalYtDlp,
+  restartLocalApp,
 } from '@/src/api';
 import { AppText as Text, AppTextInput as TextInput, ConfirmModal, SettingsItem, ThemePicker } from '@/src/components';
 import {
@@ -632,6 +633,14 @@ export default function SettingsScreen() {
     setVaultMigrationFinished(false);
   }, []);
 
+  const handleRestart = useCallback(async () => {
+    // The process is killed to do this, so a transfer in flight would be lost with it.
+    const result = await restartLocalApp();
+    if (!result.restarted && result.reason === 'DOWNLOAD_ACTIVE') {
+      showError(t('settings.restartBlocked'));
+    }
+  }, [showError, t]);
+
   const handleYtDlpUpdate = useCallback(async () => {
     if (ytDlpUpdateDisabled) {
       if ((ytDlpUpdateStatus?.activeTaskIds?.length ?? 0) > 0) {
@@ -815,6 +824,14 @@ export default function SettingsScreen() {
               rightElement={ytDlpUpdating ? <ActivityIndicator size="small" color={colors.accent} /> : undefined}
               showArrow={!ytDlpUpdateDisabled}
             />
+            {(ytDlpUpdateStatus?.pendingVersion || ytDlpUpdateStatus?.requiresRestart) && (
+              <SettingsItem
+                icon="refresh-outline"
+                title={t('settings.restartNow')}
+                subtitle={t('settings.restartHint')}
+                onPress={handleRestart}
+              />
+            )}
             <SettingsItem
               icon="phone-portrait-outline"
               title={t('settings.devices')}

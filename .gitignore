@@ -33,8 +33,6 @@ signing.properties
 /CMakeFiles/
 /CMakeCache.txt
 
-# yt-dlp is fetched, not vendored: 13 MB across a thousand files, and the app updates it
-# itself the way the phone does. `python3 shared/engine/ytdlp_updater.py shared/engine`
-# fills it in, and the Update action in Settings does the same at runtime.
+# Belt and braces: yt-dlp is fetched into the build output, never the source tree.
 /shared/engine/yt-dlp/
 /shared/engine/yt-dlp-overrides/

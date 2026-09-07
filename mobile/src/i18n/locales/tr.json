@@ -290,7 +290,10 @@
       "failed": "yt-dlp güncellemesi başarısız oldu."
     },
     "devices": "Cihazlar",
-    "devicesHint": "Aralarında dosya taşımak için bir bilgisayarla eşleştirin."
+    "devicesHint": "Aralarında dosya taşımak için bir bilgisayarla eşleştirin.",
+    "restartNow": "Şimdi yeniden başlat",
+    "restartHint": "Yeniden başlatarak güncellemeyi tamamlayın",
+    "restartBlocked": "Bir indirme sürüyor. Bitmesini bekleyip yeniden başlatın."
   },
   "failureLogs": {
     "title": "Son hatalar",

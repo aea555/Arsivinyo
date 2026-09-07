@@ -27,7 +27,15 @@ import sys
 
 
 def bundle_root() -> str:
-    """The directory holding this executable, or this source file when not frozen."""
+    """Where yt-dlp and the overrides live.
+
+    A frozen build has them beside the executable. A source run has them wherever the
+    build put them, which is not next to this file — so the app says where, and only the
+    last resort is this file's own directory.
+    """
+    told = os.environ.get("ARSIVINYO_ENGINE_ROOT")
+    if told and os.path.isdir(told):
+        return os.path.abspath(told)
     if getattr(sys, "frozen", False):
         return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))

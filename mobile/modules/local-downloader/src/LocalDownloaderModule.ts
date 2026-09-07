@@ -118,6 +118,9 @@ type LocalDownloaderNativeModule = {
   getBackupJobState(): Promise<LocalBackupJobState>;
   restoreBackup(input: LocalBackupRestoreInput): Promise<LocalBackupRestoreResult>;
   // ---- device pairing ----
+  /** Relaunch the app, so a downloaded yt-dlp is picked up. */
+  restartApp(): Promise<{ restarted: boolean; reason?: string; activeTaskIds?: string[] }>;
+
   pairingState(): Promise<LocalPairingState>;
   pairingStart(): Promise<boolean>;
   pairingStop(): Promise<boolean>;
@@ -225,6 +228,7 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       previewBackup: async () => unsupported(),
       getBackupJobState: async () => unsupported(),
       restoreBackup: async () => unsupported(),
+      restartApp: async () => unsupported(),
       pairingState: async () => unsupported(),
       pairingStart: async () => unsupported(),
       pairingStop: async () => unsupported(),
