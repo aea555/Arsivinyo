@@ -20,6 +20,7 @@ ApplicationWindow {
 
     EngineClient {
         id: engine
+        cookiesDir: cookies.directory
         onFinished: (ok, message, filePath, thumbnailPath) => {
             root.resultOk = ok
             if (ok && filePath.length) {
@@ -83,8 +84,6 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        // Set before the engine starts, so the first download already has them.
-        engine.setCookiesDir(cookies.directory)
         engine.start()
         library.scan()
         // 0 asks the system for a free port, which is then advertised over mDNS. A fixed

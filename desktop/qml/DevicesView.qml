@@ -58,8 +58,7 @@ Item {
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
-        rightPadding: 16
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
     ColumnLayout {
         width: scroller.availableWidth

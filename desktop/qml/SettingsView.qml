@@ -73,10 +73,10 @@ Item {
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
-        // The scrollbar is drawn over the content, so the content has to stop short of it.
-        // Sizing the column to the view's full width put the cards under the bar.
-        rightPadding: 16
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        // No visible bar: it was drawn over the content and had to be dodged with a
+        // gutter, which cost width on every screen to display something the wheel
+        // already does. Scrolling still works, it just leaves no mark.
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
         ColumnLayout {
             width: scroller.availableWidth
@@ -537,6 +537,7 @@ Item {
                     Layout.fillHeight: true
                     contentWidth: availableWidth
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
                         width: parent.width

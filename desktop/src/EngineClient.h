@@ -29,6 +29,8 @@ class EngineClient : public QObject {
     Q_PROPERTY(QString ytDlpVersion READ ytDlpVersion NOTIFY ytDlpVersionChanged)
     Q_PROPERTY(QString enginePath READ enginePath CONSTANT)
     Q_PROPERTY(QString downloadDir READ downloadDir WRITE setDownloadDir NOTIFY downloadDirChanged)
+    /** Where per-site cookie files live. The engine picks the right one from the URL. */
+    Q_PROPERTY(QString cookiesDir READ cookiesDir WRITE setCookiesDir NOTIFY cookiesDirChanged)
     Q_PROPERTY(bool updatingYtDlp READ updatingYtDlp NOTIFY ytDlpUpdateChanged)
     Q_PROPERTY(QString ytDlpUpdateStatus READ ytDlpUpdateStatus NOTIFY ytDlpUpdateChanged)
     Q_PROPERTY(double ytDlpUpdateProgress READ ytDlpUpdateProgress NOTIFY ytDlpUpdateChanged)
@@ -55,8 +57,12 @@ public:
     Q_INVOKABLE void restart();
     Q_INVOKABLE void download(const QString &url, const QString &outputDir, bool audioOnly);
 
-    /** Where per-site cookie files live. The engine picks the right one from the URL. */
-    void setCookiesDir(const QString &dir) { m_cookiesDir = dir; }
+    QString cookiesDir() const { return m_cookiesDir; }
+    void setCookiesDir(const QString &dir) {
+        if (dir == m_cookiesDir) return;
+        m_cookiesDir = dir;
+        emit cookiesDirChanged();
+    }
     Q_INVOKABLE void cancel();
     /** Fetch the newest yt-dlp. It takes effect when the engine next starts. */
     Q_INVOKABLE void updateYtDlp();
@@ -81,6 +87,7 @@ public:
 
 signals:
     void downloadDirChanged();
+    void cookiesDirChanged();
     void ytDlpUpdateChanged();
     void ytDlpVersionsChanged();
     void readyChanged();
