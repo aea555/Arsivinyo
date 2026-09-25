@@ -16,9 +16,14 @@ let openSSLRoot = "/opt/homebrew/opt/openssl@3"
 
 let package = Package(
     name: "Arsivinyo",
-    platforms: [.macOS(.v14)],
+    // Matches the OpenSSL that is linked. Homebrew builds its bottles for the running
+    // macOS, so targeting anything older produces a linker warning per object file — about
+    // a thousand of them, which would bury a real one. If this ever has to run on an older
+    // Mac, the answer is a static OpenSSL built for that target, not a lower number here.
+    platforms: [.macOS("27.0")],
     products: [
         .library(name: "ArsivinyoCore", targets: ["ArsivinyoCore"]),
+        .executable(name: "ArsivinyoApp", targets: ["ArsivinyoApp"]),
     ],
     targets: [
         // A C ABI over the C++. Swift can call C++ directly, but this core's surface is
@@ -40,6 +45,11 @@ let package = Package(
             ]
         ),
         .target(name: "ArsivinyoCore", dependencies: ["ArsivinyoCryptoC"]),
+
+        // The app. SwiftPM rather than an .xcodeproj: Xcode opens Package.swift directly,
+        // and a command-line build means the app can be launched and looked at from a
+        // terminal rather than only from the IDE.
+        .executableTarget(name: "ArsivinyoApp", dependencies: ["ArsivinyoCore"]),
 
         // An executable rather than a .testTarget: XCTest ships with Xcode, and the core
         // has to be verifiable without it. This is also the harness the C++ tests already
