@@ -46,9 +46,15 @@ final class Player {
             }
         }
         endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.didFinishTrack() }
+            forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            // Every player in the app posts this, the vault's films too. Only the end of our
+            // own track is the end of a track.
+            let ended = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, ended == self.player.currentItem.map(ObjectIdentifier.init) else { return }
+                self.didFinishTrack()
+            }
         }
         registerRemoteCommands()
     }
@@ -159,10 +165,17 @@ final class Player {
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
         ]
         if let url = library.artworkURL(for: track), let image = NSImage(contentsOf: url) {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            info[MPMediaItemPropertyArtwork] = Self.artwork(image)
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+    }
+
+    /// MediaPlayer asks for the image on its own queue. A closure written inside this class
+    /// belongs to the main actor, and Swift stops the app when it runs anywhere else, so the
+    /// closure is made here, outside the actor.
+    private nonisolated static func artwork(_ image: NSImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
     }
 
     private func registerRemoteCommands() {

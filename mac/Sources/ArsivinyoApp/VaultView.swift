@@ -225,7 +225,7 @@ private struct VaultPlayerSheet: View {
             ZStack {
                 Color.black
                 if let player {
-                    VideoPlayer(player: player)
+                    PlayerView(player: player)
                 } else if let problem {
                     Text(problem).foregroundStyle(.white)
                 } else {
@@ -286,5 +286,23 @@ private struct RenameSheet: View {
         guard !trimmed.isEmpty else { return }
         onSave(trimmed)
         dismiss()
+    }
+}
+
+/// AppKit's player, the one QuickTime uses: its controls, full screen and Picture in Picture.
+/// SwiftUI's VideoPlayer aborted the app as it was set up, inside the framework itself.
+private struct PlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.allowsPictureInPicturePlayback = true
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
     }
 }
