@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <circle cx="512" cy="400" r="280" fill="#1C1B20"/>
+  <circle cx="512" cy="400" r="280" fill="#3A3940"/>
+  <circle cx="512" cy="400" r="278" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="4"/>
   <g fill="none" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="4"><circle cx="512" cy="400" r="132"/><circle cx="512" cy="400" r="160"/><circle cx="512" cy="400" r="188"/><circle cx="512" cy="400" r="216"/><circle cx="512" cy="400" r="244"/></g>
+    <path fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="10" stroke-linecap="round"
+        d="M318 250 A244 244 0 0 1 452 166"/>
   <circle cx="512" cy="400" r="98" fill="#FFF4E6"/>
-  <path fill="none" stroke="#EE4B2B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"
+  <path fill="none" stroke="#1C1B20" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"
         d="M512 350 V444 M474 408 L512 446 L550 408"/>
 </svg>
