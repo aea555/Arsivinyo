@@ -42,6 +42,22 @@ vault listing that Tink sealed.
 An executable rather than a test target, because XCTest needs Xcode. Same shape as the C++
 tests it replaces: a line per check, non-zero exit on failure.
 
+## The download engine
+
+`shared/engine/host.py` — the same engine the Android app runs — is driven as a child
+process speaking JSON, one object per line. Reimplementing yt-dlp in Swift was never on the
+table; this is the boundary the Qt app used and it is already proven.
+
+Fetch what it needs once:
+
+```
+scripts/fetch-engine.sh
+```
+
+That puts yt-dlp and curl_cffi under `.build/engine`. yt-dlp is not in the repository
+because it changes weekly and the app replaces it in place anyway. curl_cffi is what lets
+the engine impersonate a browser; without it most sites refuse a downloader outright.
+
 ## OpenSSL
 
 Linked statically from Homebrew's `openssl@3`. A dynamic link would tie the finished

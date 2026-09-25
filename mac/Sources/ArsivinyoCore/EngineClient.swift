@@ -1,0 +1,291 @@
+import Foundation
+
+/// The download engine, as a child process.
+///
+/// `shared/engine/host.py` is the same engine the Android app runs; it speaks JSON, one
+/// object per line, over stdin and stdout. Driving it as a subprocess rather than
+/// reimplementing yt-dlp in Swift is the whole reason the Mac app can reach parity at all —
+/// and it is the arrangement the Qt app used, so the boundary is already proven.
+///
+/// Events arrive on a background reader and are handed to the main actor, because everything
+/// that reacts to them is UI.
+@MainActor
+@Observable
+public final class EngineClient {
+
+    // MARK: - Configuration
+
+    /// Where the pieces live. Separate from the class so a test or a bundled app can point
+    /// at a different layout without changing anything here.
+    public struct Layout: Sendable {
+        public var python: URL
+        /// The directory holding `host.py` and `local_downloader.py`.
+        public var engine: URL
+        /// The unpacked yt-dlp, which the updater can replace underneath us.
+        public var ytDlp: URL
+        /// Extra packages: curl_cffi for impersonation, which is what stops sites refusing.
+        public var site: URL?
+
+        public init(python: URL, engine: URL, ytDlp: URL, site: URL? = nil) {
+            self.python = python
+            self.engine = engine
+            self.ytDlp = ytDlp
+            self.site = site
+        }
+    }
+
+    public enum Failure: Error, CustomStringConvertible {
+        case notRunning
+        case launchFailed(String)
+        public var description: String {
+            switch self {
+            case .notRunning: return "the engine is not running"
+            case .launchFailed(let why): return "the engine would not start: \(why)"
+            }
+        }
+    }
+
+    /// One line from the engine.
+    public enum Event: Sendable {
+        /// Emitted once, when the engine is up.
+        case ready(frozen: Bool)
+        case progress(status: String, percent: Double?, detail: String?)
+        case finished(Result<JSONValue, EngineError>)
+
+        public struct EngineError: Error, Sendable, CustomStringConvertible {
+            public let description: String
+        }
+    }
+
+    // MARK: - State
+
+    public private(set) var isRunning = false
+    /// The yt-dlp the engine actually loaded, once it has said so.
+    public private(set) var ytDlpVersion: String?
+
+    private let layout: Layout
+    private var process: Process?
+    private var stdin: FileHandle?
+    private var nextId = 0
+    private var listeners: [String: (Event) -> Void] = [:]
+
+    public init(layout: Layout) {
+        self.layout = layout
+    }
+
+    // MARK: - Lifecycle
+
+    public func start() throws {
+        guard process == nil else { return }
+
+        let task = Process()
+        task.executableURL = layout.python
+        task.arguments = [layout.engine.appendingPathComponent("host.py").path]
+
+        // The engine finds yt-dlp on sys.path rather than importing a pinned copy, so the
+        // in-app updater can swap the directory underneath it.
+        var searchPath = [layout.ytDlp.path]
+        if let site = layout.site { searchPath.append(site.path) }
+        searchPath.append(layout.engine.path)
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["PYTHONPATH"] = searchPath.joined(separator: ":")
+        // Otherwise the engine's own output sits in a buffer and progress arrives in bursts
+        // at the end, which looks like a hang.
+        environment["PYTHONUNBUFFERED"] = "1"
+        task.environment = environment
+
+        let input = Pipe()
+        let output = Pipe()
+        task.standardInput = input
+        task.standardOutput = output
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+        } catch {
+            throw Failure.launchFailed(error.localizedDescription)
+        }
+
+        process = task
+        stdin = input.fileHandleForWriting
+        isRunning = true
+
+        read(from: output.fileHandleForReading)
+
+        task.terminationHandler = { [weak self] _ in
+            Task { @MainActor in
+                self?.isRunning = false
+                self?.process = nil
+                self?.stdin = nil
+                // Nothing will answer these now; let their callers stop waiting.
+                for (_, listener) in self?.listeners ?? [:] {
+                    listener(.finished(.failure(.init(description: "the engine stopped"))))
+                }
+                self?.listeners.removeAll()
+            }
+        }
+    }
+
+    public func stop() {
+        process?.terminate()
+        process = nil
+        stdin = nil
+        isRunning = false
+    }
+
+    // MARK: - Requests
+
+    /// Sends one request and streams back everything the engine says about it.
+    public func perform(_ operation: String, _ arguments: [String: Any] = [:])
+        -> AsyncStream<Event>
+    {
+        nextId += 1
+        let id = String(nextId)
+
+        return AsyncStream { continuation in
+            guard let stdin else {
+                continuation.yield(.finished(.failure(.init(description: "the engine is not running"))))
+                continuation.finish()
+                return
+            }
+
+            listeners[id] = { event in
+                continuation.yield(event)
+                if case .finished = event { continuation.finish() }
+            }
+
+            var request = arguments
+            request["id"] = id
+            request["op"] = operation
+            guard let line = try? JSONSerialization.data(withJSONObject: request) else {
+                continuation.yield(.finished(.failure(.init(description: "could not encode the request"))))
+                continuation.finish()
+                return
+            }
+            stdin.write(line)
+            stdin.write(Data("\n".utf8))
+
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor in self?.listeners[id] = nil }
+            }
+        }
+    }
+
+    /// Cancels a running download by the id of the request that started it.
+    public func cancel(id: String) {
+        guard let stdin,
+              let line = try? JSONSerialization.data(withJSONObject: ["id": id, "op": "cancel"])
+        else { return }
+        stdin.write(line)
+        stdin.write(Data("\n".utf8))
+    }
+
+    // MARK: - Reading
+
+    private func read(from handle: FileHandle) {
+        // A detached reader, because `availableData` blocks and the main actor must not.
+        nonisolated(unsafe) let handle = handle
+        Task.detached {
+            var buffer = Data()
+            while true {
+                let chunk = handle.availableData
+                if chunk.isEmpty { break }
+                buffer.append(chunk)
+                // One JSON object per line; a partial line stays in the buffer.
+                while let newline = buffer.firstIndex(of: 0x0A) {
+                    let line = buffer[buffer.startIndex..<newline]
+                    buffer.removeSubrange(buffer.startIndex...newline)
+                    guard !line.isEmpty,
+                          let object = try? JSONSerialization.jsonObject(with: line)
+                    else { continue }
+                    // Converted here, on this side of the hop: a [String: Any] is not
+                    // Sendable and must not cross to the main actor.
+                    let value = JSONValue(object)
+                    await MainActor.run { self.dispatch(value) }
+                }
+            }
+        }
+    }
+
+    private func dispatch(_ object: JSONValue) {
+        let type = object["type"]?.string
+
+        if type == "ready" {
+            let frozen = object["frozen"]?.bool ?? false
+            for (_, listener) in listeners { listener(.ready(frozen: frozen)) }
+            return
+        }
+
+        guard let id = object["id"]?.string, let listener = listeners[id] else { return }
+
+        switch type {
+        case "progress":
+            listener(.progress(
+                status: object["status"]?.string ?? "working",
+                percent: object["progressPercent"]?.double,
+                detail: object["detail"]?.string))
+
+        case "result":
+            listeners[id] = nil
+            if object["ok"]?.bool == true {
+                let payload = object["result"] ?? .object([:])
+                if let version = payload["ytDlp"]?.string { ytDlpVersion = version }
+                listener(.finished(.success(payload)))
+            } else {
+                let message = object["error"]?.string ?? "the download failed"
+                listener(.finished(.failure(.init(description: message))))
+            }
+
+        default:
+            break
+        }
+    }
+}
+
+// MARK: - Finding the pieces
+
+extension EngineClient.Layout {
+    /// The layout while working in the repository, as opposed to inside a built bundle.
+    ///
+    /// `mac/.build/engine` is where `ytdlp_updater.py` unpacks yt-dlp and where curl_cffi is
+    /// installed, mirroring what the Qt build did into its own build directory.
+    public static func development(repositoryRoot: URL) -> Self? {
+        let engine = repositoryRoot.appendingPathComponent("shared/engine")
+        let build = repositoryRoot.appendingPathComponent("mac/.build/engine")
+        let ytDlp = build.appendingPathComponent("yt-dlp")
+        let site = build.appendingPathComponent("site")
+
+        // Whichever Python is around, newest first. macOS ships 3.9, which is too old for
+        // a current yt-dlp, so the system one is deliberately last.
+        let candidates = [
+            "/opt/homebrew/opt/python@3.13/bin/python3.13",
+            "/opt/homebrew/opt/python@3.12/bin/python3.12",
+            "/opt/homebrew/bin/python3",
+            "/usr/bin/python3",
+        ]
+        guard let python = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }),
+              FileManager.default.fileExists(atPath: engine.appendingPathComponent("host.py").path),
+              FileManager.default.fileExists(atPath: ytDlp.path)
+        else { return nil }
+
+        return .init(
+            python: URL(fileURLWithPath: python),
+            engine: engine,
+            ytDlp: ytDlp,
+            site: FileManager.default.fileExists(atPath: site.path) ? site : nil)
+    }
+
+    /// Walks up from a file in the repository until it finds the root.
+    public static func developmentFromSource(_ file: String = #filePath) -> Self? {
+        var dir = URL(fileURLWithPath: file).deletingLastPathComponent()
+        while !FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("shared/engine/host.py").path
+        ) {
+            let parent = dir.deletingLastPathComponent()
+            if parent == dir { return nil }
+            dir = parent
+        }
+        return development(repositoryRoot: dir)
+    }
+}

@@ -86,10 +86,11 @@ struct CoreChecks {
 
     // MARK: - Checks
 
-    static func main() {
+    static func main() async {
         var runner = CoreChecks()
         do {
             try runner.run()
+            await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")
             runner.failures += 1
@@ -203,5 +204,42 @@ struct CoreChecks {
         bent[bent.count - 1] ^= 1
         if (try? Crypto.open(bent, key: key, associatedData: "vault")) == nil { caught += 1 }
         check(caught == 3, "a wrong key, the wrong associated data and a flipped bit are refused")
+    }
+
+    /// The download engine, which is a Python child process rather than anything Swift.
+    ///
+    /// Skipped rather than failed when yt-dlp has not been fetched: the vectors above are
+    /// the contract, and this is an integration check that needs a working directory set up.
+    private mutating func checkEngine() async {
+        print("engine")
+        guard let layout = await EngineClient.Layout.developmentFromSource() else {
+            print("  skip  yt-dlp is not fetched; run mac/scripts/fetch-engine.sh")
+            return
+        }
+
+        let client = await EngineClient(layout: layout)
+        do {
+            try await client.start()
+        } catch {
+            check(false, "the engine starts: \(error)")
+            return
+        }
+
+        var version: String?
+        var impersonation: Bool?
+        for await event in await client.perform("version") {
+            if case .finished(.success(let payload)) = event { version = payload["ytDlp"]?.string }
+        }
+        for await event in await client.perform("diagnostics") {
+            if case .finished(.success(let payload)) = event {
+                impersonation = payload["impersonationRuntimeAvailable"]?.bool
+            }
+        }
+        await client.stop()
+
+        check(version != nil, "the engine answers with a yt-dlp version (\(version ?? "none"))")
+        // What stops sites refusing a downloader outright. The phone ships wheels for it;
+        // on this Mac it is a pip install, and without it the app is the lesser one.
+        check(impersonation == true, "impersonation is available, as it is on the phone")
     }
 }
