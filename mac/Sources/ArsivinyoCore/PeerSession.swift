@@ -8,12 +8,15 @@ public struct ItemSource: Sendable {
     public let file: URL
     /// The cover, sent along: both apps keep covers beside the files, not inside them.
     public let artwork: URL?
+    /// A meme's labels and source, as the `meme` object of the offer (JSON).
+    public let meme: Data?
 
-    public init(name: String, sizeBytes: Int64, file: URL, artwork: URL? = nil) {
+    public init(name: String, sizeBytes: Int64, file: URL, artwork: URL? = nil, meme: Data? = nil) {
         self.name = name
         self.sizeBytes = sizeBytes
         self.file = file
         self.artwork = artwork
+        self.meme = meme
     }
 }
 
@@ -26,8 +29,9 @@ public protocol PeerContent: AnyObject, Sendable {
     func openItem(id: String) -> ItemSource?
     /// Where an incoming file should be written. The sender's name is a hint, never a path.
     func destination(forName name: String, kind: String) -> URL?
-    /// A verified file has landed, with the cover that came with it; take them in.
-    func accepted(_ file: URL, kind: String, artwork: URL?)
+    /// A verified file has landed, with the cover and, for a meme, the labels that came with
+    /// it; take them in.
+    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?)
     /// The peer asks this Mac to fetch a link. Shown to the user, never started unasked.
     func downloadRequested(url: String, mediaKind: String, from peerName: String)
 }
@@ -62,11 +66,13 @@ public final class PeerSession: @unchecked Sendable {
         /// The cover from the offer, held until the file itself verifies.
         let artwork: Data?
         let artworkExtension: String
+        let meme: Data?
         let handle: FileHandle
         var hasher = SHA256()
         var received: Int64 = 0
 
-        init(kind: String, finalURL: URL, total: Int64, expected: Data, artwork: Data?, artworkExtension: String) throws {
+        init(kind: String, finalURL: URL, total: Int64, expected: Data, artwork: Data?, artworkExtension: String,
+             meme: Data?) throws {
             self.kind = kind
             self.finalURL = finalURL
             partURL = finalURL.appendingPathExtension("part")
@@ -74,6 +80,7 @@ public final class PeerSession: @unchecked Sendable {
             self.expected = expected
             self.artwork = artwork
             self.artworkExtension = artworkExtension
+            self.meme = meme
             FileManager.default.createFile(atPath: partURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
             handle = try FileHandle(forWritingTo: partURL)
         }
@@ -168,6 +175,9 @@ public final class PeerSession: @unchecked Sendable {
             offer["artwork"] = data.base64EncodedString()
             offer["artworkName"] = art.lastPathComponent
         }
+        if let meme = source.meme, let object = try? JSONSerialization.jsonObject(with: meme) as? [String: Any] {
+            offer["meme"] = object
+        }
         guard link.send(control: offer) else {
             return abortSending(String(localized: "the connection went away"))
         }
@@ -261,7 +271,9 @@ public final class PeerSession: @unchecked Sendable {
         let artworkExtension = (1...5).contains(proposed.count) && proposed.allSatisfy({ $0.isLetter || $0.isNumber }) ? proposed : "jpg"
         guard let destination = content.destination(forName: message["name"] as? String ?? "", kind: kind),
               let started = try? Receiving(kind: kind, finalURL: destination, total: size, expected: expected,
-                                           artwork: artwork, artworkExtension: artworkExtension) else {
+                                           artwork: artwork, artworkExtension: artworkExtension,
+                                           meme: (message["meme"] as? [String: Any]).flatMap {
+                                               try? JSONSerialization.data(withJSONObject: $0) }) else {
             link.send(control: ["t": "reject", "reason": "refused"])
             return
         }
@@ -305,7 +317,8 @@ public final class PeerSession: @unchecked Sendable {
             let url = current.finalURL.appendingPathExtension("cover").appendingPathExtension(current.artworkExtension)
             if (try? artwork.write(to: url)) != nil { artworkURL = url }
         }
-        content.accepted(current.finalURL, kind: current.kind, artwork: artworkURL)
+        let meme = current.meme.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        content.accepted(current.finalURL, kind: current.kind, artwork: artworkURL, meme: meme)
         onReceived?(current.kind)
     }
 

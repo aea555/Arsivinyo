@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 /// The sections of a backup, in the order the phone writes them. Wire values.
 public enum BackupSection: String, CaseIterable, Sendable, Identifiable {
-    case vault, music, settings, cookies
+    case vault, music, memes, settings, cookies
     public var id: String { rawValue }
 }
 
@@ -29,13 +29,19 @@ public enum Backup {
         public var library: MusicLibrary?
         public var presets: PresetStore?
         public var cookies: CookieStore?
+        public var memes: MemeLibrary?
+        /// Where restored memes that are not private are put.
+        public var memeFolder: URL?
 
         public init(vault: Vault? = nil, library: MusicLibrary? = nil,
-                    presets: PresetStore? = nil, cookies: CookieStore? = nil) {
+                    presets: PresetStore? = nil, cookies: CookieStore? = nil,
+                    memes: MemeLibrary? = nil, memeFolder: URL? = nil) {
             self.vault = vault
             self.library = library
             self.presets = presets
             self.cookies = cookies
+            self.memes = memes
+            self.memeFolder = memeFolder
         }
     }
 
@@ -159,6 +165,10 @@ public enum Backup {
             guard let vault = sources.vault else { return [] }
             let items: [Vault.Item]
             do { items = try vault.items() } catch Vault.Failure.locked { throw Failure.locked }
+            // A private meme is a vault item with labels: they travel in its entry.
+            let snapshot = try? sources.memes?.load()
+            let privateMemes = Dictionary((snapshot?.items ?? []).filter(\.isPrivate).compactMap { item in
+                item.vaultId.map { ($0, item) } }, uniquingKeysWith: { first, _ in first })
             return items.map { item in
                 var meta: [String: Any] = [
                     "vaultId": item.id,
@@ -167,6 +177,12 @@ public enum Backup {
                     "tags": item.tags,
                 ]
                 if let folder = item.folderId { meta["folderId"] = folder }
+                if let meme = privateMemes[item.id], let snapshot,
+                   let data = MemeTransfer.encode(item: meme, tags: MemeLibrary.labels(of: meme, in: snapshot).tags,
+                                                  people: MemeLibrary.labels(of: meme, in: snapshot).people),
+                   let object = try? JSONSerialization.jsonObject(with: data) {
+                    meta["meme"] = object
+                }
                 return Planned(entry: BackupEntry(name: item.title, size: item.sizeBytes, kind: "media", meta: meta)) { emit in
                     guard let reader = try? vault.reader(for: item.id) else { return false }
                     var offset: Int64 = 0
@@ -210,6 +226,34 @@ public enum Backup {
             if let presets = sources.presets, !presets.autoApply.presetIds.isEmpty {
                 out.append(blob("auto-presets", presets.autoApplyBlob()))
             }
+            return out
+
+        case .memes:
+            guard let memes = sources.memes, let snapshot = try? memes.load() else { return [] }
+            var out: [Planned] = []
+            for item in snapshot.items where !item.isPrivate {
+                guard let file = item.fileURL else { continue }
+                let labels = MemeLibrary.labels(of: item, in: snapshot)
+                var meta: [String: Any] = ["memeId": item.id, "sha256": item.sha256, "addedAt": item.addedAt, "taggedAt": item.taggedAt]
+                if let data = MemeTransfer.encode(item: item, tags: labels.tags, people: labels.people),
+                   let object = try? JSONSerialization.jsonObject(with: data) {
+                    meta["meme"] = object
+                }
+                let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+                out.append(Planned(entry: BackupEntry(name: file.lastPathComponent, size: size, kind: "media", meta: meta)) { emit in
+                    try streamFile(file, emit)
+                })
+            }
+            // The vocabulary last, so tags no meme uses yet, and their facets, survive too.
+            // Private-only labels are not in it: they travel with their private memes.
+            let publicTags = Set(snapshot.items.filter { !$0.isPrivate }.flatMap(\.tags))
+            let privateTags = Set(snapshot.items.filter(\.isPrivate).flatMap(\.tags)).subtracting(publicTags)
+            let publicPeople = Set(snapshot.items.filter { !$0.isPrivate }.flatMap(\.people))
+            let privatePeople = Set(snapshot.items.filter(\.isPrivate).flatMap(\.people)).subtracting(publicPeople)
+            out.append(blob("memes-index", [
+                "tags": snapshot.tags.filter { !privateTags.contains($0.id) }.map { ["name": $0.name, "facets": $0.facets.map(\.rawValue)] },
+                "people": snapshot.people.filter { !privatePeople.contains($0.id) }.map { ["name": $0.name] },
+            ]))
             return out
 
         case .settings:
@@ -365,6 +409,7 @@ private struct RestoreContext {
         case artwork(owner: String, Staged)
         case blob(id: String, Data)
         case cookie(BackupEntry, Data)
+        case meme(Staged)
     }
 
     struct Staged {
@@ -400,7 +445,9 @@ private struct RestoreContext {
             case (.music, "thumbnail"):
                 let owner = entry.string("ownerId") ?? ""
                 pending = .artwork(owner: owner, try stage(entry, payload, extension: (entry.name as NSString).pathExtension))
-            case (.music, "blob"), (.settings, "blob"):
+            case (.memes, "media"):
+                pending = .meme(try stage(entry, payload, extension: (entry.name as NSString).pathExtension))
+            case (.music, "blob"), (.settings, "blob"), (.memes, "blob"):
                 pending = .blob(id: entry.string("blobId") ?? "", try readAll(payload))
             case (.cookies, "cookie-profile"):
                 pending = .cookie(entry, try readAll(payload))
@@ -463,6 +510,7 @@ private struct RestoreContext {
             if case .vault(let staged) = current { try? FileManager.default.removeItem(at: staged.file) }
             if case .track(let staged) = current { try? FileManager.default.removeItem(at: staged.file) }
             if case .artwork(_, let staged) = current { try? FileManager.default.removeItem(at: staged.file) }
+            if case .meme(let staged) = current { try? FileManager.default.removeItem(at: staged.file) }
             report.fail(why)
             return
         }
@@ -480,6 +528,8 @@ private struct RestoreContext {
                 try commitBlob(id, data)
             case .cookie(let entry, let data):
                 try commitCookie(entry, data)
+            case .meme(let staged):
+                try commitMeme(staged)
             }
         } catch {
             report.fail(String(describing: error))
@@ -513,6 +563,31 @@ private struct RestoreContext {
         let item = try vault.add(staged.file, title: title.isEmpty ? String(localized: "Restored item") : title,
                                  removeOriginal: true)
         vaultIndex?.add(item, size: staged.size, sha256: staged.sha256)
+        // A private meme: its labels come back with it, into the private index.
+        if let object = staged.entry.meta["meme"] as? [String: Any], let memes = sources.memes {
+            let decoded = MemeTransfer.decode(object)
+            try memes.registerPrivate(vaultId: item.id, kind: object["kind"] as? String ?? (item.isVideo ? "video" : "image"),
+                                      sha256: staged.sha256, source: decoded.source, tags: decoded.tags, people: decoded.people)
+        }
+        report.restored += 1
+    }
+
+    /// A meme that is not private: into the collection's folder, labels merged by name. One
+    /// already here, by content, only gains the labels.
+    private mutating func commitMeme(_ staged: Staged) throws {
+        defer { try? FileManager.default.removeItem(at: staged.file) }
+        guard let memes = sources.memes, let folder = sources.memeFolder else { return }
+        let decoded = MemeTransfer.decode(staged.entry.meta["meme"] as? [String: Any] ?? [:])
+        if let existing = try memes.load().items.first(where: { $0.sha256 == staged.sha256 && !$0.isPrivate }) {
+            try memes.merge(labels: decoded.tags, people: decoded.people, into: existing.id)
+            report.duplicates += 1
+            return
+        }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let target = MemeLibrary.unique((staged.entry.name as NSString).lastPathComponent, in: folder)
+        try FileManager.default.moveItem(at: staged.file, to: target)
+        let item = try memes.receive(target, source: decoded.source, tags: decoded.tags, people: decoded.people)
+        if (staged.entry.meta["taggedAt"] as? Double ?? 0) > 0, item.isUntagged { try memes.label([item.id]) }
         report.restored += 1
     }
 
@@ -571,6 +646,10 @@ private struct RestoreContext {
             report.applied += 1
         case "app-settings":
             sources.presets?.restoreSettings(from: object)
+            report.applied += 1
+        case "memes-index":
+            let decoded = MemeTransfer.decode(["tags": object["tags"] ?? [], "people": object["people"] ?? []])
+            try sources.memes?.ensure(tags: decoded.tags, people: decoded.people)
             report.applied += 1
         default:
             break

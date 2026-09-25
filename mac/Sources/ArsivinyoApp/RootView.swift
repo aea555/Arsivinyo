@@ -20,6 +20,7 @@ struct RootView: View {
                 Section {
                     row(.download)
                     row(.library)
+                    row(.memes)
                     row(.vault)
                 }
                 // Places you go, so they sit where places are — as in Music.app.
@@ -67,6 +68,11 @@ struct RootView: View {
         .sheet(item: $renamingPlaylist) { playlist in
             NameSheet(title: "Rename Playlist", initial: playlist.name) { model.renamePlaylist(playlist.id, to: $0) }
         }
+        // The quick prompt for the meme that just downloaded, over whatever is showing.
+        .sheet(item: Binding(get: { model.tagPrompts.first.map(PromptId.init) },
+                             set: { if $0 == nil, !model.tagPrompts.isEmpty { model.tagPrompts.removeFirst() } })) { prompt in
+            MemeSheet(ids: [prompt.id], mode: .prompt)
+        }
         // Across the whole window, so the transport survives switching sections.
         .safeAreaInset(edge: .bottom, spacing: 0) { PlayerBar() }
     }
@@ -81,6 +87,7 @@ struct RootView: View {
         switch model.section {
         case .download: DownloadView()
         case .library: MusicView()
+        case .memes: MemesView()
         case .vault: VaultView()
         case .devices: DevicesView()
         }
@@ -103,3 +110,5 @@ struct RootView: View {
         }
     }
 }
+
+private struct PromptId: Identifiable { let id: String }

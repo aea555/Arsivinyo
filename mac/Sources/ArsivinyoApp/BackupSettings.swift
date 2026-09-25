@@ -74,6 +74,7 @@ struct BackupSettings: View {
         switch section {
         case .vault: return "Vault"
         case .music: return "Music library"
+        case .memes: return "Memes"
         case .settings: return "Presets"
         case .cookies: return "Cookies"
         }
@@ -83,6 +84,7 @@ struct BackupSettings: View {
         switch section {
         case .vault: return "Every item, decrypted into the backup and encrypted again under its passphrase."
         case .music: return "Tracks, artwork, playlists and Favorites."
+        case .memes: return "Memes that are not private, with their tags, people and where they came from. Private ones go with the vault."
         case .settings: return "Your own presets and changes to the built-in ones."
         case .cookies: return "Signed-in sessions. Anyone with the backup and its passphrase can use them."
         }
@@ -244,7 +246,8 @@ final class CancelFlag: @unchecked Sendable {
 
 extension AppModel {
     private var backupSources: Backup.Sources {
-        .init(vault: vault, library: library, presets: presets, cookies: cookies)
+        .init(vault: vault, library: library, presets: presets, cookies: cookies,
+              memes: memes, memeFolder: downloadDirectory)
     }
 
     private var appVersion: String {
@@ -300,6 +303,7 @@ extension AppModel {
             refreshMusic()
             refreshPresets()
             refreshSecurity()
+            refreshMemes()
         }
     }
 

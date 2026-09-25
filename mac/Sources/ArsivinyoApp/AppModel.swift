@@ -11,6 +11,7 @@ import UserNotifications
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case download
     case library
+    case memes
     case vault
     case devices
 
@@ -20,6 +21,8 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .download: return String(localized: "Download")
         case .library: return String(localized: "Music")
+        // "Mimler" in Turkish: the TDK's word for memes. The literal plural means something else.
+        case .memes: return String(localized: "Memes")
         case .vault: return String(localized: "Vault")
         case .devices: return String(localized: "Devices")
         }
@@ -30,6 +33,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .download: return "arrow.down.circle"
         case .library: return "music.note.list"
+        case .memes: return "theatermasks"
         case .vault: return "lock.shield"
         case .devices: return "laptopcomputer.and.iphone"
         }
@@ -39,8 +43,9 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .download: return "1"
         case .library: return "2"
-        case .vault: return "3"
-        case .devices: return "4"
+        case .memes: return "3"
+        case .vault: return "4"
+        case .devices: return "5"
         }
     }
 }
@@ -108,6 +113,9 @@ final class AppModel {
         }
     }
 
+    /// Application Support/Arsivinyo, or its override.
+    let supportFolder: URL
+
     init() {
         // Overridable, so a seeded vault can be looked at without touching the real one or
         // the real Keychain item. The Qt app had the same escape hatch.
@@ -116,10 +124,13 @@ final class AppModel {
             ?? FileManager.default
                 .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Arsivinyo", isDirectory: true)
-        keybox = Keybox(
-            directory: support,
-            keychainService: environment["ARSIVINYO_KEYCHAIN_SERVICE"] ?? "com.arsivinyo.mac.keybox")
+        let keychainService = environment["ARSIVINYO_KEYCHAIN_SERVICE"] ?? "com.arsivinyo.mac.keybox"
+        supportFolder = support
+        keybox = Keybox(directory: support, keychainService: keychainService)
         vault = Vault(root: support.appendingPathComponent("vault"), keybox: keybox)
+        memes = MemeLibrary(support: support.appendingPathComponent("memes"), vault: vault, keybox: keybox) {
+            try MemeDeviceKey.load(service: keychainService + ".memes")
+        }
         cookies = CookieStore(directory: support, keybox: keybox)
         presets = PresetStore(directory: support)
         renderScratch = FileManager.default.temporaryDirectory
@@ -164,6 +175,7 @@ final class AppModel {
         refreshMusic()
         refreshSecurity()
         refreshPresets()
+        refreshMemes()
 
         do {
             // Asked from a connection thread, so nothing of the main actor's: a backup a
@@ -185,6 +197,22 @@ final class AppModel {
                 }
             }
             devices.onAutoDownload = { [weak self] url, audio in self?.queue.enqueue(url: url, audioOnly: audio) }
+            // A meme from a paired device joins the collection with its labels merged by name.
+            devices.content.onMemeArrived = { [weak self] file, object in
+                Task { @MainActor in
+                    guard let self else { return }
+                    do {
+                        let target = MemeLibrary.unique(file.lastPathComponent, in: self.downloadDirectory)
+                        try FileManager.default.createDirectory(at: self.downloadDirectory, withIntermediateDirectories: true)
+                        try FileManager.default.moveItem(at: file, to: target)
+                        let decoded = MemeTransfer.decode(object)
+                        try self.memes.receive(target, source: decoded.source, tags: decoded.tags, people: decoded.people)
+                        self.refreshMemes()
+                    } catch {
+                        self.memeProblem = String(describing: error)
+                    }
+                }
+            }
             devices.start()
             self.devices = devices
         } catch {
@@ -201,7 +229,11 @@ final class AppModel {
 
         // An audio download goes into the library the moment it lands, as on the phone.
         queue.onFinished = { [weak self] item, path, payload in
-            guard let self, item.audioOnly else { return }
+            guard let self else { return }
+            guard item.audioOnly else {
+                self.adoptMeme(path, payload: payload)
+                return
+            }
             let thumb = payload["thumbnail_path"]?.string.map { URL(fileURLWithPath: $0) }
             Task {
                 do {
@@ -492,6 +524,18 @@ final class AppModel {
         refreshMusic()
     }
 
+    // MARK: - Memes
+
+    let memes: MemeLibrary
+    var memeSnapshot = MemeLibrary.Snapshot(items: [], tags: [], people: [])
+    var memeProblem: String?
+    /// Memes that just downloaded, waiting for their quick tag prompt, oldest first.
+    var tagPrompts: [String] = []
+    /// The quick prompt after a meme downloads. On unless turned off.
+    var askForMemeTags: Bool = UserDefaults.standard.object(forKey: "askForMemeTags") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(askForMemeTags, forKey: "askForMemeTags") }
+    }
+
     // MARK: - Backup
 
     var backupJob: BackupJob?
@@ -582,6 +626,8 @@ final class AppModel {
     func lockVault() {
         keybox.lock()
         vault.forget()
+        memes.forgetPrivate()
+        refreshMemes()
         vaultUnlocked = false
         vaultItems = []
         vaultProblem = nil
@@ -592,6 +638,7 @@ final class AppModel {
         vaultUnlocked = true
         showUnlockSheet = false
         refreshVault()
+        refreshMemes()
         refreshSecurity()
     }
 

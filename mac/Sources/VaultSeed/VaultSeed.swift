@@ -54,6 +54,44 @@ struct VaultSeed {
         }
         print("passphrase: a correct horse battery staple")
 
+        // A meme collection, when a meme folder is given: clips and images with the kind of
+        // captions, tags and people the real ones carry, one untagged, one private.
+        if let memeDir = environment["ARSIVINYO_MEME_DIR"] {
+            let folder = URL(fileURLWithPath: memeDir)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let memes = MemeLibrary(support: root.appendingPathComponent("memes"), vault: vault, keybox: keybox) {
+                try MemeDeviceKey.load(service: service + ".memes")
+            }
+            let seeds: [(String, String, String, String?, [(String, [MemeLibrary.Facet])], [String], Bool)] = [
+                ("arda.mp4", "testsrc2=size=640x640:rate=25", "bizim laubalilik seviyesi", "futbolcaps",
+                 [("laubalilik", [.vibe, .action])], ["Arda Turan"], false),
+                ("avci.mp4", "mandelbrot=size=640x640:rate=25", "hocam bu ne", "tffcaps",
+                 [("iştah", [.reaction]), ("beğeni", [.reaction])], ["Abdullah Avcı"], false),
+                ("terim.mp4", "gradients=size=640x640:rate=25:c0=orange:c1=yellow", "imparator tatilde", "futbolcaps",
+                 [("rahat", [.vibe]), ("yaz", [.context])], ["Fatih Terim"], false),
+                ("kocaman.mp4", "gradients=size=640x640:rate=25:c0=navy:c1=gray", "o bakış", "fenercaps",
+                 [("hüzün", [.emotion])], ["Aykut Kocaman"], false),
+                ("carpma.mp4", "life=size=640x640:rate=25:mold=10", "adam bisikletliyi indirdi", "trafikcaps",
+                 [], [], false),
+                ("gizli.mp4", "cellauto=size=640x640:rate=25", "sadece bende kalsın", "gizlicaps",
+                 [("gizli", [.context])], [], true),
+            ]
+            for (name, source, caption, account, tags, people, hidden) in seeds {
+                let file = folder.appendingPathComponent(name)
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+                p.arguments = ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", source, "-t", "3",
+                               "-c:v", "libx264", "-pix_fmt", "yuv420p", file.path]
+                try p.run()
+                p.waitUntilExit()
+                let item = try memes.add(file, source: .init(platform: "twitter", account: account, caption: caption,
+                                                             url: "https://x.com/\(account ?? "x")/status/1"),
+                                         tagNames: tags, people: people, tagged: !tags.isEmpty)
+                if hidden { try memes.makePrivate(item.id) }
+                print("meme: \(name)")
+            }
+        }
+
         // A music library too, when a music folder is given, with tags, artwork, a
         // favourite and a playlist — so every part of the music screen has something in it.
         guard let musicDir = environment["ARSIVINYO_MUSIC_DIR"] else { return }

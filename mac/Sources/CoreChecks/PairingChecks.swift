@@ -76,6 +76,8 @@ final class LoopbackContent: PeerContent, @unchecked Sendable {
     private let lock = NSLock()
     private var landed: [URL] = []
     private var covers: [Data] = []
+    private var memeObjects: [[String: Any]] = []
+    var receivedMemes: [[String: Any]] { lock.withLock { memeObjects } }
     var received: [URL] { lock.withLock { landed } }
     var receivedArtwork: [Data] { lock.withLock { covers } }
 
@@ -101,11 +103,12 @@ final class LoopbackContent: PeerContent, @unchecked Sendable {
         folder.appendingPathComponent("incoming-" + (name as NSString).lastPathComponent)
     }
 
-    func accepted(_ file: URL, kind: String, artwork: URL?) {
+    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?) {
         let cover = artwork.flatMap { try? Data(contentsOf: $0) }
         lock.withLock {
             landed.append(file)
             if let cover { covers.append(cover) }
+            if let meme { memeObjects.append(meme) }
         }
     }
     func downloadRequested(url: String, mediaKind: String, from peerName: String) {}
@@ -172,6 +175,20 @@ extension CoreChecks {
         check(aliceFiles.received.first.flatMap { try? Data(contentsOf: $0) } == Self.pattern(700_000, 29),
               "whole, and verified before it was kept")
         check(aliceFiles.receivedArtwork.first == Self.pattern(5_000, 11), "with its cover, which lives beside the file")
+
+        // A meme, with its labels by name and its source.
+        let item = MemeLibrary.Item(id: "m1", kind: "video", isPrivate: false, path: track.path, vaultId: nil, sha256: "",
+                                    source: .init(platform: "twitter", account: "futbolcaps", caption: "bizim laubalilik seviyesi"),
+                                    tags: [], people: [], addedAt: 0, taggedAt: 1)
+        let meme = MemeTransfer.encode(item: item, tags: [("laubalilik", [.action, .vibe])], people: ["Arda Turan"])
+        var memeSent = false
+        bob.sessions.first?.onSent = { memeSent = true }
+        _ = bob.sessions.first?.send(ItemSource(name: "arda.mp4", sizeBytes: 700_000, file: track, meme: meme), kind: "meme")
+        check(Self.waitFor(30) { memeSent && aliceFiles.receivedMemes.count == 1 }, "a meme crosses")
+        let decoded = aliceFiles.receivedMemes.first.map(MemeTransfer.decode)
+        check(decoded?.tags.first?.0 == "laubalilik" && decoded?.tags.first?.1 == [.action, .vibe]
+              && decoded?.people == ["Arda Turan"] && decoded?.source?.caption == "bizim laubalilik seviyesi",
+              "with its tags, facets, people and caption")
 
         // A restart of Bob: same identity, a fresh session certificate, no ceremony.
         bob.stop()

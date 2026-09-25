@@ -382,14 +382,14 @@ extension Data {
     var hex: String { map { String(format: "%02x", $0) }.joined() }
 }
 
-extension FileManager {
+public extension FileManager {
     /// Writes a file created with owner-only permissions, so it is never briefly readable by
     /// others, and moved into place whole.
     ///
     /// No data-protection class: "complete" protection makes a file unreadable while the
     /// Mac is locked, which a backup of it, or a copy carried to another machine, cannot
     /// live with.
-    func writePrivately(_ data: Data, to url: URL) throws {
+    public func writePrivately(_ data: Data, to url: URL) throws {
         let temporary = url.deletingLastPathComponent()
             .appendingPathComponent(".\(UUID().uuidString).tmp")
         guard createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else {

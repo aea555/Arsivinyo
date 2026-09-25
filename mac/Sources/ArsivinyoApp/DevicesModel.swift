@@ -10,6 +10,7 @@ final class LibraryContent: PeerContent, @unchecked Sendable {
     /// Where a received backup is left, for the user to restore deliberately.
     var backupsFolder: () -> URL
     var onTrackArrived: ((URL, URL?) -> Void)?
+    var onMemeArrived: ((URL, [String: Any]) -> Void)?
     var onLinkRequested: ((String, String, String) -> Void)?
 
     init(library: MusicLibrary, incoming: URL, backupsFolder: @escaping () -> URL) {
@@ -53,7 +54,12 @@ final class LibraryContent: PeerContent, @unchecked Sendable {
         return candidate
     }
 
-    func accepted(_ file: URL, kind: String, artwork: URL?) {
+    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?) {
+        if kind == "meme" {
+            try? artwork.map { try FileManager.default.removeItem(at: $0) }
+            onMemeArrived?(file, meme ?? [:])
+            return
+        }
         if kind == "backups" {
             // Not a library item: it waits in Downloads for a restore, with its passphrase.
             let folder = backupsFolder()

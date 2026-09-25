@@ -68,6 +68,21 @@ public final class MemeLibrary: @unchecked Sendable {
         /// 0 while the meme waits in the untagged inbox.
         public var taggedAt: Double
 
+        public init(id: String, kind: String, isPrivate: Bool, path: String?, vaultId: String?, sha256: String,
+                    source: Source?, tags: [String], people: [String], addedAt: Double, taggedAt: Double) {
+            self.id = id
+            self.kind = kind
+            self.isPrivate = isPrivate
+            self.path = path
+            self.vaultId = vaultId
+            self.sha256 = sha256
+            self.source = source
+            self.tags = tags
+            self.people = people
+            self.addedAt = addedAt
+            self.taggedAt = taggedAt
+        }
+
         public var isVideo: Bool { kind == "video" }
         public var isUntagged: Bool { taggedAt == 0 }
         public var fileURL: URL? { path.map { URL(fileURLWithPath: $0) } }
@@ -223,6 +238,12 @@ public final class MemeLibrary: @unchecked Sendable {
         public var items: [Item]
         public var tags: [Tag]
         public var people: [Person]
+
+        public init(items: [Item], tags: [Tag], people: [Person]) {
+            self.items = items
+            self.tags = tags
+            self.people = people
+        }
     }
 
     /// Everything visible, newest first. Public memes whose file has gone are dropped.
@@ -472,6 +493,46 @@ public final class MemeLibrary: @unchecked Sendable {
         return item
     }
 
+    /// Adds labels by name to a meme already here: a duplicate arriving again still brings
+    /// whatever labels it carries.
+    public func merge(labels tags: [(String, [Facet])], people: [String], into itemId: String) throws {
+        try mutate { all in
+            let tagIds = tags.map { Self.resolveTag($0.0, facets: $0.1, in: &all) }
+            let personIds = people.map { Self.resolvePerson($0, in: &all) }
+            guard let index = all.items.firstIndex(where: { $0.id == itemId }) else { return }
+            all.items[index].tags = Array(Set(all.items[index].tags).union(tagIds))
+            all.items[index].people = Array(Set(all.items[index].people).union(personIds))
+            if !tagIds.isEmpty || !personIds.isEmpty, all.items[index].taggedAt == 0 {
+                all.items[index].taggedAt = Date().timeIntervalSince1970 * 1000
+            }
+        }
+    }
+
+    /// Makes sure these tags and people exist, with at least these facets.
+    public func ensure(tags: [(String, [Facet])], people: [String]) throws {
+        try mutate { all in
+            tags.forEach { _ = Self.resolveTag($0.0, facets: $0.1, in: &all) }
+            people.forEach { _ = Self.resolvePerson($0, in: &all) }
+        }
+    }
+
+    /// Records a vault item as a private meme, for a restore. The vault item already exists.
+    @discardableResult
+    public func registerPrivate(vaultId: String, kind: String, sha256: String, source: Source?,
+                                tags: [(String, [Facet])], people: [String]) throws -> Item {
+        guard keybox.isUnlocked else { throw Failure.locked }
+        return try mutate { all in
+            let tagIds = tags.map { Self.resolveTag($0.0, facets: $0.1, in: &all) }
+            let personIds = people.map { Self.resolvePerson($0, in: &all) }
+            let now = Date().timeIntervalSince1970 * 1000
+            let item = Item(id: Self.newId("m"), kind: kind, isPrivate: true, path: nil, vaultId: vaultId, sha256: sha256,
+                            source: source, tags: Array(Set(tagIds)), people: Array(Set(personIds)), addedAt: now,
+                            taggedAt: tagIds.isEmpty && personIds.isEmpty ? 0 : now)
+            all.items.append(item)
+            return item
+        }
+    }
+
     /// Labels by name, for sending: ids mean nothing on another device.
     public static func labels(of item: Item, in snapshot: Snapshot) -> (tags: [(String, [Facet])], people: [String]) {
         let tags = item.tags.compactMap { id in snapshot.tags.first { $0.id == id } }.map { ($0.name, $0.facets) }
@@ -530,7 +591,7 @@ public final class MemeLibrary: @unchecked Sendable {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    static func unique(_ name: String, in folder: URL) -> URL {
+    public static func unique(_ name: String, in folder: URL) -> URL {
         var candidate = folder.appendingPathComponent(name)
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
@@ -579,5 +640,44 @@ public enum MemeDeviceKey {
     public static func delete(service: String) {
         SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                        kSecAttrAccount as String: "memes-index"] as CFDictionary)
+    }
+}
+
+/// A meme's `meme` object in a pairing offer (`shared/memes/CONTRACT.md`, "Between devices").
+/// Labels travel by name: ids mean nothing on another device.
+public enum MemeTransfer {
+    public static func encode(item: MemeLibrary.Item, tags: [(String, [MemeLibrary.Facet])], people: [String]) -> Data? {
+        var source: [String: Any] = ["savedAt": item.source?.savedAt ?? item.addedAt]
+        if let value = item.source?.platform { source["platform"] = value }
+        if let value = item.source?.account { source["account"] = value }
+        if let value = item.source?.accountName { source["accountName"] = value }
+        if let value = item.source?.caption { source["caption"] = value }
+        if let value = item.source?.url { source["url"] = value }
+        if let value = item.source?.postedAt { source["postedAt"] = value }
+        return try? JSONSerialization.data(withJSONObject: [
+            "kind": item.kind,
+            "source": source,
+            "tags": tags.map { ["name": $0.0, "facets": $0.1.map(\.rawValue)] },
+            "people": people.map { ["name": $0] },
+        ])
+    }
+
+    /// Reads one back, leniently: an unknown facet is dropped, a missing field is absent.
+    public static func decode(_ object: [String: Any]) -> (source: MemeLibrary.Source?, tags: [(String, [MemeLibrary.Facet])], people: [String]) {
+        let s = object["source"] as? [String: Any]
+        let source = s.map {
+            MemeLibrary.Source(platform: $0["platform"] as? String, account: $0["account"] as? String,
+                               accountName: $0["accountName"] as? String, caption: $0["caption"] as? String,
+                               url: $0["url"] as? String, postedAt: ($0["postedAt"] as? NSNumber)?.doubleValue,
+                               savedAt: ($0["savedAt"] as? NSNumber)?.doubleValue ?? Date().timeIntervalSince1970 * 1000)
+        }
+        let tags = (object["tags"] as? [[String: Any]] ?? []).compactMap { tag -> (String, [MemeLibrary.Facet])? in
+            guard let name = (tag["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+            return (String(name.prefix(80)), (tag["facets"] as? [String] ?? []).compactMap(MemeLibrary.Facet.init(rawValue:)))
+        }
+        let people = (object["people"] as? [[String: Any]] ?? []).compactMap {
+            ($0["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }.map { String($0.prefix(80)) }
+        return (source, tags, people)
     }
 }

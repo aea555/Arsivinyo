@@ -15,8 +15,12 @@ extension CoreChecks {
         let library: MusicLibrary
         let presets: PresetStore
         let cookies: CookieStore
+        let memes: MemeLibrary
+        let memeFolder: URL
 
-        var sources: Backup.Sources { .init(vault: vault, library: library, presets: presets, cookies: cookies) }
+        var sources: Backup.Sources {
+            .init(vault: vault, library: library, presets: presets, cookies: cookies, memes: memes, memeFolder: memeFolder)
+        }
 
         init(_ root: URL, service: String) throws {
             self.root = root
@@ -28,6 +32,9 @@ extension CoreChecks {
                                    supportFolder: root.appendingPathComponent("music"))
             presets = PresetStore(directory: root)
             cookies = CookieStore(directory: root, keybox: keybox)
+            memeFolder = root.appendingPathComponent("Downloads")
+            let deviceKey = try Crypto.randomBytes(32)
+            memes = MemeLibrary(support: root.appendingPathComponent("memes"), vault: vault, keybox: keybox, deviceKey: { deviceKey })
         }
     }
 
@@ -65,6 +72,19 @@ extension CoreChecks {
         let jar = scratch.appendingPathComponent("cookies.txt")
         try Data(".youtube.com\tTRUE\t/\tTRUE\t2000000000\tSID\tfixture-session\n".utf8).write(to: jar)
         try world.cookies.importFile(jar, into: .platform("youtube"), name: "main")
+
+        try FileManager.default.createDirectory(at: world.memeFolder, withIntermediateDirectories: true)
+        let meme = world.memeFolder.appendingPathComponent("arda.mp4")
+        try pattern(20_000, 19).write(to: meme)
+        let arda = try world.memes.add(meme, source: .init(platform: "twitter", account: "futbolcaps",
+                                                           caption: "bizim laubalilik seviyesi"),
+                                       tagNames: [("laubalilik", [.action])], people: ["Arda Turan"], tagged: true)
+        _ = arda
+        _ = try world.memes.tag(named: "rahat", facets: [.vibe])
+        let hidden = world.memeFolder.appendingPathComponent("gizli.mp4")
+        try pattern(15_000, 23).write(to: hidden)
+        let secret = try world.memes.add(hidden, source: nil, tagNames: [("gizli-etiket", [.emotion])], tagged: true)
+        try world.memes.makePrivate(secret.id)
     }
 
     static let fixturePassphrase = "cross platform fixture passphrase"
@@ -120,14 +140,16 @@ extension CoreChecks {
         let passphrase = "correct horse battery staple backup"
         let header = try Backup.create(at: file, secret: passphrase, sections: BackupSection.allCases,
                                        from: source.sources, appVersion: "checks")
-        check(header.sections.map(\.id) == ["vault", "music", "settings", "cookies"],
-              "all four sections are written, in the phone's order")
+        check(header.sections.map(\.id) == ["vault", "music", "memes", "settings", "cookies"],
+              "all five sections are written, memes after music")
 
         let bytes = try Data(contentsOf: file)
-        check(["Holiday clip", "Song One", "fixture-session", "Mine"].allSatisfy { bytes.range(of: Data($0.utf8)) == nil },
+        check(["Holiday clip", "Song One", "fixture-session", "Mine", "laubalilik", "Arda Turan", "gizli-etiket"]
+                .allSatisfy { bytes.range(of: Data($0.utf8)) == nil },
               "no title, name or cookie is readable in the file")
         let preview = try Backup.preview(file)
-        check(preview.section("vault")?.itemCount == 1 && preview.section("cookies")?.itemCount == 1,
+        check(preview.section("vault")?.itemCount == 2 && preview.section("memes")?.itemCount == 2
+              && preview.section("cookies")?.itemCount == 1,
               "the preview counts what is in it without the passphrase")
 
         let target = try BackupWorld(scratch.appendingPathComponent("target"), service: service + ".b")
@@ -142,13 +164,14 @@ extension CoreChecks {
         let report = try await Backup.restore(from: file, secret: passphrase, sections: Set(BackupSection.allCases),
                                               into: target.sources, staging: scratch.appendingPathComponent("staging"))
         if report.failed > 0 { print("        reasons: \(report.reasons)") }
-        check(report.restored == 3 && report.failed == 0,
-              "a restore adds the vault item and both tracks (\(report.restored) added, \(report.failed) failed)")
+        check(report.restored == 5 && report.failed == 0,
+              "a restore adds the vault items, both tracks and the meme (\(report.restored) added, \(report.failed) failed)")
         try Self.checkRestored(target, into: &self)
+        try Self.checkRestoredMemes(target, into: &self)
 
         let again = try await Backup.restore(from: file, secret: passphrase, sections: Set(BackupSection.allCases),
                                              into: target.sources, staging: scratch.appendingPathComponent("staging"))
-        check(again.restored == 0 && again.duplicates == 3 && again.existing == 1,
+        check(again.restored == 0 && again.duplicates == 5 && again.existing == 1,
               "restoring the same backup again adds nothing (\(again.duplicates) duplicates, \(again.existing) existing)")
         let playlists = target.library.load().playlists
         check(playlists.filter { $0.name == "Mix" }.count == 1 && playlists.first { $0.name == "Mix" }?.trackIds.count == 1,
@@ -189,6 +212,22 @@ extension CoreChecks {
               "an item that could not be read is refused, and the rest of the section still restores")
 
         for world in [source, target, partial, victim, broken, rescue] { world.keybox.deleteKeychainItem() }
+    }
+
+    /// The memes of `fill`: the public one found by its caption and tags, the private one back
+    /// in the vault with its labels, the unused tag still there.
+    static func checkRestoredMemes(_ world: BackupWorld, into runner: inout CoreChecks) throws {
+        let snapshot = try world.memes.load()
+        let arda = MemeLibrary.search(snapshot, query: "laubalilik arda")
+        runner.check(arda.count == 1 && arda.first.flatMap { $0.fileURL }.map { (try? Data(contentsOf: $0)) == pattern(20_000, 19) } == true,
+                     "a meme comes back whole, found by its tag and person")
+        runner.check(arda.first?.source?.caption == "bizim laubalilik seviyesi" && arda.first?.isUntagged == false,
+                     "with its source and still tagged")
+        runner.check(snapshot.tags.first { $0.name == "rahat" }?.facets == [.vibe], "a tag no meme uses yet survives, facets and all")
+        let secret = MemeLibrary.search(snapshot, query: "gizli")
+        runner.check(secret.count == 1 && secret.first?.isPrivate == true
+                     && (try? world.vault.items())?.contains { $0.id == secret.first?.vaultId } == true,
+                     "a private meme comes back into the vault, with its labels")
     }
 
     /// What a restore of `fill` must have produced. Used for this Mac's own backups and for
