@@ -330,8 +330,13 @@ private struct SecuritySettings: View {
                         get: { model.isRemembered },
                         set: { message = model.setRemembered($0) }))
                     .disabled(!model.vaultUnlocked)
+                    if model.touchIDAvailable {
+                        Toggle("Ask for Touch ID first", isOn: Binding(get: { model.askTouchID },
+                                                                       set: { model.askTouchID = $0 }))
+                            .disabled(!model.isRemembered)
+                    }
                 } footer: {
-                    Text("Keeps a key in your login Keychain so this Mac never asks. Convenient, but anyone logged in as you can then open the vault.")
+                    Text("Keeps a key in your login Keychain so this Mac never asks. Convenient, but anyone logged in as you can then open the vault. With Touch ID asked first, the app wants your fingerprint before it uses that key; the key itself is still in the Keychain.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {

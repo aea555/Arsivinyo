@@ -1,5 +1,6 @@
 import ArsivinyoCore
 import Foundation
+import LocalAuthentication
 import SwiftUI
 import UserNotifications
 
@@ -158,10 +159,35 @@ final class AppModel {
         }
 
         // "Remember on this Mac" means never being asked.
-        if keybox.unlockFromKeychain() { vaultDidUnlock() }
+        // With Touch ID asked for first, the remembered key waits for a fingerprint instead.
+        if !askTouchID, keybox.unlockFromKeychain() { vaultDidUnlock() }
         refreshMusic()
         refreshSecurity()
         refreshPresets()
+
+        do {
+            // Asked from a connection thread, so nothing of the main actor's: a backup a
+            // device sends waits in Downloads, where a restore looks first.
+            let devices = try DevicesModel(support: support, library: library) {
+                FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+            }
+            // A track from a paired device goes into the library like a download does.
+            devices.content.onTrackArrived = { [weak self] file in
+                Task { @MainActor in
+                    guard let self else { return }
+                    do {
+                        try await self.library.adopt(file)
+                        self.refreshMusic()
+                    } catch {
+                        self.musicProblem = String(describing: error)
+                    }
+                }
+            }
+            devices.start()
+            self.devices = devices
+        } catch {
+            devicesProblem = String(describing: error)
+        }
 
         // Signed in where there is a profile for the site, and only while the key is here.
         let cookies = cookies
@@ -322,6 +348,38 @@ final class AppModel {
     }
 
     /// Each returns a message to show, or nil on success.
+    /// Asks for Touch ID before the remembered key is used, rather than opening at launch.
+    ///
+    /// A gate in the app, not a key bound to the fingerprint: the key stays in the login
+    /// Keychain as "Remember" keeps it. Binding it to Touch ID needs the data protection
+    /// Keychain, which needs the app signed with a developer certificate.
+    var askTouchID: Bool = UserDefaults.standard.bool(forKey: "askTouchID") {
+        didSet { UserDefaults.standard.set(askTouchID, forKey: "askTouchID") }
+    }
+
+    var touchIDAvailable: Bool {
+        LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    }
+
+    /// Returns a message to show, or nil once the vault is open.
+    func unlockWithTouchID() async -> String? {
+        let context = LAContext()
+        context.localizedCancelTitle = String(localized: "Use Passphrase")
+        do {
+            let ok = try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+                                                      localizedReason: String(localized: "open the vault"))
+            guard ok else { return String(localized: "Touch ID did not recognise you.") }
+        } catch {
+            return error.localizedDescription
+        }
+        guard keybox.unlockFromKeychain() else {
+            refreshSecurity()
+            return String(localized: "The key this Mac remembered is gone. Use the passphrase.")
+        }
+        vaultDidUnlock()
+        return nil
+    }
+
     func setRemembered(_ remember: Bool) -> String? {
         defer { refreshSecurity() }
         do { try keybox.setRemembered(remember); return nil } catch { return String(describing: error) }
@@ -435,6 +493,13 @@ final class AppModel {
     // MARK: - Backup
 
     var backupJob: BackupJob?
+
+    // MARK: - Devices
+
+    /// Nil only if this Mac's pairing identity could not be made, which the Devices section
+    /// then says rather than showing controls that cannot work.
+    var devices: DevicesModel?
+    var devicesProblem: String?
 
     // MARK: - Presets
 

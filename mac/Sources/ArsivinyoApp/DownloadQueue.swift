@@ -116,7 +116,7 @@ final class DownloadQueue {
         let cookies = cookiesFor?(item.url)
         defer { if let cookies { discardCookies?(cookies.file) } }
 
-        var failure = await attempt(item, cookieFile: cookies?.file, signedOut: false)
+        let failure = await attempt(item, cookieFile: cookies?.file, signedOut: false)
         // The phone's rule. A download refused while signed in is tried once more signed
         // out, because an expired session fails where no session at all would not. Not on
         // strict sites: there a signed-out answer is a login wall that looks like success.

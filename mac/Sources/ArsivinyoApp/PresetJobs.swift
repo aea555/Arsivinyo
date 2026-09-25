@@ -73,8 +73,10 @@ extension AppModel {
         next.state = .rendering
         Task {
             do {
-                let report: @Sendable (Double) -> Void = { [weak next] fraction in
-                    Task { @MainActor in next?.progress = fraction }
+                let jobId = next.id
+                // The model lives as long as the app; the Task around this holds it anyway.
+                let report: @Sendable (Double) -> Void = { fraction in
+                    Task { @MainActor in self.renderJobs.first { $0.id == jobId }?.progress = fraction }
                 }
                 _ = try await render(next.track, through: next.preset,
                                      progress: report, cancelFlag: next.cancelFlag)

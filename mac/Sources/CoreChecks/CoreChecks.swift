@@ -223,7 +223,7 @@ struct CoreChecks {
         let padded = try Crypto.open(sealedListing, key: indexKey,
                                      associatedData: index["associatedData"] as! String)
         let listing = String(data: try Crypto.unpad(padded), encoding: .utf8)
-        check(listing == index["listing"] as! String,
+        check(listing == index["listing"] as? String,
               "a vault listing sealed by the phone opens on the Mac")
 
         print("refusals")
@@ -248,7 +248,7 @@ struct CoreChecks {
     /// the contract, and this is an integration check that needs a working directory set up.
     private mutating func checkEngine() async {
         print("engine")
-        guard let layout = await EngineClient.Layout.developmentFromSource() else {
+        guard let layout = EngineClient.Layout.developmentFromSource() else {
             print("  skip  yt-dlp is not fetched; run mac/scripts/fetch-engine.sh")
             return
         }

@@ -47,6 +47,9 @@ struct UnlockSheet: View {
                     Button("Use Recovery Key…", action: useRecoveryKey)
                         .disabled(working)
                 }
+                if touchID {
+                    Button("Use Touch ID", action: useTouchID).disabled(working)
+                }
                 Spacer()
                 Button("Not Now") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(creating ? LocalizedStringKey("Set Passphrase") : LocalizedStringKey("Unlock"), action: submit)
@@ -56,6 +59,9 @@ struct UnlockSheet: View {
         }
         .padding(20)
         .frame(width: 420)
+        // Asked for straight away when that is how this Mac is set up; the passphrase stays
+        // one click away.
+        .task { if touchID { useTouchID() } }
     }
 
     private func submit() {
@@ -74,6 +80,20 @@ struct UnlockSheet: View {
             if failure == nil && rememberThisMac {
                 _ = model.setRemembered(true)
             }
+            working = false
+            if let failure { problem = failure } else { dismiss() }
+        }
+    }
+
+    private var touchID: Bool {
+        !creating && model.askTouchID && model.isRemembered && model.touchIDAvailable
+    }
+
+    private func useTouchID() {
+        working = true
+        problem = nil
+        Task {
+            let failure = await model.unlockWithTouchID()
             working = false
             if let failure { problem = failure } else { dismiss() }
         }

@@ -1,12 +1,13 @@
 # Arsivinyo — macOS app
 
-## Why there is no Xcode project yet
+A SwiftPM package, built into an app by `scripts/bundle.sh`. It needs Xcode, not only the
+Command Line Tools: SwiftUI's macros and the icon compiler ship with Xcode.
 
-SwiftUI needs Xcode: its property wrappers (`@State`, `@Observable`) are macros whose
-plugins ship with Xcode, not with the Command Line Tools. XCTest is the same. So the app
-target and its tests wait for a full Xcode install.
-
-Everything below the UI does not, which is why it exists first and is already verified.
+```
+scripts/fetch-engine.sh      # once: yt-dlp and curl_cffi into .build/engine
+scripts/bundle.sh            # .build/Arsivinyo.app
+open .build/Arsivinyo.app
+```
 
 ## Layout
 
@@ -15,7 +16,10 @@ Sources/ArsivinyoCryptoC/   a flat C boundary over the C++ security core
   include/                  the header Swift imports
   shim.cpp                  the boundary itself
   shared -> ../../../shared/crypto      a symlink, not a copy
-Sources/ArsivinyoCore/      Swift over that boundary
+Sources/ArsivinyoDSPC/      the audio presets: shared/dsp, the same way
+Sources/ArsivinyoPairingC/  pairing: shared/pairing's wire format, Ed25519 and TLS
+Sources/ArsivinyoCore/      Swift over those boundaries
+Sources/ArsivinyoApp/       the app
 Sources/CoreChecks/         the vectors, run as an executable
 Resources/*.lproj           the string tables; scripts/check-strings.sh keeps them complete
 Resources/AppIcon.icon      the icon, as vector layers; the master is shared/brand/icon.svg
@@ -41,8 +45,18 @@ shipped profile, the null-salt HKDF, the backup key hierarchy, and the streaming
 every segment boundary, compared byte for byte rather than round-tripped. It also opens a
 vault listing that Tink sealed.
 
-An executable rather than a test target, because XCTest needs Xcode. Same shape as the C++
-tests it replaces: a line per check, non-zero exit on failure.
+An executable rather than a test target, so it runs without XCTest. Same shape as the C++
+tests it replaces: a line per check, non-zero exit on failure. Beyond the vectors it covers
+the vault, the music library, cookies, presets (with a real render), backups in both
+directions against `shared/crypto/fixtures`, pairing between two Macs over real TLS, and
+the engine.
+
+Two more, which reach outside this package:
+
+```
+scripts/check-strings.sh            # every string the app shows has a Turkish translation
+scripts/check-pairing-interop.sh    # pairs with the phone's own Kotlin code, on the JVM
+```
 
 ## The download engine
 

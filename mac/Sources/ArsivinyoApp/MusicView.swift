@@ -183,6 +183,16 @@ struct MusicView: View {
                     Button(target.name) { model.addTracks(chosen.map(\.id), toPlaylist: target.id) }
                 }
             }
+            if let devices = model.devices, !devices.connected.isEmpty {
+                Menu("Send to") {
+                    ForEach(devices.peers.filter { devices.connected.contains($0.fingerprint) }) { peer in
+                        Button(peer.name.isEmpty ? String(localized: "Unnamed device") : peer.name) {
+                            // One at a time, as the protocol has it: the first of a selection.
+                            devices.send(first, from: model.library, to: peer.fingerprint)
+                        }
+                    }
+                }
+            }
             Menu("Apply Preset") {
                 ForEach(model.presetList) { preset in
                     Button(AppModel.displayName(of: preset)) {

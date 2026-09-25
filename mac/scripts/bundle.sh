@@ -52,6 +52,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <!-- A normal windowed app: dock icon, menu bar, the lot. -->
   <key>LSUIElement</key><false/>
   <key>NSHumanReadableCopyright</key><string>GPL-3.0-or-later</string>
+  <!-- Pairing finds the phone over Bonjour and talks to it directly. Without these, macOS
+       refuses both silently. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Arsivinyo finds your phone on this network and moves music between them.</string>
+  <key>NSBonjourServices</key><array><string>_arsivinyo._tcp</string></array>
 </dict>
 </plist>
 PLIST
