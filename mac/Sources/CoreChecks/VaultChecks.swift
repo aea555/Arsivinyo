@@ -63,6 +63,13 @@ extension CoreChecks {
         let fourth = keybox()
         check(fourth.unlockFromKeychain(), "a restart opens from the Keychain without asking")
         check(try fourth.key(for: .cookies) == cookieKey, "and reaches the same key")
+        // Its Keychain item deleted behind the app's back, as Keychain Access can.
+        fourth.deleteKeychainItem()
+        let orphaned = keybox()
+        check(!orphaned.unlockFromKeychain() && !orphaned.isRemembered,
+              "a slot whose Keychain item is gone is dropped, not shown as remembering")
+        try orphaned.unlock(passphrase: "a different long passphrase")
+        try orphaned.setRemembered(true)
         try fourth.setRemembered(false)
         check(!keybox().unlockFromKeychain(), "forgetting removes it")
         fourth.deleteKeychainItem()

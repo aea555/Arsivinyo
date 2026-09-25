@@ -31,14 +31,14 @@ public final class Keybox: @unchecked Sendable {
 
         public var description: String {
             switch self {
-            case .alreadyConfigured: return "A passphrase is already set."
-            case .notConfigured: return "No passphrase has been set yet."
-            case .locked: return "Unlock first."
-            case .wrongPassphrase: return "That passphrase is not correct."
-            case .tooShort: return "Use at least 8 characters. Length matters more than symbols."
-            case .damaged(let why): return "The stored key is damaged: \(why)"
-            case .lastSlot: return "That is the only way in. Removing it would lose everything."
-            case .keychain(let status): return "The Keychain refused (\(status))."
+            case .alreadyConfigured: return String(localized: "A passphrase is already set.")
+            case .notConfigured: return String(localized: "No passphrase has been set yet.")
+            case .locked: return String(localized: "Unlock first.")
+            case .wrongPassphrase: return String(localized: "That passphrase is not correct.")
+            case .tooShort: return String(localized: "Use at least 8 characters. Length matters more than symbols.")
+            case .damaged(let why): return String(localized: "The stored key is damaged: \(why)")
+            case .lastSlot: return String(localized: "That is the only way in. Removing it would lose everything.")
+            case .keychain(let status): return String(localized: "The Keychain refused (\(status)).")
             }
         }
     }
@@ -121,9 +121,21 @@ public final class Keybox: @unchecked Sendable {
     /// Opens without asking, if this Mac was told to remember. Called at launch.
     @discardableResult
     public func unlockFromKeychain() -> Bool {
-        guard let slot = try? load().first(where: { $0.kind == .keychain }),
-              let secret = try? readKeychain(),
-              let kek = try? Crypto.keyfileKEK(keyfile: secret, salt: slot.salt),
+        guard let slot = try? load().first(where: { $0.kind == .keychain }) else { return false }
+        let secret: Data
+        do {
+            secret = try readKeychain()
+        } catch Failure.keychain(errSecItemNotFound) {
+            // The item is gone, deleted in Keychain Access or never on this Mac. The slot can
+            // never open anything again, and keeping it would show the Mac as remembering
+            // while it asks every time. Other errors, a locked Keychain or a refusal, leave
+            // it alone: those pass.
+            try? remove(kind: .keychain)
+            return false
+        } catch {
+            return false
+        }
+        guard let kek = try? Crypto.keyfileKEK(keyfile: secret, salt: slot.salt),
               case .unwrapped(let master) = Crypto.unwrapMasterKey(
                   kek: kek, slotId: slot.id, verifier: slot.verifier, wrapped: slot.wrapped)
         else { return false }
