@@ -14,14 +14,15 @@ struct UnlockSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(creating ? "Set a Passphrase" : "Unlock the Vault",
+            Label(creating ? LocalizedStringKey("Set a Passphrase") : LocalizedStringKey("Unlock the Vault"),
                   systemImage: creating ? "key" : "lock.open")
                 .font(.headline)
 
-            Text(creating
-                 ? "Your vault and cookies are encrypted with this. There is no way to recover "
-                   + "it — write it down, or export a recovery key once it is set."
-                 : "Everything in the vault is encrypted with your passphrase.")
+            // Two Text views rather than a ternary of strings: a ternary is typed as String,
+            // and a String is shown as it is, never translated.
+            (creating
+                ? Text("Your vault and cookies are encrypted with this. There is no way to recover it — write it down, or export a recovery key once it is set.")
+                : Text("Everything in the vault is encrypted with your passphrase."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -34,8 +35,7 @@ struct UnlockSheet: View {
             }
 
             Toggle("Remember on this Mac", isOn: $remember)
-                .help("Keeps a key in your login Keychain so this Mac never asks. Convenient, "
-                      + "but anyone logged in as you can then open the vault.")
+                .help("Keeps a key in your login Keychain so this Mac never asks. Convenient, but anyone logged in as you can then open the vault.")
 
             if let problem {
                 Text(problem).font(.callout).foregroundStyle(.red)
@@ -45,7 +45,7 @@ struct UnlockSheet: View {
                 if working { ProgressView().controlSize(.small) }
                 Spacer()
                 Button("Not Now") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(creating ? "Set Passphrase" : "Unlock", action: submit)
+                Button(creating ? LocalizedStringKey("Set Passphrase") : LocalizedStringKey("Unlock"), action: submit)
                     .keyboardShortcut(.defaultAction)
                     .disabled(passphrase.isEmpty || working)
             }

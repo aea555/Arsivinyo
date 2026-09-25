@@ -46,7 +46,7 @@ struct AppCommands: Commands {
         }
 
         CommandMenu("Vault") {
-            Button(model.vaultUnlocked ? "Lock Vault" : "Unlock Vault…") {
+            Button(model.vaultUnlocked ? LocalizedStringKey("Lock Vault") : LocalizedStringKey("Unlock Vault…")) {
                 model.toggleVaultLock()
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])

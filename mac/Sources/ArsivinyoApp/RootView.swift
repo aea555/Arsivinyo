@@ -22,7 +22,7 @@ struct RootView: View {
                 // Places you go, so they sit where places are — as in Music.app.
                 Section("Playlists") {
                     ForEach(model.playlists) { playlist in
-                        Label(playlist.name,
+                        Label(AppModel.displayName(of: playlist),
                               systemImage: playlist.isSystem ? "heart" : "music.note.list")
                             .tag(SidebarSelection.playlist(playlist.id))
                             .contextMenu {
@@ -74,7 +74,7 @@ struct RootView: View {
             Button {
                 model.toggleVaultLock()
             } label: {
-                Label(model.vaultUnlocked ? "Lock" : "Unlock",
+                Label(model.vaultUnlocked ? LocalizedStringKey("Lock") : LocalizedStringKey("Unlock"),
                       systemImage: model.vaultUnlocked ? "lock.open" : "lock")
             }
             .help(model.vaultUnlocked

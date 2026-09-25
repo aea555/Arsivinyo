@@ -61,7 +61,7 @@ struct PlayerBar: View {
                         Image(systemName: "shuffle")
                             .foregroundStyle(player.shuffle ? Color.accentColor : Color.secondary)
                     }
-                    .help(player.shuffle ? "Shuffle is on" : "Shuffle is off")
+                    .help(player.shuffle ? LocalizedStringKey("Shuffle is on") : LocalizedStringKey("Shuffle is off"))
                     Button { cycleRepeat() } label: {
                         Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
                             .foregroundStyle(player.repeatMode == .off ? Color.secondary : Color.accentColor)
@@ -89,9 +89,9 @@ struct PlayerBar: View {
 
     private var repeatLabel: String {
         switch model.player.repeatMode {
-        case .off: return "off"
-        case .all: return "all"
-        case .one: return "one"
+        case .off: return String(localized: "off")
+        case .all: return String(localized: "all")
+        case .one: return String(localized: "one")
         }
     }
 

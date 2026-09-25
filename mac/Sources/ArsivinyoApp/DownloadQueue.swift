@@ -81,7 +81,7 @@ final class DownloadQueue {
     private func run(_ item: DownloadItem) async {
         try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 
-        item.state = .running(stage: "Starting")
+        item.state = .running(stage: String(localized: "Starting"))
         let request = engine.perform("download", EngineClient.downloadArguments(
             url: item.url, outputDirectory: destination, audioOnly: item.audioOnly))
         requestIds[item.id] = request.id
@@ -117,9 +117,9 @@ final class DownloadQueue {
     /// Turns the engine's own stage names into something worth showing.
     private static func readable(_ status: String) -> String {
         switch status {
-        case "downloading": return "Downloading"
-        case "postprocessing", "processing": return "Converting"
-        case "preflight": return "Checking the link"
+        case "downloading": return String(localized: "Downloading")
+        case "postprocessing", "processing": return String(localized: "Converting")
+        case "preflight": return String(localized: "Checking the link")
         default: return status.capitalized
         }
     }

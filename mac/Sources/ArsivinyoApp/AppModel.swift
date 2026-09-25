@@ -16,10 +16,10 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .download: return "Download"
-        case .library: return "Music"
-        case .vault: return "Vault"
-        case .devices: return "Devices"
+        case .download: return String(localized: "Download")
+        case .library: return String(localized: "Music")
+        case .vault: return String(localized: "Vault")
+        case .devices: return String(localized: "Devices")
         }
     }
 
@@ -161,6 +161,12 @@ final class AppModel {
         }
     }
 
+    /// Favorites is stored under its English name, the way the phone stores it, because that
+    /// is data a backup carries. What is shown is the word in the reader's own language.
+    static func displayName(of playlist: MusicLibrary.Playlist) -> String {
+        playlist.isSystem ? String(localized: "Favorites") : playlist.name
+    }
+
     // MARK: - Music actions
 
     func refreshMusic() {
@@ -174,7 +180,7 @@ final class AppModel {
             let result = await library.importFiles(urls)
             refreshMusic()
             if !result.failed.isEmpty {
-                musicProblem = "Could not import: \(result.failed.joined(separator: ", "))"
+                musicProblem = String(localized: "Could not import: \(result.failed.joined(separator: ", "))")
             }
         }
     }

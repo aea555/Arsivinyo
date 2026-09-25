@@ -57,7 +57,7 @@ struct MusicView: View {
                 }
             } else if let playlist, playlist.trackIds.isEmpty {
                 ContentUnavailableView {
-                    Label(playlist.isSystem ? "No favourites yet" : "Empty playlist",
+                    Label(playlist.isSystem ? LocalizedStringKey("No favourites yet") : LocalizedStringKey("Empty playlist"),
                           systemImage: playlist.isSystem ? "heart" : "music.note.list")
                 } description: {
                     Text(playlist.isSystem
@@ -68,7 +68,7 @@ struct MusicView: View {
                 table
             }
         }
-        .navigationTitle(playlist?.name ?? "Music")
+        .navigationTitle(playlist.map(AppModel.displayName) ?? String(localized: "Music"))
         .navigationSubtitle(subtitle)
         .searchable(text: $search, placement: .toolbar, prompt: "Search music")
         .toolbar {
@@ -97,7 +97,9 @@ struct MusicView: View {
     private var subtitle: String {
         let tracks = visible
         let seconds = tracks.reduce(0) { $0 + $1.durationSeconds }
-        let count = tracks.count == 1 ? "1 song" : "\(tracks.count) songs"
+        let count = tracks.count == 1
+            ? String(localized: "1 song")
+            : String(localized: "\(tracks.count) songs")
         return tracks.isEmpty ? "" : "\(count), \(Self.longDuration(seconds))"
     }
 
@@ -110,7 +112,7 @@ struct MusicView: View {
                         .foregroundStyle(favourite ? Color.pink : Color.secondary.opacity(0.5))
                 }
                 .buttonStyle(.plain)
-                .help(favourite ? "Remove from Favorites" : "Add to Favorites")
+                .help(favourite ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Add to Favorites"))
             }
             .width(22)
 
@@ -171,7 +173,7 @@ struct MusicView: View {
                 }
             }
             let allFavourite = chosen.allSatisfy { model.favorites.contains($0.id) }
-            Button(allFavourite ? "Remove from Favorites" : "Add to Favorites") {
+            Button(allFavourite ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Add to Favorites")) {
                 chosen.filter { model.favorites.contains($0.id) == allFavourite }.forEach(model.toggleFavorite)
             }
             if chosen.count == 1 {
@@ -193,8 +195,8 @@ struct MusicView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = [.audio]
-        panel.prompt = "Import"
-        panel.message = "The files are copied into the library. The originals stay where they are."
+        panel.prompt = String(localized: "Import")
+        panel.message = String(localized: "The files are copied into the library. The originals stay where they are.")
         if panel.runModal() == .OK { model.importMusic(panel.urls) }
     }
 

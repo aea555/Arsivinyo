@@ -69,8 +69,8 @@ struct VaultView: View {
         }
         .confirmationDialog(
             confirmingDelete.count == 1
-                ? "Delete “\(confirmingDelete.first?.title ?? "")” from the vault?"
-                : "Delete \(confirmingDelete.count) items from the vault?",
+                ? Text("Delete “\(confirmingDelete.first?.title ?? "")” from the vault?")
+                : Text("Delete \(confirmingDelete.count) items from the vault?"),
             isPresented: .init(get: { !confirmingDelete.isEmpty },
                                set: { if !$0 { confirmingDelete = [] } })
         ) {
@@ -94,7 +94,7 @@ struct VaultView: View {
                  ? "Everything here is encrypted, and so is the list of what it is."
                  : "Set a passphrase to start a vault. Files you add are encrypted with it.")
         } actions: {
-            Button(model.vaultConfigured ? "Unlock…" : "Set a Passphrase…") {
+            Button(model.vaultConfigured ? LocalizedStringKey("Unlock…") : LocalizedStringKey("Set a Passphrase…")) {
                 model.showUnlockSheet = true
             }
             .buttonStyle(.borderedProminent)
@@ -107,8 +107,7 @@ struct VaultView: View {
         } description: {
             // The instinct on seeing an empty vault is to add to it, and that is the one
             // thing that would make this permanent. So it says so.
-            Text("Your files are still here and still encrypted. Nothing has been deleted, "
-                 + "and nothing will be written until the listing can be read again.")
+            Text("Your files are still here and still encrypted. Nothing has been deleted, and nothing will be written until the listing can be read again.")
         }
     }
 
@@ -178,8 +177,8 @@ struct VaultView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.prompt = "Add to Vault"
-        panel.message = "The files are encrypted as they are added. The originals stay where they are."
+        panel.prompt = String(localized: "Add to Vault")
+        panel.message = String(localized: "The files are encrypted as they are added. The originals stay where they are.")
         if panel.runModal() == .OK { model.addToVault(panel.urls) }
     }
 
@@ -203,7 +202,7 @@ struct VaultView: View {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = item.fileExtension.isEmpty
             ? item.title : "\(item.title).\(item.fileExtension)"
-        panel.message = "This writes a decrypted copy. It is not protected once it leaves the vault."
+        panel.message = String(localized: "This writes a decrypted copy. It is not protected once it leaves the vault.")
         if panel.runModal() == .OK, let url = panel.url { model.exportFromVault(item, to: url) }
     }
 }

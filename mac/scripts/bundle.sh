@@ -20,6 +20,8 @@ BINARY="$ROOT/.build/$CONFIG/ArsivinyoApp"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/Arsivinyo"
+# SwiftUI looks its text up in the main bundle, which is this one, not the SwiftPM target.
+cp -R "$ROOT"/Resources/*.lproj "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -32,6 +34,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <!-- Distinct from the Android app's com.arsivinyo.local, which must never change: this
        is a different application on a different platform, not the same one. -->
   <key>CFBundleIdentifier</key><string>com.arsivinyo.mac</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>tr</string></array>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
