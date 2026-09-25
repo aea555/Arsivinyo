@@ -67,6 +67,8 @@ class PairingService(
     var clientNonce: ByteArray? = null
     var serverNonce: ByteArray? = null
     var commitment: ByteArray? = null
+    /** The other device's user has confirmed; its side of the session is live. */
+    @Volatile var peerConfirmed = false
   }
   private var pairingTimer: Timer? = null
 
@@ -211,11 +213,27 @@ class PairingService(
 
   /** The commit-reveal exchange that produces the six digits. */
   private fun onCeremonyMessage(link: PeerLink, message: JSONObject) {
-    val (current, key) = synchronized(lock) {
-      if (pendingLink !== link) return
-      (ceremony ?: return) to pendingKey
+    // Decided under the lock that confirmPairing() switches over in, so a message that
+    // arrives as the ceremony ends goes to the new session instead of being dropped.
+    var forwardTo: PeerSession? = null
+    val state = synchronized(lock) {
+      if (pendingLink !== link) {
+        forwardTo = sessions.firstOrNull { it.link === link }
+        null
+      } else {
+        ceremony?.let { it to pendingKey }
+      }
     }
+    if (state == null) {
+      forwardTo?.receive(message)
+      return
+    }
+    val (current, key) = state
     val kind = message.optString("t")
+    if (kind == "pair-confirm") {
+      current.peerConfirmed = true
+      return
+    }
     val nonce = unhex(message.optString(if (kind == "pair-commit") "c" else "n"))
     val server = current.role == PairingWire.ROLE_SERVER
 
@@ -284,9 +302,6 @@ class PairingService(
       key = pendingKey
       // Only once the exchange has produced a code: there is nothing to confirm before.
       if (key.isEmpty() || pendingCode.isEmpty()) return false
-      pendingLink = null
-      pendingKey = ByteArray(0)
-      ceremony = null
     }
 
     val name = pendingName
@@ -298,8 +313,21 @@ class PairingService(
     cancelTimer()
     onPendingChanged?.invoke("", "")
 
+    // The ceremony ends and the session begins in one step under the lock, which is also
+    // where onCeremonyMessage decides where a message goes: nothing falls between them.
     val fingerprint = Ed25519Keys.fingerprint(key)
-    sessions.add(PeerSession(link, content))
+    synchronized(lock) {
+      sessions.add(PeerSession(link, content, peerReady = ceremony?.peerConfirmed ?: false))
+      if (pendingLink === link) {
+        pendingLink = null
+        pendingKey = ByteArray(0)
+        ceremony = null
+      }
+    }
+    // Tell the other device, which may still be showing its code. Until its own user
+    // confirms, it ignores everything but the ceremony, so this session holds its requests
+    // until that confirmation arrives rather than sending them into nothing.
+    link.sendControl(JSONObject().put("t", "pair-confirm"))
     onPaired?.invoke(fingerprint, name)
     onPeerConnected?.invoke(fingerprint, name)
     return true

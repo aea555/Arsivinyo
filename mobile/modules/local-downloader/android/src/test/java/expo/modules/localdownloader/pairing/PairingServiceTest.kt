@@ -266,12 +266,12 @@ class PairingServiceTest {
     alice.connectToPeer("127.0.0.1", bob.port)
     bob.connectToPeer("127.0.0.1", alice.port)
     Thread.sleep(1500)
-    assertTrue("each ends with one connection to the other",
-      waitFor { alice.sessions().size == 1 && bob.sessions().size == 1 })
-    val aliceSide = alice.sessions().single().link
-    val bobSide = bob.sessions().single().link
-    assertTrue("and it is the same connection, seen from both ends",
-      aliceSide.role != bobSide.role)
+    // Waited for as a whole: on the way there each side can briefly hold a different one.
+    assertTrue("each ends with one connection to the other, the same one seen from both ends",
+      waitFor {
+        alice.sessions().size == 1 && bob.sessions().size == 1 &&
+          alice.sessions().single().link.role != bob.sessions().single().link.role
+      })
   }
 
   @Test
@@ -286,6 +286,30 @@ class PairingServiceTest {
     output.outputStream.flush()
     assertTrue("the failed connection is dropped rather than shown as connected",
       waitFor { bob.sessions().isEmpty() })
+  }
+
+  /**
+   * One user confirms and asks for a listing at once, while the other is still reading the
+   * code. The request has to wait for the other confirmation, not vanish into its ceremony.
+   */
+  @Test
+  fun aRequestMadeBeforeTheOtherSideConfirmsIsAnsweredOnceItDoes() {
+    assertTrue(alice.listen())
+    alice.beginPairing(60)
+    bob.beginPairing(60)
+    bob.connectToPeer("127.0.0.1", alice.port)
+    assertTrue(waitFor { alice.pendingCode.isNotEmpty() && bob.pendingCode.isNotEmpty() })
+
+    assertTrue(bob.confirmPairing())
+    val answered = CountDownLatch(1)
+    val session = bob.sessions().single()
+    session.onListing = { _, _ -> answered.countDown() }
+    assertTrue(session.requestListing("music"))
+    Thread.sleep(500)
+    assertEquals("nothing comes back while the other side is still deciding", 1L, answered.count)
+
+    assertTrue(alice.confirmPairing())
+    assertTrue("the listing arrives once it confirms", answered.await(15, TimeUnit.SECONDS))
   }
 
   private fun pair() {

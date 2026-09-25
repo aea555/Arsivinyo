@@ -34,7 +34,7 @@ let package = Package(
             path: "Sources/ArsivinyoCryptoC",
             // FORMAT.md and VECTORS.json live beside the sources; they are documentation
             // and a fixture, not things to compile.
-            exclude: ["shared/FORMAT.md", "shared/VECTORS.json"],
+            exclude: ["shared/FORMAT.md", "shared/VECTORS.json", "shared/fixtures"],
             sources: ["shim.cpp", "shared"],
             cxxSettings: [
                 .headerSearchPath("shared"),
@@ -56,7 +56,22 @@ let package = Package(
                 .unsafeFlags(["-std=c++17"]),
             ]
         ),
-        .target(name: "ArsivinyoCore", dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC"]),
+        // Pairing with the phone: shared/pairing's wire format by symlink, held to the same
+        // VECTORS.json as the phone, plus Ed25519 and TLS over the static OpenSSL.
+        .target(
+            name: "ArsivinyoPairingC",
+            path: "Sources/ArsivinyoPairingC",
+            exclude: ["shared/PROTOCOL.md", "shared/VECTORS.json"],
+            sources: ["shim.cpp", "shared"],
+            cxxSettings: [
+                .headerSearchPath("shared"),
+                .unsafeFlags(["-I\(openSSLRoot)/include", "-std=c++20"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["\(openSSLRoot)/lib/libssl.a"]),
+            ]
+        ),
+        .target(name: "ArsivinyoCore", dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC", "ArsivinyoPairingC"]),
 
         // The app. SwiftPM rather than an .xcodeproj: Xcode opens Package.swift directly,
         // and a command-line build means the app can be launched and looked at from a

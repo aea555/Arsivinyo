@@ -110,6 +110,10 @@ struct CoreChecks {
             }
         }
 
+        if let flag = CommandLine.arguments.firstIndex(of: "--interop"), flag + 1 < CommandLine.arguments.count {
+            exit(await runInterop(URL(fileURLWithPath: CommandLine.arguments[flag + 1])))
+        }
+
         var runner = CoreChecks()
         do {
             try runner.run()
@@ -120,6 +124,8 @@ struct CoreChecks {
             try await runner.checkPresets()
             try await runner.checkBackup()
             try await runner.checkPhoneBackup()
+            try runner.checkPairingVectors()
+            try runner.checkPairingLoopback()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")

@@ -68,6 +68,7 @@ SUITES=(
   "expo.modules.localdownloader.pairing.PairingAuthTest|$PAIRING_SOURCES $SRC_TEST/pairing/PairingAuthTest.kt"
   "expo.modules.localdownloader.pairing.PeerRegistryTest|$PAIRING_SOURCES $SRC_TEST/pairing/PeerRegistryTest.kt"
   "expo.modules.localdownloader.pairing.PeerLinkTest|$PAIRING_SOURCES $SRC_TEST/pairing/LoopbackPeers.kt $SRC_TEST/pairing/PeerLinkTest.kt"
+  "expo.modules.localdownloader.pairing.MacInteropTest|$PAIRING_SOURCES $SRC_TEST/pairing/LoopbackPeers.kt $SRC_TEST/pairing/MacInteropTest.kt"
   "expo.modules.localdownloader.pairing.PeerSessionTest|$PAIRING_SOURCES $SRC_TEST/pairing/LoopbackPeers.kt $SRC_TEST/pairing/PeerSessionTest.kt"
   "expo.modules.localdownloader.pairing.PairingServiceTest|$PAIRING_SOURCES $SRC_TEST/pairing/LoopbackPeers.kt $SRC_TEST/pairing/PairingServiceTest.kt"
   "expo.modules.localdownloader.scheduler.PriorityGateTest|$SCHEDULER_SOURCES $SRC_TEST/scheduler/PriorityGateTest.kt"

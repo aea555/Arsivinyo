@@ -29,7 +29,36 @@ import org.json.JSONObject
 class PeerSession(
   val link: PeerLink,
   private val content: PeerContent,
+  /**
+   * False straight after this side confirmed a pairing the other side has not confirmed yet.
+   * Until its `pair-confirm` arrives the other device ignores everything but the ceremony,
+   * so requests wait here rather than vanishing.
+   */
+  peerReady: Boolean = true,
 ) {
+
+  @Volatile private var ready = peerReady
+  private val waiting = mutableListOf<() -> Unit>()
+
+  /** Runs [request] now, or once the other device has confirmed the pairing. */
+  private fun whenReady(request: () -> Unit): Boolean {
+    synchronized(waiting) {
+      if (!ready) {
+        waiting.add(request)
+        return true
+      }
+    }
+    request()
+    return true
+  }
+
+  private fun peerConfirmed() {
+    val queued = synchronized(waiting) {
+      ready = true
+      waiting.toList().also { waiting.clear() }
+    }
+    queued.forEach { it() }
+  }
 
   var onListing: ((kind: String, items: JSONArray) -> Unit)? = null
   var onTransferStarted: ((sizeBytes: Long) -> Unit)? = null
@@ -77,16 +106,17 @@ class PeerSession(
   // ---- outgoing requests -------------------------------------------------------------
 
   fun requestListing(kind: String): Boolean =
-    link.sendControl(JSONObject().put("t", "list").put("kind", kind))
+    whenReady { link.sendControl(JSONObject().put("t", "list").put("kind", kind)) }
 
   fun requestItem(id: String): Boolean {
     if (isTransferring) return false
-    return link.sendControl(JSONObject().put("t", "get").put("id", id))
+    return whenReady { link.sendControl(JSONObject().put("t", "get").put("id", id)) }
   }
 
   fun requestDownload(url: String, mediaKind: String): Boolean =
-    link.sendControl(JSONObject().put("t", "download").put("url", url)
-      .put("mediaKind", mediaKind))
+    whenReady {
+      link.sendControl(JSONObject().put("t", "download").put("url", url).put("mediaKind", mediaKind))
+    }
 
   /** Offer a local file to the peer. Returns once the send has been started, not finished. */
   fun sendFile(file: File, kind: String): Boolean {
@@ -100,8 +130,9 @@ class PeerSession(
     sending = source
     cancelled = false
     accepted = CountDownLatch(1)
-    Thread({ streamSource(source, kind) }, "pairing-send").apply { isDaemon = true }.start()
-    return true
+    return whenReady {
+      Thread({ streamSource(source, kind) }, "pairing-send").apply { isDaemon = true }.start()
+    }
   }
 
   private fun streamSource(source: ItemSource, kind: String) {
@@ -158,8 +189,12 @@ class PeerSession(
 
   // ---- incoming ----------------------------------------------------------------------
 
+  /** A message the service routed here, having reached the link as its ceremony ended. */
+  internal fun receive(message: JSONObject) = onControl(message)
+
   private fun onControl(message: JSONObject) {
     when (message.optString("t")) {
+      "pair-confirm" -> peerConfirmed()
       "list" -> {
         val kind = message.optString("kind")
         link.sendControl(JSONObject().put("t", "listing").put("kind", kind)

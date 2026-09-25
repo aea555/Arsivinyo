@@ -109,7 +109,14 @@ The step that has to be right, because everything after it inherits this trust.
    ```
 
 4. **Both devices display the six digits**; the user confirms on each that they match.
-5. Each stores the other's public key and a user-visible name.
+5. Each stores the other's public key and a user-visible name, and sends
+   `{"t":"pair-confirm"}`.
+
+The two confirmations are never simultaneous. Until its own user confirms, a device
+ignores everything but the ceremony, so the side that confirmed first holds its requests
+until the other's `pair-confirm` arrives, rather than sending them into nothing. And each
+side makes its session before it sends `pair-confirm`, so the answer to it never reaches a
+ceremony that has just ended.
 
 **Why commit-reveal.** Version 1 derived the digits from the two public keys alone. Both
 keys are known before anyone compares digits, so a man in the middle, holding one leg to
