@@ -568,6 +568,30 @@ def _debug_log(enabled: bool, message: str) -> None:
         print(f"[LocalDownloaderPy] {message}", flush=True)
 
 
+def _source_of(info: Dict[str, Any], platform: Optional[str]) -> Dict[str, Any]:
+    """Where a download came from: the post, as the site described it.
+
+    For a meme this is often the best label there is: the caption is the poster saying what
+    it is for. It is returned to the app and never logged, like a title.
+    """
+    caption = info.get("description") or info.get("title") or ""
+    posted = info.get("timestamp")
+    if not posted and info.get("upload_date"):
+        try:
+            posted = datetime.datetime.strptime(str(info["upload_date"]), "%Y%m%d").replace(
+                tzinfo=datetime.timezone.utc).timestamp()
+        except ValueError:
+            posted = None
+    return {
+        "platform": platform or (info.get("extractor_key") or "").lower() or None,
+        "account": info.get("uploader_id") or info.get("channel") or info.get("uploader"),
+        "accountName": info.get("uploader"),
+        "caption": str(caption)[:4000],
+        "url": info.get("webpage_url") or info.get("original_url"),
+        "postedAt": int(posted * 1000) if posted else None,
+    }
+
+
 def _result(success: bool, code: str, message: Optional[str] = None, **kwargs: Any) -> str:
     payload: Dict[str, Any] = {
         "success": success,
@@ -3239,6 +3263,7 @@ def run_download(
             preflight_strategy=preflight_strategy,
             strategy=download_strategy,
             extractor_key=info.get("extractor_key"),
+            source=_source_of(info, _detect_cookie_platform(url)),
         )
     except Exception as exc:
         if "DOWNLOAD_CANCELLED" in str(exc):

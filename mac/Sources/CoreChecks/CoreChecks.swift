@@ -126,6 +126,7 @@ struct CoreChecks {
             try await runner.checkPhoneBackup()
             try runner.checkPairingVectors()
             try runner.checkPairingLoopback()
+            try runner.checkMemes()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")

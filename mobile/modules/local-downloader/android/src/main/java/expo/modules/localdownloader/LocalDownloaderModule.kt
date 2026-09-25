@@ -2237,7 +2237,7 @@ class LocalDownloaderModule : Module() {
               debugLogging = debugLoggingEnabled,
             )
           )
-          debug("Task[$taskId] preflight result=$attempt")
+          debug("Task[$taskId] preflight result=${redactedForLog(attempt)}")
 
           if (!attempt.optBoolean("success", false) && shouldRetryWithoutCookies(attempt, effectiveCookiePath, effectivePlatform)) {
             addError("COOKIE_RETRY_PREFLIGHT: task=$taskId")
@@ -2257,7 +2257,7 @@ class LocalDownloaderModule : Module() {
                 debugLogging = debugLoggingEnabled,
               )
             )
-            debug("Task[$taskId] preflight retry(no-cookie) result=$attempt")
+            debug("Task[$taskId] preflight retry(no-cookie) result=${redactedForLog(attempt)}")
           }
           attempt
         }
@@ -2357,7 +2357,7 @@ class LocalDownloaderModule : Module() {
               debugLogging = debugLoggingEnabled,
             )
           )
-          debug("Task[$taskId] download result=$attempt")
+          debug("Task[$taskId] download result=${redactedForLog(attempt)}")
 
           if (!attempt.optBoolean("success", false) && shouldRetryWithoutCookies(attempt, effectiveCookiePath, effectivePlatform)) {
             addError("COOKIE_RETRY_DOWNLOAD: task=$taskId")
@@ -2385,7 +2385,7 @@ class LocalDownloaderModule : Module() {
                 debugLogging = debugLoggingEnabled,
               )
             )
-            debug("Task[$taskId] download retry(no-cookie) result=$attempt")
+            debug("Task[$taskId] download retry(no-cookie) result=${redactedForLog(attempt)}")
           }
           progressWatcher?.cancel()
           progressWatcher = null
@@ -9123,6 +9123,19 @@ class LocalDownloaderModule : Module() {
         )
       }
     }
+  }
+
+  /**
+   * A result as it may be logged: what happened, never what it was. The file name carries
+   * the title, and the source carries the post's caption and account, so all of them stay
+   * out of the log even with debug logging on.
+   */
+  private fun redactedForLog(result: JSONObject): String {
+    val copy = JSONObject(result.toString())
+    for (key in listOf("file_path", "filename", "thumbnail_path", "source", "normalized_url", "title")) {
+      if (copy.has(key)) copy.put(key, "<redacted>")
+    }
+    return copy.toString()
   }
 
   private fun debug(message: String) {
