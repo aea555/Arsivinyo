@@ -17,9 +17,9 @@ struct CoreChecks {
 
     // MARK: - Harness
 
-    private var failures = 0
+    var failures = 0
 
-    private mutating func check(_ ok: Bool, _ what: String) {
+    mutating func check(_ ok: Bool, _ what: String) {
         print(ok ? "  ok    \(what)" : "  FAIL  \(what)")
         if !ok { failures += 1 }
     }
@@ -90,6 +90,7 @@ struct CoreChecks {
         var runner = CoreChecks()
         do {
             try runner.run()
+            try runner.checkKeyboxAndVault()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")

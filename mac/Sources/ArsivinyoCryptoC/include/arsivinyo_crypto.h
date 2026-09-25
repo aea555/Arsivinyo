@@ -85,6 +85,67 @@ void av_pad(const uint8_t *content, size_t contentLength, uint8_t *out);
 /** Content length, or -1 if the block lies about how much it holds. */
 int64_t av_unpad(const uint8_t *padded, size_t paddedLength, uint8_t *out);
 
+// ---- the key box --------------------------------------------------------------------
+
+/** A wrapped master key: nonce(12) || ciphertext(32) || tag(16). */
+#define AV_WRAPPED_BYTES 60
+#define AV_VERIFIER_BYTES 32
+
+/** HKDF over a key file's contents. The file alone is not the key-encryption key. */
+int av_keyfile_kek(const uint8_t *keyfile, size_t keyfileLength,
+                   const uint8_t *salt, size_t saltLength, uint8_t *out32);
+
+/** Wraps `masterKey32` under `kek`, writing the verifier and the wrapped blob. */
+int av_keybox_wrap(const uint8_t *kek, size_t kekLength, const uint8_t *masterKey32,
+                   const char *slotId, uint8_t *outVerifier32, uint8_t *outWrapped60);
+
+/**
+ * 1 unwrapped, 0 the secret is wrong, -1 the stored key is damaged.
+ *
+ * Wrong and damaged are kept apart on purpose: the verifier says the key-encryption key is
+ * wrong before the wrapped blob is touched, so a mistyped passphrase is reported as one
+ * rather than as corruption.
+ */
+int av_keybox_unwrap(const uint8_t *kek, size_t kekLength, const char *slotId,
+                     const uint8_t *verifier32, const uint8_t *wrapped60,
+                     uint8_t *outMaster32);
+
+// ---- whole files ----------------------------------------------------------------------
+
+/**
+ * Encrypts a file into another, a megabyte at a time.
+ *
+ * Vault items are video. Reading one into memory to seal it would mean a gigabyte of
+ * resident memory for a file the machine is only copying.
+ */
+int av_encrypt_file(const char *sourcePath, const char *destinationPath,
+                    const uint8_t *key, size_t keyLength, const char *associatedData);
+
+int av_decrypt_file(const char *sourcePath, const char *destinationPath,
+                    const uint8_t *key, size_t keyLength, const char *associatedData);
+
+// ---- random access, for playback --------------------------------------------------------
+
+/**
+ * A seekable reader over an encrypted file.
+ *
+ * What playback needs: a player opens a file, jumps to the end for the container index, and
+ * comes back. Nothing is ever decrypted to disk.
+ */
+typedef struct av_reader av_reader;
+
+/** NULL if the file is missing or the key does not open it. */
+av_reader *av_reader_open(const char *path, const uint8_t *key, size_t keyLength,
+                          const char *associatedData);
+
+/** How many plaintext bytes the file holds. */
+int64_t av_reader_size(av_reader *reader);
+
+/** Reads at a plaintext offset. Returns the count, or -1. Short only at end of file. */
+int64_t av_reader_read(av_reader *reader, uint64_t offset, uint8_t *out, size_t length);
+
+void av_reader_close(av_reader *reader);
+
 #ifdef __cplusplus
 }
 #endif
