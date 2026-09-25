@@ -12,13 +12,27 @@ struct RootView: View {
         @Bindable var model = model
 
         NavigationSplitView {
-            List(selection: $model.section) {
+            List(selection: $model.selection) {
                 // The first group is unlabelled, the way a Mac source list usually opens.
-                // A section called Library containing an item called Library read as a bug.
                 Section {
                     row(.download)
                     row(.library)
                     row(.vault)
+                }
+                // Places you go, so they sit where places are — as in Music.app.
+                Section("Playlists") {
+                    ForEach(model.playlists) { playlist in
+                        Label(playlist.name,
+                              systemImage: playlist.isSystem ? "heart" : "music.note.list")
+                            .tag(SidebarSelection.playlist(playlist.id))
+                            .contextMenu {
+                                if !playlist.isSystem {
+                                    Button("Delete Playlist", role: .destructive) {
+                                        model.deletePlaylist(playlist.id)
+                                    }
+                                }
+                            }
+                    }
                 }
                 Section("Network") {
                     row(.devices)
@@ -28,22 +42,25 @@ struct RootView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
             detail
+                // A default; Music sets its own, and the innermost title wins.
                 .navigationTitle(model.section.title)
                 .toolbar { toolbar }
         }
         .sheet(isPresented: $model.showUnlockSheet) { UnlockSheet() }
+        // Across the whole window, so the transport survives switching sections.
+        .safeAreaInset(edge: .bottom, spacing: 0) { PlayerBar() }
     }
 
     private func row(_ section: AppSection) -> some View {
         Label(section.title, systemImage: section.symbol)
-            .tag(section)
+            .tag(SidebarSelection.section(section))
     }
 
     @ViewBuilder
     private var detail: some View {
         switch model.section {
         case .download: DownloadView()
-        case .library: LibraryView()
+        case .library: MusicView()
         case .vault: VaultView()
         case .devices: DevicesView()
         }

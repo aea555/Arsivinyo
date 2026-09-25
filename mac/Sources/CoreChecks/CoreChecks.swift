@@ -92,6 +92,7 @@ struct CoreChecks {
             try runner.run()
             try runner.checkKeyboxAndVault()
             try await runner.checkPlayback()
+            try await runner.checkMusic()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")
@@ -240,6 +241,18 @@ struct CoreChecks {
         await client.stop()
 
         check(version != nil, "the engine answers with a yt-dlp version (\(version ?? "none"))")
+
+        // Every key the app sends has to be one host.py actually reads, because it silently
+        // ignores the rest. This is what caught "Audio" downloading video.
+        let hostSource = (try? String(contentsOf: layout.engine.appendingPathComponent("host.py"),
+                                      encoding: .utf8)) ?? ""
+        let arguments = EngineClient.downloadArguments(
+            url: "https://example.com/x", outputDirectory: URL(fileURLWithPath: "/tmp"),
+            audioOnly: true, cookiesDirectory: URL(fileURLWithPath: "/tmp"))
+        let unread = arguments.keys.filter { !hostSource.contains("req.get(\"\($0)\")")
+                                             && !hostSource.contains("req[\"\($0)\"]") }
+        check(unread.isEmpty, "every download key is one the host reads (unread: \(unread.sorted()))")
+        check(arguments["audioOnly"] as? Bool == true, "and audio is asked for as audioOnly")
         // What stops sites refusing a downloader outright. The phone ships wheels for it;
         // on this Mac it is a pip install, and without it the app is the lesser one.
         check(impersonation == true, "impersonation is available, as it is on the phone")

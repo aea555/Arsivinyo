@@ -10,7 +10,7 @@ import Foundation
 /// replace the real Keychain item.
 @main
 struct VaultSeed {
-    static func main() throws {
+    static func main() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let dir = environment["ARSIVINYO_DATA_DIR"],
               let service = environment["ARSIVINYO_KEYCHAIN_SERVICE"],
@@ -53,5 +53,42 @@ struct VaultSeed {
             print("in: \(title)")
         }
         print("passphrase: a correct horse battery staple")
+
+        // A music library too, when a music folder is given, with tags, artwork, a
+        // favourite and a playlist — so every part of the music screen has something in it.
+        guard let musicDir = environment["ARSIVINYO_MUSIC_DIR"] else { return }
+        let library = MusicLibrary(musicFolder: URL(fileURLWithPath: musicDir),
+                                   supportFolder: root.appendingPathComponent("music"))
+        let songs: [(String, String, Int, String)] = [
+            ("Gnossienne No. 1", "Erik Satie", 214, "0x3a5f8c"),
+            ("Clair de Lune", "Claude Debussy", 301, "0x6b3f8c"),
+            ("Spiegel im Spiegel", "Arvo Pärt", 587, "0x2f7a5a"),
+            ("Metamorphosis One", "Philip Glass", 356, "0x8c5a2f"),
+            ("Nuvole Bianche", "Ludovico Einaudi", 342, "0x8c2f4a"),
+        ]
+        var ids: [String] = []
+        for (index, (title, artist, seconds, colour)) in songs.enumerated() {
+            let audio = scratch.appendingPathComponent("\(title).m4a")
+            let art = scratch.appendingPathComponent("\(title).jpg")
+            for (args, _) in [
+                (["-f", "lavfi", "-i", "sine=frequency=\(220 + index * 55):duration=\(seconds)",
+                  "-c:a", "aac", "-b:a", "64k", audio.path], 0),
+                (["-f", "lavfi", "-i", "color=c=\(colour):s=300x300",
+                  "-frames:v", "1", art.path], 1),
+            ] {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+                p.arguments = ["-hide_banner", "-loglevel", "error", "-y"] + args
+                try p.run()
+                p.waitUntilExit()
+            }
+            let track = try await library.adopt(audio, title: title, artist: artist, artwork: art)
+            ids.append(track.id)
+            print("song: \(title)")
+        }
+        library.setFavorite(ids[1], true)
+        library.setFavorite(ids[4], true)
+        let playlist = library.createPlaylist(named: "Late Night")
+        library.add([ids[0], ids[2], ids[3]], to: playlist.id)
     }
 }

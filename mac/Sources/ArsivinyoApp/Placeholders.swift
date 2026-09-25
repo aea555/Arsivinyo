@@ -5,15 +5,6 @@ import SwiftUI
 /// Each says what it will do rather than showing an empty pane, so the shape of the app is
 /// legible while it is being built.
 
-struct LibraryView: View {
-    var body: some View {
-        ContentUnavailableView(
-            "No music yet",
-            systemImage: "music.note.list",
-            description: Text("Audio you download lands here, with playlists and presets."))
-    }
-}
-
 struct DevicesView: View {
     var body: some View {
         ContentUnavailableView(

@@ -43,6 +43,15 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// What the source list has selected: a section, or one playlist inside Music.
+///
+/// Playlists sit in the source list the way they do in Music.app, rather than behind a
+/// menu inside the Music pane — they are places you go, so they belong where places are.
+enum SidebarSelection: Hashable {
+    case section(AppSection)
+    case playlist(String)
+}
+
 /// App-wide state.
 ///
 /// Observable rather than a pile of singletons so the views can read it directly and the
@@ -51,9 +60,25 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
 @Observable
 final class AppModel {
     /// Reopens where you left off, as a Mac app does.
-    var section: AppSection = AppSection(
-        rawValue: UserDefaults.standard.string(forKey: "section") ?? "") ?? .download {
+    var selection: SidebarSelection = .section(AppSection(
+        rawValue: UserDefaults.standard.string(forKey: "section") ?? "") ?? .download) {
         didSet { UserDefaults.standard.set(section.rawValue, forKey: "section") }
+    }
+
+    /// The section the selection is in. A playlist is inside Music.
+    var section: AppSection {
+        get {
+            switch selection {
+            case .section(let section): return section
+            case .playlist: return .library
+            }
+        }
+        set { selection = .section(newValue) }
+    }
+
+    var selectedPlaylistId: String? {
+        if case .playlist(let id) = selection { return id }
+        return nil
     }
 
     /// The engine and the queue live here rather than in the download view, so switching
@@ -82,6 +107,14 @@ final class AppModel {
             keychainService: environment["ARSIVINYO_KEYCHAIN_SERVICE"] ?? "com.arsivinyo.mac.keybox")
         vault = Vault(root: support.appendingPathComponent("vault"), keybox: keybox)
 
+        let musicFolder = environment["ARSIVINYO_MUSIC_DIR"].map { URL(fileURLWithPath: $0) }
+            ?? UserDefaults.standard.string(forKey: "musicDirectory").map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.urls(for: .musicDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Arsivinyo", isDirectory: true)
+        library = MusicLibrary(musicFolder: musicFolder,
+                               supportFolder: support.appendingPathComponent("music"))
+        player = Player(library: library)
+
         let stored = UserDefaults.standard.string(forKey: "downloadDirectory")
         let destination = stored.map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser
@@ -109,6 +142,94 @@ final class AppModel {
 
         // "Remember on this Mac" means never being asked.
         if keybox.unlockFromKeychain() { vaultDidUnlock() }
+        refreshMusic()
+
+        // An audio download goes into the library the moment it lands, as on the phone.
+        queue.onFinished = { [weak self] item, path, payload in
+            guard let self, item.audioOnly else { return }
+            let thumb = payload["thumbnail_path"]?.string.map { URL(fileURLWithPath: $0) }
+            Task {
+                do {
+                    try await self.library.adopt(path, title: payload["title"]?.string,
+                                                 artist: payload["artist"]?.string ?? payload["uploader"]?.string,
+                                                 artwork: thumb)
+                    self.refreshMusic()
+                } catch {
+                    self.musicProblem = String(describing: error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Music actions
+
+    func refreshMusic() {
+        let loaded = library.load()
+        tracks = loaded.tracks
+        playlists = loaded.playlists
+    }
+
+    func importMusic(_ urls: [URL]) {
+        Task {
+            let result = await library.importFiles(urls)
+            refreshMusic()
+            if !result.failed.isEmpty {
+                musicProblem = "Could not import: \(result.failed.joined(separator: ", "))"
+            }
+        }
+    }
+
+    func toggleFavorite(_ track: MusicLibrary.Track) {
+        library.setFavorite(track.id, !favorites.contains(track.id))
+        refreshMusic()
+    }
+
+    func removeTracks(_ ids: [String]) {
+        for id in ids {
+            if player.current?.id == id { player.stop() }
+            try? library.remove(id)
+        }
+        refreshMusic()
+    }
+
+    func createPlaylist(named name: String, with trackIds: [String] = []) {
+        let playlist = library.createPlaylist(named: name)
+        if !trackIds.isEmpty { library.add(trackIds, to: playlist.id) }
+        refreshMusic()
+        selection = .playlist(playlist.id)
+    }
+
+    func addTracks(_ ids: [String], toPlaylist id: String) {
+        library.add(ids, to: id)
+        refreshMusic()
+    }
+
+    func removeTracks(_ ids: [String], fromPlaylist id: String) {
+        library.remove(ids, from: id)
+        refreshMusic()
+    }
+
+    func deletePlaylist(_ id: String) {
+        try? library.deletePlaylist(id)
+        if selectedPlaylistId == id { selection = .section(.library) }
+        refreshMusic()
+    }
+
+    func renamePlaylist(_ id: String, to name: String) {
+        try? library.renamePlaylist(id, to: name)
+        refreshMusic()
+    }
+
+    // MARK: - Music
+
+    let library: MusicLibrary
+    let player: Player
+    private(set) var tracks: [MusicLibrary.Track] = []
+    private(set) var playlists: [MusicLibrary.Playlist] = []
+    private(set) var musicProblem: String?
+
+    var favorites: Set<String> {
+        Set(playlists.first { $0.id == MusicLibrary.favoritesId }?.trackIds ?? [])
     }
 
     // MARK: - The vault

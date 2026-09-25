@@ -322,3 +322,23 @@ extension EngineClient.Layout {
         return development(repositoryRoot: dir)
     }
 }
+
+// MARK: - Requests the engine understands
+
+extension EngineClient {
+    /// The arguments for a download, in the host's own keys.
+    ///
+    /// Built here rather than at the call site because the host ignores keys it does not
+    /// know. Sending `mediaKind: "audio"` — a reasonable-looking guess — downloads the video
+    /// every time, with no error. `CoreChecks` holds this to the keys `host.py` reads.
+    nonisolated public static func downloadArguments(url: String, outputDirectory: URL, audioOnly: Bool,
+                                         cookiesDirectory: URL? = nil) -> [String: Any] {
+        var arguments: [String: Any] = [
+            "url": url,
+            "outputDir": outputDirectory.path,
+            "audioOnly": audioOnly,
+        ]
+        if let cookiesDirectory { arguments["cookiesDir"] = cookiesDirectory.path }
+        return arguments
+    }
+}

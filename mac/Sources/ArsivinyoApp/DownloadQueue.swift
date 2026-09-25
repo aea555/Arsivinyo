@@ -53,6 +53,9 @@ final class DownloadQueue {
     /// Engine request ids, so a cancel reaches the right download.
     private var requestIds: [UUID: String] = [:]
 
+    /// Called when a download lands, with where it landed and what the engine said about it.
+    var onFinished: ((DownloadItem, URL, JSONValue) -> Void)?
+
     init(engine: EngineClient, destination: URL) {
         self.engine = engine
         self.destination = destination
@@ -79,11 +82,8 @@ final class DownloadQueue {
         try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 
         item.state = .running(stage: "Starting")
-        let request = engine.perform("download", [
-            "url": item.url,
-            "outputDir": destination.path,
-            "mediaKind": item.audioOnly ? "audio" : "video",
-        ])
+        let request = engine.perform("download", EngineClient.downloadArguments(
+            url: item.url, outputDirectory: destination, audioOnly: item.audioOnly))
         requestIds[item.id] = request.id
 
         for await event in request.events {
@@ -99,12 +99,11 @@ final class DownloadQueue {
 
             case .finished(.success(let payload)):
                 if let title = payload["title"]?.string, !title.isEmpty { item.title = title }
-                if let path = payload["filePath"]?.string {
-                    item.state = .finished(path: URL(fileURLWithPath: path))
-                } else {
-                    item.state = .finished(path: destination)
-                }
+                let path = (payload["filePath"]?.string ?? payload["file_path"]?.string)
+                    .map { URL(fileURLWithPath: $0) }
+                item.state = .finished(path: path ?? destination)
                 item.progress = 1
+                if let path { onFinished?(item, path, payload) }
 
             case .finished(.failure(let error)):
                 // A cancel comes back as a failure; it is not one the user needs telling.
