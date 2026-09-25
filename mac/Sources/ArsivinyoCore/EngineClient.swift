@@ -25,12 +25,16 @@ public final class EngineClient {
         public var ytDlp: URL
         /// Extra packages: curl_cffi for impersonation, which is what stops sites refusing.
         public var site: URL?
+        /// Needed to merge separate video and audio streams, which most sites serve.
+        /// The engine only looks beside its own executable, so it is passed explicitly.
+        public var ffmpeg: URL?
 
-        public init(python: URL, engine: URL, ytDlp: URL, site: URL? = nil) {
+        public init(python: URL, engine: URL, ytDlp: URL, site: URL? = nil, ffmpeg: URL? = nil) {
             self.python = python
             self.engine = engine
             self.ytDlp = ytDlp
             self.site = site
+            self.ffmpeg = ffmpeg
         }
     }
 
@@ -137,13 +141,17 @@ public final class EngineClient {
     // MARK: - Requests
 
     /// Sends one request and streams back everything the engine says about it.
+    ///
+    /// The id comes back with the stream because cancelling is a separate request that has
+    /// to name the one being cancelled.
+    @discardableResult
     public func perform(_ operation: String, _ arguments: [String: Any] = [:])
-        -> AsyncStream<Event>
+        -> (id: String, events: AsyncStream<Event>)
     {
         nextId += 1
         let id = String(nextId)
 
-        return AsyncStream { continuation in
+        let events = AsyncStream<Event> { continuation in
             guard let stdin else {
                 continuation.yield(.finished(.failure(.init(description: "the engine is not running"))))
                 continuation.finish()
@@ -158,6 +166,9 @@ public final class EngineClient {
             var request = arguments
             request["id"] = id
             request["op"] = operation
+            if let ffmpeg = layout.ffmpeg, request["ffmpegPath"] == nil {
+                request["ffmpegPath"] = ffmpeg.path
+            }
             guard let line = try? JSONSerialization.data(withJSONObject: request) else {
                 continuation.yield(.finished(.failure(.init(description: "could not encode the request"))))
                 continuation.finish()
@@ -170,6 +181,7 @@ public final class EngineClient {
                 Task { @MainActor in self?.listeners[id] = nil }
             }
         }
+        return (id, events)
     }
 
     /// Cancels a running download by the id of the request that started it.
@@ -231,7 +243,17 @@ public final class EngineClient {
             if object["ok"]?.bool == true {
                 let payload = object["result"] ?? .object([:])
                 if let version = payload["ytDlp"]?.string { ytDlpVersion = version }
-                listener(.finished(.success(payload)))
+                // The request succeeded; the download inside it may not have. The engine
+                // reports that as ok with success false, and reading only `ok` would show
+                // a refused download as finished.
+                if payload["success"]?.bool == false {
+                    let message = payload["message"]?.string
+                        ?? payload["code"]?.string
+                        ?? "the download failed"
+                    listener(.finished(.failure(.init(description: message))))
+                } else {
+                    listener(.finished(.success(payload)))
+                }
             } else {
                 let message = object["error"]?.string ?? "the download failed"
                 listener(.finished(.failure(.init(description: message))))
@@ -269,11 +291,22 @@ extension EngineClient.Layout {
               FileManager.default.fileExists(atPath: ytDlp.path)
         else { return nil }
 
+        // Beside the engine first, so a bundled copy wins, then Homebrew, then PATH.
+        let ffmpegCandidates = [
+            build.appendingPathComponent("ffmpeg").path,
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+        ]
+        let ffmpeg = ffmpegCandidates
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
+            .map { URL(fileURLWithPath: $0) }
+
         return .init(
             python: URL(fileURLWithPath: python),
             engine: engine,
             ytDlp: ytDlp,
-            site: FileManager.default.fileExists(atPath: site.path) ? site : nil)
+            site: FileManager.default.fileExists(atPath: site.path) ? site : nil,
+            ffmpeg: ffmpeg)
     }
 
     /// Walks up from a file in the repository until it finds the root.

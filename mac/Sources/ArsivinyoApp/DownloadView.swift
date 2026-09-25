@@ -7,16 +7,31 @@ import UniformTypeIdentifiers
 /// has something in it rather than three controls centred in a field of grey.
 struct DownloadView: View {
     @Environment(AppModel.self) private var model
-    @State private var queue = DownloadQueue()
     @State private var audioOnly = false
     @State private var isTargetedForDrop = false
 
-    private var canStart: Bool { DownloadQueue.looksLikeLink(model.pendingURL) }
+    private var queue: DownloadQueue { model.queue }
+    private var canStart: Bool {
+        DownloadQueue.looksLikeLink(model.pendingURL) && model.engineProblem == nil
+    }
 
     var body: some View {
         @Bindable var model = model
 
         VStack(spacing: 0) {
+            if let problem = model.engineProblem {
+                // Said out loud rather than leaving a button that quietly does nothing.
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(problem).font(.callout)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.orange.opacity(0.12))
+                Divider()
+            }
             header
             Divider()
             queueList

@@ -1,3 +1,4 @@
+import ArsivinyoCore
 import Foundation
 import SwiftUI
 
@@ -46,9 +47,50 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
 ///
 /// Observable rather than a pile of singletons so the views can read it directly and the
 /// menu commands can drive the same state the sidebar does.
+@MainActor
 @Observable
 final class AppModel {
     var section: AppSection = .download
+
+    /// The engine and the queue live here rather than in the download view, so switching
+    /// to another section does not throw away what is running.
+    let engine: EngineClient
+    let queue: DownloadQueue
+
+    /// Why the engine is not usable, when it is not. Shown rather than swallowed: a
+    /// download button that quietly does nothing is the worst of both.
+    private(set) var engineProblem: String?
+
+    var downloadDirectory: URL {
+        didSet { UserDefaults.standard.set(downloadDirectory.path, forKey: "downloadDirectory") }
+    }
+
+    init() {
+        let stored = UserDefaults.standard.string(forKey: "downloadDirectory")
+        let destination = stored.map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Downloads/Arsivinyo")
+        downloadDirectory = destination
+
+        // While the app runs from the repository this finds the fetched engine; a bundled
+        // build will carry its own copy and this is where that choice will be made.
+        let layout = EngineClient.Layout.developmentFromSource()
+        engine = EngineClient(layout: layout ?? .init(
+            python: URL(fileURLWithPath: "/usr/bin/python3"),
+            engine: URL(fileURLWithPath: "/nonexistent"),
+            ytDlp: URL(fileURLWithPath: "/nonexistent")))
+        queue = DownloadQueue(engine: engine, destination: destination)
+
+        if layout == nil {
+            engineProblem = "The download engine is not set up. Run mac/scripts/fetch-engine.sh."
+        } else {
+            do {
+                try engine.start()
+            } catch {
+                engineProblem = String(describing: error)
+            }
+        }
+    }
 
     /// Bound to the real key box once the vault lands; the menu item reads it today so the
     /// command and the view can never disagree about which way round it is.

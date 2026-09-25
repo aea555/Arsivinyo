@@ -227,10 +227,10 @@ struct CoreChecks {
 
         var version: String?
         var impersonation: Bool?
-        for await event in await client.perform("version") {
+        for await event in await client.perform("version").events {
             if case .finished(.success(let payload)) = event { version = payload["ytDlp"]?.string }
         }
-        for await event in await client.perform("diagnostics") {
+        for await event in await client.perform("diagnostics").events {
             if case .finished(.success(let payload)) = event {
                 impersonation = payload["impersonationRuntimeAvailable"]?.bool
             }
