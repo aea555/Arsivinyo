@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Arsivinyo. A record going into its sleeve: the archive. The download arrow is its label.
+       This is the flat master. The Mac icon is the same drawing split into layers, in
+       mac/Resources/AppIcon.icon, so the system can render it as glass. -->
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF8A4C"/>
+      <stop offset="1" stop-color="#EE4B2B"/>
+    </linearGradient>
+    <linearGradient id="sleeve" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFAF2"/>
+      <stop offset="1" stop-color="#F5E7D4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#ground)"/>
+  <circle cx="512" cy="400" r="280" fill="#1C1B20"/>
+  <g fill="none" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="4"><circle cx="512" cy="400" r="132"/><circle cx="512" cy="400" r="160"/><circle cx="512" cy="400" r="188"/><circle cx="512" cy="400" r="216"/><circle cx="512" cy="400" r="244"/></g>
+  <path fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="10" stroke-linecap="round"
+        d="M318 250 A244 244 0 0 1 452 166"/>
+  <circle cx="512" cy="400" r="98" fill="#FFF4E6"/>
+  <path fill="none" stroke="#EE4B2B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"
+        d="M512 350 V444 M474 408 L512 446 L550 408"/>
+  <path fill="#000000" fill-opacity=".14" transform="translate(0 10)" d="M248 520 H420 A92 92 0 0 0 604 520 H776 A52 52 0 0 1 828 572 V816 A52 52 0 0 1 776 868 H248 A52 52 0 0 1 196 816 V572 A52 52 0 0 1 248 520 Z"/>
+  <path fill="url(#sleeve)" d="M248 520 H420 A92 92 0 0 0 604 520 H776 A52 52 0 0 1 828 572 V816 A52 52 0 0 1 776 868 H248 A52 52 0 0 1 196 816 V572 A52 52 0 0 1 248 520 Z"/>
+</svg>

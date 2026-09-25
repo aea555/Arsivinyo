@@ -23,6 +23,12 @@ cp "$BINARY" "$APP/Contents/MacOS/Arsivinyo"
 # SwiftUI looks its text up in the main bundle, which is this one, not the SwiftPM target.
 cp -R "$ROOT"/Resources/*.lproj "$APP/Contents/Resources/"
 
+# The icon is vector layers (Resources/AppIcon.icon). actool renders them into the asset
+# catalog macOS draws as glass, plus an .icns for anything that reads the old format.
+xcrun actool "$ROOT/Resources/AppIcon.icon" --compile "$APP/Contents/Resources" \
+    --app-icon AppIcon --platform macosx --minimum-deployment-target 27.0 \
+    --output-partial-info-plist "$ROOT/.build/icon-partial.plist" >/dev/null
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -36,6 +42,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>com.arsivinyo.mac</string>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleLocalizations</key><array><string>en</string><string>tr</string></array>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>

@@ -17,6 +17,8 @@ Sources/ArsivinyoCryptoC/   a flat C boundary over the C++ security core
   shared -> ../../../shared/crypto      a symlink, not a copy
 Sources/ArsivinyoCore/      Swift over that boundary
 Sources/CoreChecks/         the vectors, run as an executable
+Resources/*.lproj           the string tables; scripts/check-strings.sh keeps them complete
+Resources/AppIcon.icon      the icon, as vector layers; the master is shared/brand/icon.svg
 ```
 
 `shared` is a symlink on purpose. The security core is not reimplemented here: the Mac

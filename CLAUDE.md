@@ -9,7 +9,7 @@ that applies to it — read `mobile/CLAUDE.md` before touching anything under `m
 mobile/     Android app (Expo + a Kotlin native module).
 mac/        macOS app (SwiftUI over the shared C++ core). Needs Xcode; see mac/README.md.
 shared/     Anything the apps must agree on: the device-pairing protocol, the security
-            core, the audio DSP, and the yt-dlp download engine.
+            core, the audio DSP, the yt-dlp download engine, and the icon (brand/).
 ```
 
 `mac/` does not reimplement the security core. It compiles the same C++ through a symlink,

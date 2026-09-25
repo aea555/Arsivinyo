@@ -1,0 +1,43 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "srgb:1.00000,0.54118,0.29804,1.00000",
+      "srgb:0.93333,0.29412,0.16863,1.00000"
+    ]
+  },
+  "groups": [
+    {
+      "name": "Sleeve",
+      "layers": [
+        {
+          "name": "sleeve",
+          "image-name": "sleeve.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      }
+    },
+    {
+      "name": "Record",
+      "layers": [
+        {
+          "name": "record",
+          "image-name": "record.svg",
+          "glass": false
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}
