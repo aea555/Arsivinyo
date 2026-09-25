@@ -396,6 +396,9 @@ extension EngineClient {
             "url": url,
             "outputDir": outputDirectory.path,
             "audioOnly": audioOnly,
+            // Left to itself the engine takes what the phone plays best, VP9 with Opus,
+            // which no Mac player opens. H.264 and AAC first, when the site has them.
+            "preferAppleCodecs": true,
         ]
         if let cookiesDirectory { arguments["cookiesDir"] = cookiesDirectory.path }
         if let cookieProfile { arguments["cookieProfile"] = cookieProfile }

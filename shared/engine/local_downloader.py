@@ -25,6 +25,22 @@ COOKIE_PLATFORMS = {
     "tiktok": ["tiktok.com", "vm.tiktok.com"],
 }
 
+# Settings that belong to one download call rather than the process. Each download runs on
+# its own thread, synchronously, so a thread-local reaches the option building deep inside
+# it without threading a parameter through every strategy.
+_CALL_OPTIONS = threading.local()
+
+# What Apple's players open: H.264 video, AAC audio. Sorting rather than selecting keeps
+# every site's own format selector in charge, and still falls back to whatever exists.
+APPLE_FORMAT_SORT = ["vcodec:h264", "res", "acodec:m4a"]
+
+
+def _apply_call_format_sort(opts: Dict[str, Any]) -> None:
+    sort = getattr(_CALL_OPTIONS, "format_sort", None)
+    if sort:
+        opts["format_sort"] = list(sort)
+
+
 DEFAULT_HTTP_USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36"
@@ -2077,6 +2093,7 @@ def _perform_attempts(
             debug_logging=debug_logging,
         )
         opts["format"] = format_override or _build_format_selector(max_file_size_mb, merge_capable)
+        _apply_call_format_sort(opts)
         _set_runtime_diag("formatSelectorLast", opts["format"])
         if merge_capable:
             opts["merge_output_format"] = "mp4"
@@ -2193,6 +2210,7 @@ def _perform_attempts(
                     debug_logging=debug_logging,
                 )
                 retry_opts["format"] = format_override or _build_format_selector(max_file_size_mb, merge_capable)
+                _apply_call_format_sort(retry_opts)
                 if merge_capable:
                     retry_opts["merge_output_format"] = "mp4"
                 if ydl_overrides:
@@ -2885,7 +2903,10 @@ def run_download(
     audio_format: str = DEFAULT_AUDIO_FORMAT,
     user_agent: str = DEFAULT_HTTP_USER_AGENT,
     debug_logging: bool = False,
+    prefer_apple_codecs: bool = False,
 ) -> str:
+    # The Mac asks for this: VP9 with Opus in an MP4 plays on Android and nowhere on a Mac.
+    _CALL_OPTIONS.format_sort = APPLE_FORMAT_SORT if prefer_apple_codecs and not audio_only else None
     try:
         _begin_call_diagnostics()
         _debug_log(

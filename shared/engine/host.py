@@ -127,6 +127,8 @@ def _run_download(request_id: str, req: Dict[str, Any]) -> None:
             audio_only=bool(req.get("audioOnly")),
             audio_format=req.get("audioFormat") or _engine().DEFAULT_AUDIO_FORMAT,
             debug_logging=bool(req.get("debugLogging")),
+            # H.264 and AAC first, which is what a Mac's players open.
+            prefer_apple_codecs=bool(req.get("preferAppleCodecs")),
         )
         emit({"id": request_id, "type": "result", "ok": True, "result": json.loads(raw)})
     except Exception as exc:
