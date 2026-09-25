@@ -1,3 +1,4 @@
+import ArsivinyoCore
 import SwiftUI
 
 /// The window: a source list on the left, the chosen section on the right.
@@ -7,6 +8,8 @@ import SwiftUI
 /// and the reason it read as a port.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @State private var creatingPlaylist = false
+    @State private var renamingPlaylist: MusicLibrary.Playlist?
 
     var body: some View {
         @Bindable var model = model
@@ -27,12 +30,16 @@ struct RootView: View {
                             .tag(SidebarSelection.playlist(playlist.id))
                             .contextMenu {
                                 if !playlist.isSystem {
+                                    Button("Rename…") { renamingPlaylist = playlist }
                                     Button("Delete Playlist", role: .destructive) {
                                         model.deletePlaylist(playlist.id)
                                     }
                                 }
                             }
                     }
+                }
+                .contextMenu {
+                    Button("New Playlist…") { creatingPlaylist = true }
                 }
                 Section("Network") {
                     row(.devices)
@@ -47,6 +54,12 @@ struct RootView: View {
                 .toolbar { toolbar }
         }
         .sheet(isPresented: $model.showUnlockSheet) { UnlockSheet() }
+        .sheet(isPresented: $creatingPlaylist) {
+            NameSheet(title: "New Playlist", initial: "") { model.createPlaylist(named: $0) }
+        }
+        .sheet(item: $renamingPlaylist) { playlist in
+            NameSheet(title: "Rename Playlist", initial: playlist.name) { model.renamePlaylist(playlist.id, to: $0) }
+        }
         // Across the whole window, so the transport survives switching sections.
         .safeAreaInset(edge: .bottom, spacing: 0) { PlayerBar() }
     }

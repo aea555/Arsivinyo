@@ -7,16 +7,21 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettings()
+                .frame(width: 560, height: 440)
                 .tabItem { Label("General", systemImage: "gearshape") }
             CookieSettings()
+                .frame(width: 560, height: 440)
                 .tabItem { Label("Cookies", systemImage: "person.badge.key") }
+            PresetSettings()
+                .frame(width: 720, height: 560)
+                .tabItem { Label("Presets", systemImage: "slider.horizontal.3") }
             EngineSettings()
+                .frame(width: 560, height: 440)
                 .tabItem { Label("Engine", systemImage: "shippingbox") }
             SecuritySettings()
+                .frame(width: 560, height: 440)
                 .tabItem { Label("Security", systemImage: "lock") }
         }
-        .frame(width: 560)
-        .frame(minHeight: 380)
     }
 }
 

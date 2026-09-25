@@ -44,7 +44,19 @@ let package = Package(
                 .unsafeFlags(["\(openSSLRoot)/lib/libcrypto.a"]),
             ]
         ),
-        .target(name: "ArsivinyoCore", dependencies: ["ArsivinyoCryptoC"]),
+        // The audio presets, over shared/dsp by symlink, as the crypto is over shared/crypto:
+        // the phone renders with this same C++, so a preset sounds the same on both.
+        .target(
+            name: "ArsivinyoDSPC",
+            path: "Sources/ArsivinyoDSPC",
+            exclude: ["shared/test"],
+            sources: ["shim.cpp", "shared"],
+            cxxSettings: [
+                .headerSearchPath("shared"),
+                .unsafeFlags(["-std=c++17"]),
+            ]
+        ),
+        .target(name: "ArsivinyoCore", dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC"]),
 
         // The app. SwiftPM rather than an .xcodeproj: Xcode opens Package.swift directly,
         // and a command-line build means the app can be launched and looked at from a

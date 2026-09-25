@@ -94,6 +94,7 @@ struct CoreChecks {
             try await runner.checkPlayback()
             try await runner.checkMusic()
             try runner.checkCookies()
+            try await runner.checkPresets()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")

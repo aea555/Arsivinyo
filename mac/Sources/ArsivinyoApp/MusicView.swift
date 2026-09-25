@@ -17,7 +17,7 @@ struct MusicView: View {
 
     private struct NamingRequest: Identifiable {
         let id = UUID()
-        var title: String
+        var title: LocalizedStringKey
         var initial: String
         var trackIds: [String]
         var renaming: String?
@@ -67,6 +67,9 @@ struct MusicView: View {
             } else {
                 table
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !model.renderJobs.isEmpty { RenderStrip() }
         }
         .navigationTitle(playlist.map(AppModel.displayName) ?? String(localized: "Music"))
         .navigationSubtitle(subtitle)
@@ -125,6 +128,14 @@ struct MusicView: View {
                     }
                     Text(track.title).lineLimit(1)
                         .fontWeight(model.player.current?.id == track.id ? .semibold : .regular)
+                    // Made by a preset, as the phone marks it.
+                    if track.presetId != nil {
+                        Text("PRESET")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             TableColumn("Artist", value: \.artist) { track in
@@ -171,6 +182,15 @@ struct MusicView: View {
                 ForEach(targets) { target in
                     Button(target.name) { model.addTracks(chosen.map(\.id), toPlaylist: target.id) }
                 }
+            }
+            Menu("Apply Preset") {
+                ForEach(model.presetList) { preset in
+                    Button(AppModel.displayName(of: preset)) {
+                        model.applyPreset(preset, to: chosen.map(\.id))
+                    }
+                }
+                Divider()
+                SettingsLink { Text("Edit Presets…") }
             }
             let allFavourite = chosen.allSatisfy { model.favorites.contains($0.id) }
             Button(allFavourite ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Add to Favorites")) {
@@ -236,11 +256,12 @@ struct MusicView: View {
 /// Asks for a name, for a new playlist or a renamed one.
 struct NameSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let title: String
+    // A key, not a String: a String is shown as it is and never translated.
+    let title: LocalizedStringKey
     @State var name: String
     let onSave: (String) -> Void
 
-    init(title: String, initial: String, onSave: @escaping (String) -> Void) {
+    init(title: LocalizedStringKey, initial: String, onSave: @escaping (String) -> Void) {
         self.title = title
         self._name = State(initialValue: initial)
         self.onSave = onSave
@@ -265,5 +286,55 @@ struct NameSheet: View {
         guard !trimmed.isEmpty else { return }
         onSave(trimmed)
         dismiss()
+    }
+}
+
+/// Renders in progress, above the list, while there are any.
+private struct RenderStrip: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(alignment: .center) {
+            jobs
+            if model.renderJobs.allSatisfy({ !$0.isActive }) {
+                Button("Clear", action: model.clearFinishedRenders).controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var jobs: some View {
+        VStack(spacing: 6) {
+            ForEach(model.renderJobs) { job in
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform").foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(job.track.title + job.preset.titleSuffix).lineLimit(1)
+                        status(job).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if job.state == .rendering {
+                        ProgressView(value: job.progress).frame(width: 120)
+                    }
+                    if job.isActive {
+                        Button { model.cancelRender(job) } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .help("Cancel")
+                    }
+                }
+            }
+        }
+    }
+
+    private func status(_ job: RenderJob) -> Text {
+        switch job.state {
+        case .waiting: return Text("Waiting")
+        case .rendering: return Text("Applying \(AppModel.displayName(of: job.preset))")
+        case .done: return Text("Added to the library")
+        case .failed(let why): return Text(why)
+        case .cancelled: return Text("Cancelled")
+        }
     }
 }

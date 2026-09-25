@@ -82,6 +82,8 @@ public final class EngineClient {
     public private(set) var ytDlpActivationProblem: String?
 
     public var layoutRoot: URL { layout.root }
+    /// The ffmpeg the engine uses, which the preset renderer shares.
+    public var ffmpegURL: URL? { layout.ffmpeg }
 
     private let layout: Layout
     private var process: Process?

@@ -22,6 +22,10 @@ public final class MusicLibrary: @unchecked Sendable {
         public var sizeBytes: Int64
         public var artworkFileName: String?
         public var createdAt: Date
+        /// Set on a track made by rendering a preset, with the track it was made from. The
+        /// phone's field names, so a backup keeps them either way.
+        public var presetId: String? = nil
+        public var sourceSongId: String? = nil
     }
 
     public struct Playlist: Identifiable, Hashable, Sendable {
@@ -141,7 +145,8 @@ public final class MusicLibrary: @unchecked Sendable {
     /// often missing or wrong on what comes off a site.
     @discardableResult
     public func adopt(_ file: URL, title: String? = nil, artist: String? = nil,
-                      artwork: URL? = nil, move: Bool = true) async throws -> Track {
+                      artwork: URL? = nil, move: Bool = true,
+                      presetId: String? = nil, sourceSongId: String? = nil) async throws -> Track {
         try FileManager.default.createDirectory(at: musicFolder, withIntermediateDirectories: true)
         let destination = uniqueDestination(for: file.lastPathComponent)
         do {
@@ -173,7 +178,9 @@ public final class MusicLibrary: @unchecked Sendable {
             durationSeconds: tags.duration,
             sizeBytes: (attributes?[.size] as? NSNumber)?.int64Value ?? 0,
             artworkFileName: artworkName,
-            createdAt: Date())
+            createdAt: Date(),
+            presetId: presetId,
+            sourceSongId: sourceSongId)
 
         guardLock.withLock {
             var (tracks, playlists) = readIndex()
@@ -367,7 +374,9 @@ public final class MusicLibrary: @unchecked Sendable {
                 durationSeconds: s["durationSec"] as? Double ?? 0,
                 sizeBytes: (s["sizeBytes"] as? NSNumber)?.int64Value ?? 0,
                 artworkFileName: (s["thumbFileName"] as? String)?.nonEmpty,
-                createdAt: Date(timeIntervalSince1970: (s["createdAt"] as? Double ?? 0) / 1000))
+                createdAt: Date(timeIntervalSince1970: (s["createdAt"] as? Double ?? 0) / 1000),
+                presetId: (s["presetId"] as? String)?.nonEmpty,
+                sourceSongId: (s["sourceSongId"] as? String)?.nonEmpty)
         }
         var playlists = (root["playlists"] as? [[String: Any]] ?? []).compactMap { p -> Playlist? in
             guard let id = p["id"] as? String else { return nil }
@@ -401,6 +410,8 @@ public final class MusicLibrary: @unchecked Sendable {
                     "createdAt": t.createdAt.timeIntervalSince1970 * 1000, "updatedAt": now,
                 ]
                 if let art = t.artworkFileName { s["thumbFileName"] = art }
+                if let preset = t.presetId { s["presetId"] = preset }
+                if let source = t.sourceSongId { s["sourceSongId"] = source }
                 return s
             },
             "playlists": playlists.map { p -> [String: Any] in

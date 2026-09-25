@@ -120,6 +120,9 @@ final class AppModel {
             keychainService: environment["ARSIVINYO_KEYCHAIN_SERVICE"] ?? "com.arsivinyo.mac.keybox")
         vault = Vault(root: support.appendingPathComponent("vault"), keybox: keybox)
         cookies = CookieStore(directory: support, keybox: keybox)
+        presets = PresetStore(directory: support)
+        renderScratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("arsivinyo-renders", isDirectory: true)
 
         let musicFolder = environment["ARSIVINYO_MUSIC_DIR"].map { URL(fileURLWithPath: $0) }
             ?? UserDefaults.standard.string(forKey: "musicDirectory").map { URL(fileURLWithPath: $0) }
@@ -158,6 +161,7 @@ final class AppModel {
         if keybox.unlockFromKeychain() { vaultDidUnlock() }
         refreshMusic()
         refreshSecurity()
+        refreshPresets()
 
         // Signed in where there is a profile for the site, and only while the key is here.
         let cookies = cookies
@@ -173,10 +177,11 @@ final class AppModel {
             let thumb = payload["thumbnail_path"]?.string.map { URL(fileURLWithPath: $0) }
             Task {
                 do {
-                    try await self.library.adopt(path, title: payload["title"]?.string,
+                    let track = try await self.library.adopt(path, title: payload["title"]?.string,
                                                  artist: payload["artist"]?.string ?? payload["uploader"]?.string,
                                                  artwork: thumb)
                     self.refreshMusic()
+                    await self.autoApplyPresets(to: track)
                 } catch {
                     self.musicProblem = String(describing: error)
                 }
@@ -427,13 +432,22 @@ final class AppModel {
         refreshMusic()
     }
 
+    // MARK: - Presets
+
+    let presets: PresetStore
+    /// Rendered files wait here until the library takes them in.
+    let renderScratch: URL
+    var presetList: [AudioPreset] = []
+    var autoPresets = AutoPresetConfig()
+    var renderJobs: [RenderJob] = []
+
     // MARK: - Music
 
     let library: MusicLibrary
     let player: Player
     private(set) var tracks: [MusicLibrary.Track] = []
     private(set) var playlists: [MusicLibrary.Playlist] = []
-    private(set) var musicProblem: String?
+    var musicProblem: String?
 
     var favorites: Set<String> {
         Set(playlists.first { $0.id == MusicLibrary.favoritesId }?.trackIds ?? [])
