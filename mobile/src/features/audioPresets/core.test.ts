@@ -251,10 +251,9 @@ test('PARAM_RANGES matches the clamps in preset_params.cpp', () => {
   // The native side re-clamps everything it receives. If these drift, a slider's end
   // silently does nothing because native quietly overrides the value — a failure with
   // no error message anywhere, which is exactly why it is asserted rather than trusted.
-  const cpp = readFileSync(
-    'modules/local-downloader/android/src/main/cpp/preset_params.cpp',
-    'utf8'
-  );
+  // shared/, not the Android module: the DSP moved there so both apps build the same
+  // clamps. This path went stale in that move and the guard quietly stopped guarding.
+  const cpp = readFileSync('../shared/dsp/preset_params.cpp', 'utf8');
   const clampPattern = /(\w+)\s*=\s*ClampF\(\w+,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f\)/g;
 
   const nativeBounds = new Map<string, { min: number; max: number }>();

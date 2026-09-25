@@ -341,7 +341,9 @@ bool RenderPreset(const RenderRequest& request, std::string* error) {
   struct sigaction ignoreAction {};
   struct sigaction previousAction {};
   ignoreAction.sa_handler = SIG_IGN;
-  ::sigemptyset(&ignoreAction.sa_mask);
+  // Unqualified on purpose: on Darwin sigemptyset is a macro, not a function, so a
+  // leading :: does not compile there. Everything else here is a real symbol.
+  sigemptyset(&ignoreAction.sa_mask);
   ::sigaction(SIGPIPE, &ignoreAction, &previousAction);
   struct SigpipeRestore {
     struct sigaction* previous;

@@ -95,7 +95,12 @@ for suite in "${SUITES[@]}"; do
 done
 
 # A helper shared by two suites appears in both lists; the compiler is given one copy.
-mapfile -t SOURCES < <(printf '%s\n' "${SOURCES[@]}" | awk '!seen[$0]++')
+# Read in a loop rather than with mapfile: that is bash 4, and macOS ships bash 3.2.
+DEDUPED=()
+while IFS= read -r source_file; do
+  DEDUPED+=("$source_file")
+done < <(printf '%s\n' "${SOURCES[@]}" | awk '!seen[$0]++')
+SOURCES=("${DEDUPED[@]}")
 
 echo "Compiling ${#SOURCES[@]} source file(s) with Kotlin $KOTLIN_VERSION..."
 # -no-stdlib/-no-reflect: the compiler looks for a Kotlin *home* directory that does not

@@ -57,7 +57,12 @@ PY
 ABI_LIST_RAW="$(resolve_required_abis)"
 read -r -a required_abis <<< "$ABI_LIST_RAW"
 
-mapfile -t wheels < <(find "$WHEELS_DIR" -maxdepth 1 -type f -name '*.whl' -printf '%f\n' | sort)
+# Three GNU-isms replaced at once: mapfile is bash 4, -printf is GNU find, and macOS has
+# neither. Stripping the directory with sed is what -printf '%f' was doing.
+wheels=()
+while IFS= read -r wheel_file; do
+  wheels+=("$wheel_file")
+done < <(find "$WHEELS_DIR" -maxdepth 1 -type f -name '*.whl' | sed 's#.*/##' | sort)
 if [[ "${#wheels[@]}" -eq 0 ]]; then
   echo "[verify-impersonation-wheels] No wheel files found in $WHEELS_DIR"
   exit 1
@@ -70,7 +75,12 @@ fi
 
 (
   cd "$WHEELS_DIR"
-  sha256sum -c SHA256SUMS
+  # macOS has shasum rather than sha256sum. Both understand -c against the same file.
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c SHA256SUMS
+  else
+    shasum -a 256 -c SHA256SUMS
+  fi
 )
 
 for abi in "${required_abis[@]}"; do

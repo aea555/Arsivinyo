@@ -94,10 +94,15 @@ fi
 BUILDER_BIN_DIR="$(cd "$(dirname "$BUILDER_PYTHON")" && pwd)"
 export PATH="$BUILDER_BIN_DIR:$PATH"
 
-command -v sha256sum >/dev/null 2>&1 || {
-  echo "[build-impersonation-wheels] sha256sum command is required"
+# macOS has shasum instead. One of the two must exist.
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA256SUM=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  SHA256SUM=(shasum -a 256)
+else
+  echo "[build-impersonation-wheels] sha256sum or shasum is required"
   exit 1
-}
+fi
 
 mkdir -p "$WHEELS_DIR"
 
@@ -122,7 +127,11 @@ fi
 
 (
   cd "$WHEELS_DIR"
-  find . -maxdepth 1 -type f -name '*.whl' -printf '%P\n' | sort | xargs -r sha256sum > SHA256SUMS
+  # -printf is GNU find and -r is GNU xargs; neither exists on macOS. The leading ./ that
+  # -printf '%P' removed is stripped with sed, and the loop skips an empty list by itself.
+  find . -maxdepth 1 -type f -name '*.whl' | sed 's#^\./##' | sort | while IFS= read -r wheel_file; do
+    "${SHA256SUM[@]}" "$wheel_file"
+  done > SHA256SUMS
 )
 
 echo "[build-impersonation-wheels] Generated SHA256SUMS with $wheel_count wheel(s)"
