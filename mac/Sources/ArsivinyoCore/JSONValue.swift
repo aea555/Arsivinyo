@@ -49,4 +49,9 @@ public enum JSONValue: Sendable, Equatable {
         return nil
     }
     public var isNull: Bool { self == .null }
+
+    public var array: [JSONValue]? {
+        if case .array(let values) = self { return values }
+        return nil
+    }
 }

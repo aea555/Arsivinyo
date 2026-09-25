@@ -29,6 +29,10 @@ public final class EngineClient {
         /// The engine only looks beside its own executable, so it is passed explicitly.
         public var ffmpeg: URL?
 
+        /// Where yt-dlp and its downloaded overrides live together. The updater writes here
+        /// and the bootstrap reads here, so both have to be told the same place.
+        public var root: URL { ytDlp.deletingLastPathComponent() }
+
         public init(python: URL, engine: URL, ytDlp: URL, site: URL? = nil, ffmpeg: URL? = nil) {
             self.python = python
             self.engine = engine
@@ -58,6 +62,9 @@ public final class EngineClient {
 
         public struct EngineError: Error, Sendable, CustomStringConvertible {
             public let description: String
+            /// The engine's own code, such as DOWNLOAD_FAILED, when it gave one. What a
+            /// retry is decided on; the message is only for people.
+            public var code: String? = nil
         }
     }
 
@@ -66,6 +73,15 @@ public final class EngineClient {
     public private(set) var isRunning = false
     /// The yt-dlp the engine actually loaded, once it has said so.
     public private(set) var ytDlpVersion: String?
+    /// The yt-dlp fetched with the app, which is what "use the bundled one" goes back to.
+    public private(set) var bundledYtDlpVersion: String?
+    /// "bundled" or "override": which copy the bootstrap put first on the path.
+    public private(set) var ytDlpSource: String?
+    /// Set when an override was downloaded but would not load, so the fall back to the
+    /// bundled copy is visible rather than silent.
+    public private(set) var ytDlpActivationProblem: String?
+
+    public var layoutRoot: URL { layout.root }
 
     private let layout: Layout
     private var process: Process?
@@ -84,16 +100,18 @@ public final class EngineClient {
 
         let task = Process()
         task.executableURL = layout.python
-        task.arguments = [layout.engine.appendingPathComponent("host.py").path]
+        // Through the bootstrap, not host.py directly: it is what puts a downloaded yt-dlp
+        // ahead of the bundled one. Started without it, an update would download and then
+        // never be used.
+        task.arguments = [layout.engine.appendingPathComponent("bootstrap.py").path]
 
-        // The engine finds yt-dlp on sys.path rather than importing a pinned copy, so the
-        // in-app updater can swap the directory underneath it.
-        var searchPath = [layout.ytDlp.path]
+        var searchPath: [String] = []
         if let site = layout.site { searchPath.append(site.path) }
         searchPath.append(layout.engine.path)
 
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONPATH"] = searchPath.joined(separator: ":")
+        environment["ARSIVINYO_ENGINE_ROOT"] = layout.root.path
         // Otherwise the engine's own output sits in a buffer and progress arrives in bursts
         // at the end, which looks like a hang.
         environment["PYTHONUNBUFFERED"] = "1"
@@ -117,16 +135,21 @@ public final class EngineClient {
 
         read(from: output.fileHandleForReading)
 
-        task.terminationHandler = { [weak self] _ in
+        task.terminationHandler = { [weak self] ended in
+            // Only if it is still the current process: after a restart the old one ends
+            // late, and must not take the new one's state with it.
+            let endedId = ObjectIdentifier(ended)
             Task { @MainActor in
-                self?.isRunning = false
-                self?.process = nil
-                self?.stdin = nil
+                guard let self, let process = self.process,
+                      ObjectIdentifier(process) == endedId else { return }
+                self.isRunning = false
+                self.process = nil
+                self.stdin = nil
                 // Nothing will answer these now; let their callers stop waiting.
-                for (_, listener) in self?.listeners ?? [:] {
+                for (_, listener) in self.listeners {
                     listener(.finished(.failure(.init(description: "the engine stopped"))))
                 }
-                self?.listeners.removeAll()
+                self.listeners.removeAll()
             }
         }
     }
@@ -136,6 +159,20 @@ public final class EngineClient {
         process = nil
         stdin = nil
         isRunning = false
+        for (_, listener) in listeners {
+            listener(.finished(.failure(.init(description: "the engine stopped"))))
+        }
+        listeners.removeAll()
+    }
+
+    /// A downloaded yt-dlp is only picked up at start, so switching versions ends here.
+    public func restart() throws {
+        stop()
+        ytDlpVersion = nil
+        ytDlpSource = nil
+        bundledYtDlpVersion = nil
+        ytDlpActivationProblem = nil
+        try start()
     }
 
     // MARK: - Requests
@@ -223,6 +260,17 @@ public final class EngineClient {
     private func dispatch(_ object: JSONValue) {
         let type = object["type"]?.string
 
+        if type == "bootstrap" {
+            let status = object["ytDlp"]
+            ytDlpSource = status?["source"]?.string
+            bundledYtDlpVersion = status?["bundledVersion"]?.string
+            // failedReason stays in the manifest after a failure, so it only counts while a
+            // failed version is named alongside it.
+            ytDlpActivationProblem = status?["activateError"]?.string
+                ?? (status?["failedVersion"]?.string != nil ? status?["failedReason"]?.string : nil)
+            return
+        }
+
         if type == "ready" {
             let frozen = object["frozen"]?.bool ?? false
             for (_, listener) in listeners { listener(.ready(frozen: frozen)) }
@@ -238,6 +286,14 @@ public final class EngineClient {
                 percent: object["progressPercent"]?.double,
                 detail: object["detail"]?.string))
 
+        case "ytDlpProgress":
+            let done = object["done"]?.double ?? 0
+            let total = object["total"]?.double ?? 0
+            listener(.progress(
+                status: object["stage"]?.string ?? "working",
+                percent: total > 0 ? done / total * 100 : nil,
+                detail: nil))
+
         case "result":
             listeners[id] = nil
             if object["ok"]?.bool == true {
@@ -250,7 +306,7 @@ public final class EngineClient {
                     let message = payload["message"]?.string
                         ?? payload["code"]?.string
                         ?? "the download failed"
-                    listener(.finished(.failure(.init(description: message))))
+                    listener(.finished(.failure(.init(description: message, code: payload["code"]?.string))))
                 } else {
                     listener(.finished(.success(payload)))
                 }
@@ -332,13 +388,15 @@ extension EngineClient {
     /// know. Sending `mediaKind: "audio"` — a reasonable-looking guess — downloads the video
     /// every time, with no error. `CoreChecks` holds this to the keys `host.py` reads.
     nonisolated public static func downloadArguments(url: String, outputDirectory: URL, audioOnly: Bool,
-                                         cookiesDirectory: URL? = nil) -> [String: Any] {
+                                         cookiesDirectory: URL? = nil,
+                                         cookieProfile: String? = nil) -> [String: Any] {
         var arguments: [String: Any] = [
             "url": url,
             "outputDir": outputDirectory.path,
             "audioOnly": audioOnly,
         ]
         if let cookiesDirectory { arguments["cookiesDir"] = cookiesDirectory.path }
+        if let cookieProfile { arguments["cookieProfile"] = cookieProfile }
         return arguments
     }
 }

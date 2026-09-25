@@ -48,13 +48,30 @@ final class DownloadItem: Identifiable {
 final class DownloadQueue {
     private(set) var items: [DownloadItem] = []
 
+    /// How many run at once. The rest wait their turn in order. More than a few mostly
+    /// splits the same bandwidth more ways and invites a site's rate limit.
+    var maxConcurrent: Int = max(1, min(4, UserDefaults.standard.object(forKey: "maxConcurrentDownloads") as? Int ?? 2)) {
+        didSet {
+            UserDefaults.standard.set(maxConcurrent, forKey: "maxConcurrentDownloads")
+            pump()
+        }
+    }
+
+    var destination: URL
+
     private let engine: EngineClient
-    private let destination: URL
     /// Engine request ids, so a cancel reaches the right download.
     private var requestIds: [UUID: String] = [:]
+    private var running: Set<UUID> = []
 
     /// Called when a download lands, with where it landed and what the engine said about it.
     var onFinished: ((DownloadItem, URL, JSONValue) -> Void)?
+    /// Called once a download has ended, however it ended.
+    var onSettled: ((DownloadItem) -> Void)?
+    /// A decrypted cookie file for a link, and the site it matched, or nil to go signed out.
+    var cookiesFor: ((String) -> (file: URL, platform: String?)?)?
+    /// Deletes what `cookiesFor` decrypted.
+    var discardCookies: ((URL) -> Void)?
 
     init(engine: EngineClient, destination: URL) {
         self.engine = engine
@@ -74,17 +91,56 @@ final class DownloadQueue {
         }
         let item = DownloadItem(url: trimmed, audioOnly: audioOnly)
         items.insert(item, at: 0)
-        Task { await run(item) }
+        pump()
         return item
+    }
+
+    /// Starts waiting downloads, oldest first, while there is room.
+    private func pump() {
+        let waiting = items.reversed().filter { $0.state == .queued && !running.contains($0.id) }
+        for item in waiting where running.count < maxConcurrent {
+            running.insert(item.id)
+            Task {
+                await run(item)
+                running.remove(item.id)
+                onSettled?(item)
+                pump()
+            }
+        }
     }
 
     private func run(_ item: DownloadItem) async {
         try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-
         item.state = .running(stage: String(localized: "Starting"))
-        let request = engine.perform("download", EngineClient.downloadArguments(
-            url: item.url, outputDirectory: destination, audioOnly: item.audioOnly))
+
+        let cookies = cookiesFor?(item.url)
+        defer { if let cookies { discardCookies?(cookies.file) } }
+
+        var failure = await attempt(item, cookieFile: cookies?.file, signedOut: false)
+        // The phone's rule. A download refused while signed in is tried once more signed
+        // out, because an expired session fails where no session at all would not. Not on
+        // strict sites: there a signed-out answer is a login wall that looks like success.
+        if let failure, let cookies, CookieStore.shouldRetrySignedOut(code: failure.code, message: failure.description, platform: cookies.platform) {
+            item.progress = nil
+            _ = await attempt(item, cookieFile: nil, signedOut: true)
+        } else if let failure {
+            item.state = .failed(failure.description)
+        }
+    }
+
+    /// One try at the download. Returns the failure, or nil once it has landed or been
+    /// cancelled.
+    private func attempt(_ item: DownloadItem, cookieFile: URL?, signedOut: Bool) async
+        -> EngineClient.Event.EngineError?
+    {
+        var arguments = EngineClient.downloadArguments(
+            url: item.url, outputDirectory: destination, audioOnly: item.audioOnly)
+        if let cookieFile { arguments["cookieFile"] = cookieFile.path }
+        if signedOut { arguments["forceNoCookie"] = true }
+
+        let request = engine.perform("download", arguments)
         requestIds[item.id] = request.id
+        defer { requestIds[item.id] = nil }
 
         for await event in request.events {
             switch event {
@@ -92,6 +148,7 @@ final class DownloadQueue {
                 break
 
             case .progress(let status, let percent, let detail):
+                if case .cancelled = item.state { break }
                 // A percentage the engine has not worked out yet arrives as nil, and the
                 // row shows an indeterminate bar rather than inventing a number.
                 item.progress = percent.map { $0 / 100 }
@@ -104,14 +161,16 @@ final class DownloadQueue {
                 item.state = .finished(path: path ?? destination)
                 item.progress = 1
                 if let path { onFinished?(item, path, payload) }
+                return nil
 
             case .finished(.failure(let error)):
                 // A cancel comes back as a failure; it is not one the user needs telling.
-                if case .cancelled = item.state { break }
-                item.state = .failed(error.description)
+                if case .cancelled = item.state { return nil }
+                if signedOut { item.state = .failed(error.description) }
+                return error
             }
         }
-        requestIds[item.id] = nil
+        return nil
     }
 
     /// Turns the engine's own stage names into something worth showing.

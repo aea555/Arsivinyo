@@ -116,6 +116,10 @@ def _run_download(request_id: str, req: Dict[str, Any]) -> None:
             output_dir=req["outputDir"],
             cookies_dir=req.get("cookiesDir") or work,
             cookie_profile=req.get("cookieProfile"),
+            # The app picks the jar itself when it can: a custom domain is one the engine
+            # cannot match to a site, and a retry without cookies has to be able to say so.
+            cookie_file=req.get("cookieFile"),
+            force_no_cookie=bool(req.get("forceNoCookie")),
             max_file_size_mb=int(req.get("maxFileSizeMb") or 0),
             cancel_flag_path=cancel_path,
             progress_file_path=progress_path,
@@ -140,6 +144,8 @@ def _run_preflight(request_id: str, req: Dict[str, Any]) -> None:
             url=req["url"],
             cookies_dir=req.get("cookiesDir") or work,
             cookie_profile=req.get("cookieProfile"),
+            cookie_file=req.get("cookieFile"),
+            force_no_cookie=bool(req.get("forceNoCookie")),
             max_file_size_mb=int(req.get("maxFileSizeMb") or 0),
             ffmpeg_path=req.get("ffmpegPath") or _default_ffmpeg(),
             debug_logging=bool(req.get("debugLogging")),

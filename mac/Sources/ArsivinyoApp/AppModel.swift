@@ -1,6 +1,7 @@
 import ArsivinyoCore
 import Foundation
 import SwiftUI
+import UserNotifications
 
 /// Which part of the app the source list is showing.
 ///
@@ -91,7 +92,19 @@ final class AppModel {
     private(set) var engineProblem: String?
 
     var downloadDirectory: URL {
-        didSet { UserDefaults.standard.set(downloadDirectory.path, forKey: "downloadDirectory") }
+        didSet {
+            UserDefaults.standard.set(downloadDirectory.path, forKey: "downloadDirectory")
+            queue.destination = downloadDirectory
+        }
+    }
+
+    /// A notice when a download ends while you are in another app. Not while you are
+    /// looking at this one: the queue is already telling you.
+    var notifyWhenDone: Bool = UserDefaults.standard.object(forKey: "notifyWhenDone") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(notifyWhenDone, forKey: "notifyWhenDone")
+            if notifyWhenDone { requestNotificationPermission() }
+        }
     }
 
     init() {
@@ -106,6 +119,7 @@ final class AppModel {
             directory: support,
             keychainService: environment["ARSIVINYO_KEYCHAIN_SERVICE"] ?? "com.arsivinyo.mac.keybox")
         vault = Vault(root: support.appendingPathComponent("vault"), keybox: keybox)
+        cookies = CookieStore(directory: support, keybox: keybox)
 
         let musicFolder = environment["ARSIVINYO_MUSIC_DIR"].map { URL(fileURLWithPath: $0) }
             ?? UserDefaults.standard.string(forKey: "musicDirectory").map { URL(fileURLWithPath: $0) }
@@ -143,6 +157,15 @@ final class AppModel {
         // "Remember on this Mac" means never being asked.
         if keybox.unlockFromKeychain() { vaultDidUnlock() }
         refreshMusic()
+        refreshSecurity()
+
+        // Signed in where there is a profile for the site, and only while the key is here.
+        let cookies = cookies
+        queue.cookiesFor = { url in try? cookies.runtimeCookies(for: url) }
+        queue.discardCookies = { cookies.discardRuntime($0) }
+        queue.onSettled = { [weak self] item in self?.notifySettled(item) }
+        if notifyWhenDone { requestNotificationPermission() }
+        refreshEngineVersion()
 
         // An audio download goes into the library the moment it lands, as on the phone.
         queue.onFinished = { [weak self] item, path, payload in
@@ -165,6 +188,184 @@ final class AppModel {
     /// is data a backup carries. What is shown is the word in the reader's own language.
     static func displayName(of playlist: MusicLibrary.Playlist) -> String {
         playlist.isSystem ? String(localized: "Favorites") : playlist.name
+    }
+
+    // MARK: - Notifications
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    private func notifySettled(_ item: DownloadItem) {
+        guard notifyWhenDone, !NSApplication.shared.isActive else { return }
+        let content = UNMutableNotificationContent()
+        switch item.state {
+        case .finished:
+            content.title = String(localized: "Downloaded")
+        case .failed(let why):
+            content.title = String(localized: "Download failed")
+            content.subtitle = why
+        default:
+            return
+        }
+        // The title the site gave, or its host until it did. Never the saved file's path.
+        content.body = item.title
+        content.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: item.id.uuidString, content: content, trigger: nil))
+    }
+
+    // MARK: - The engine
+
+    /// What an update is doing, while it is.
+    private(set) var ytDlpWorking: String?
+    /// How the last change went, or why it did not.
+    private(set) var ytDlpMessage: String?
+    private(set) var ytDlpReleases: [String] = []
+
+    func refreshEngineVersion() {
+        Task { for await _ in engine.perform("version").events {} }
+    }
+
+    func loadYtDlpReleases() {
+        Task {
+            for await event in engine.perform("listYtDlpVersions", ["limit": 12]).events {
+                if case .finished(.success(let payload)) = event {
+                    ytDlpReleases = payload["versions"]?.array?.compactMap(\.string) ?? []
+                }
+            }
+        }
+    }
+
+    /// Fetches a yt-dlp and restarts the engine on it.
+    ///
+    /// - Parameter version: nil for the newest, "bundled" for the one fetched with the app,
+    ///   or a release number.
+    func switchYtDlp(to version: String?) {
+        // A restart ends whatever the engine is doing, and a download cut off halfway is
+        // worse than an old extractor for another minute.
+        guard queue.active.isEmpty else {
+            ytDlpMessage = String(localized: "Wait for the downloads to finish first.")
+            return
+        }
+        ytDlpMessage = nil
+        ytDlpWorking = String(localized: "Checking")
+        var arguments: [String: Any] = ["root": engine.layoutRoot.path]
+        if let version { arguments["version"] = version }
+        Task {
+            var outcome: Result<JSONValue, EngineClient.Event.EngineError>?
+            for await event in engine.perform("updateYtDlp", arguments).events {
+                switch event {
+                case .progress(let stage, let percent, _):
+                    let label = stage == "downloading" ? String(localized: "Downloading")
+                        : stage == "installing" ? String(localized: "Installing")
+                        : String(localized: "Checking")
+                    ytDlpWorking = percent.map { "\(label) \(Int($0))%" } ?? label
+                case .finished(let result):
+                    outcome = result
+                default:
+                    break
+                }
+            }
+            ytDlpWorking = nil
+            switch outcome {
+            case .success(let payload) where payload["status"]?.string == "current":
+                ytDlpMessage = String(localized: "Already in use.")
+            case .success:
+                do {
+                    try engine.restart()
+                    refreshEngineVersion()
+                } catch {
+                    ytDlpMessage = String(describing: error)
+                }
+            case .failure(let error):
+                ytDlpMessage = error.description
+            case nil:
+                ytDlpMessage = String(localized: "The engine stopped.")
+            }
+        }
+    }
+
+    // MARK: - Folders
+
+    /// Returns a message to show, or nil once the library is in its new place.
+    func moveMusicLibrary(to folder: URL) -> String? {
+        do {
+            player.stop()
+            try library.relocate(to: folder)
+            UserDefaults.standard.set(folder.path, forKey: "musicDirectory")
+            refreshMusic()
+            return nil
+        } catch {
+            return String(describing: error)
+        }
+    }
+
+    // MARK: - Security
+
+    let cookies: CookieStore
+    private(set) var cookieProfiles: [CookieStore.Profile] = []
+    private(set) var isRemembered = false
+    private(set) var hasRecoveryKey = false
+
+    /// The key box is not observable, so what the settings show is copied out after every
+    /// change that goes through here.
+    func refreshSecurity() {
+        isRemembered = keybox.isRemembered
+        hasRecoveryKey = keybox.hasRecoveryKey
+        cookieProfiles = cookies.profiles()
+    }
+
+    /// Each returns a message to show, or nil on success.
+    func setRemembered(_ remember: Bool) -> String? {
+        defer { refreshSecurity() }
+        do { try keybox.setRemembered(remember); return nil } catch { return String(describing: error) }
+    }
+
+    func changePassphrase(from old: String, to new: String) async -> String? {
+        let keybox = keybox
+        do {
+            try await Task.detached { try keybox.changePassphrase(from: old, to: new) }.value
+            return nil
+        } catch {
+            return String(describing: error)
+        }
+    }
+
+    func exportRecoveryKey(to url: URL) -> String? {
+        defer { refreshSecurity() }
+        do { try keybox.exportRecoveryKey(to: url); return nil } catch { return String(describing: error) }
+    }
+
+    func unlockVault(recoveryKeyAt url: URL) -> String? {
+        do {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            try keybox.unlock(recoveryKey: Data(contentsOf: url))
+            vaultDidUnlock()
+            return nil
+        } catch {
+            return String(describing: error)
+        }
+    }
+
+    // MARK: - Cookies
+
+    func importCookies(_ url: URL, into scope: CookieStore.Scope, name: String) -> String? {
+        defer { refreshSecurity() }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do { try cookies.importFile(url, into: scope, name: name); return nil } catch { return String(describing: error) }
+    }
+
+    func setDefaultCookies(_ profile: CookieStore.Profile) {
+        try? cookies.setDefault(profile.scope, name: profile.name)
+        refreshSecurity()
+    }
+
+    func removeCookies(_ profile: CookieStore.Profile) {
+        try? cookies.remove(profile.scope, name: profile.name)
+        refreshSecurity()
     }
 
     // MARK: - Music actions
@@ -274,13 +475,18 @@ final class AppModel {
     // MARK: - Vault actions
 
     /// Returns a message to show, or nil on success.
-    func unlockVault(passphrase: String) -> String? {
+    /// Argon2id takes most of a second by design, so it runs off the main actor and the
+    /// window keeps drawing while it does.
+    func unlockVault(passphrase: String) async -> String? {
+        let keybox = keybox
         do {
-            if keybox.isConfigured {
-                try keybox.unlock(passphrase: passphrase)
-            } else {
-                try keybox.create(passphrase: passphrase)
-            }
+            try await Task.detached {
+                if keybox.isConfigured {
+                    try keybox.unlock(passphrase: passphrase)
+                } else {
+                    try keybox.create(passphrase: passphrase)
+                }
+            }.value
             vaultDidUnlock()
             return nil
         } catch {
@@ -294,12 +500,14 @@ final class AppModel {
         vaultUnlocked = false
         vaultItems = []
         vaultProblem = nil
+        refreshSecurity()
     }
 
     private func vaultDidUnlock() {
         vaultUnlocked = true
         showUnlockSheet = false
         refreshVault()
+        refreshSecurity()
     }
 
     func refreshVault() {

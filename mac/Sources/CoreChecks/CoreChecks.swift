@@ -93,6 +93,7 @@ struct CoreChecks {
             try runner.checkKeyboxAndVault()
             try await runner.checkPlayback()
             try await runner.checkMusic()
+            try runner.checkCookies()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")
@@ -238,9 +239,13 @@ struct CoreChecks {
                 impersonation = payload["impersonationRuntimeAvailable"]?.bool
             }
         }
+        let source = await client.ytDlpSource
         await client.stop()
 
         check(version != nil, "the engine answers with a yt-dlp version (\(version ?? "none"))")
+        // Only the bootstrap reports this. Started any other way, a downloaded yt-dlp is
+        // never put on the path, and updating would do nothing at all.
+        check(source != nil, "it started through the bootstrap, so an update can take effect (\(source ?? "no report"))")
 
         // Every key the app sends has to be one host.py actually reads, because it silently
         // ignores the rest. This is what caught "Audio" downloading video.
@@ -248,7 +253,7 @@ struct CoreChecks {
                                       encoding: .utf8)) ?? ""
         let arguments = EngineClient.downloadArguments(
             url: "https://example.com/x", outputDirectory: URL(fileURLWithPath: "/tmp"),
-            audioOnly: true, cookiesDirectory: URL(fileURLWithPath: "/tmp"))
+            audioOnly: true, cookiesDirectory: URL(fileURLWithPath: "/tmp"), cookieProfile: "main")
         let unread = arguments.keys.filter { !hostSource.contains("req.get(\"\($0)\")")
                                              && !hostSource.contains("req[\"\($0)\"]") }
         check(unread.isEmpty, "every download key is one the host reads (unread: \(unread.sorted()))")

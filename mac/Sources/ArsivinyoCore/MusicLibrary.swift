@@ -47,15 +47,59 @@ public final class MusicLibrary: @unchecked Sendable {
     /// The same id the phone reserves, so a restored backup's Favorites stays Favorites.
     public static let favoritesId = "favorites"
 
-    public let musicFolder: URL
+    /// Where the audio files are. Its own lock, so reading it never waits on, or deadlocks
+    /// with, the index lock that `relocate` holds while it moves files.
+    public var musicFolder: URL { folderLock.withLock { folder } }
+    private var folder: URL
+    private let folderLock = NSLock()
     private let indexURL: URL
     private let artworkFolder: URL
     private let guardLock = NSLock()
 
     public init(musicFolder: URL, supportFolder: URL) {
-        self.musicFolder = musicFolder
+        self.folder = musicFolder
         self.indexURL = supportFolder.appendingPathComponent("index.json")
         self.artworkFolder = supportFolder.appendingPathComponent("artwork")
+    }
+
+    /// Moves the library's files to another folder and uses it from then on.
+    ///
+    /// The index names files relative to the folder, so pointing it somewhere new without
+    /// moving them would leave every track missing. Only the library's own files move;
+    /// anything else in the old folder stays put.
+    ///
+    /// All or nothing: a name already taken in the new folder stops it before anything
+    /// moves, and a move that fails partway puts back what had moved.
+    public func relocate(to destination: URL) throws {
+        try guardLock.withLock {
+            let source = musicFolder
+            guard source.standardizedFileURL != destination.standardizedFileURL else { return }
+            let fm = FileManager.default
+            let names = readIndex().0.map(\.fileName)
+                .filter { fm.fileExists(atPath: source.appendingPathComponent($0).path) }
+
+            let taken = names.filter { fm.fileExists(atPath: destination.appendingPathComponent($0).path) }
+            guard taken.isEmpty else {
+                throw Failure.io(String(localized: "The new folder already has files named \(taken.joined(separator: ", ")). Nothing was moved."))
+            }
+
+            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            var moved: [String] = []
+            do {
+                for name in names {
+                    try fm.moveItem(at: source.appendingPathComponent(name),
+                                    to: destination.appendingPathComponent(name))
+                    moved.append(name)
+                }
+            } catch {
+                for name in moved {
+                    try? fm.moveItem(at: destination.appendingPathComponent(name),
+                                     to: source.appendingPathComponent(name))
+                }
+                throw Failure.io(String(localized: "The library could not be moved: \(error.localizedDescription)"))
+            }
+            folderLock.withLock { folder = destination }
+        }
     }
 
     public func fileURL(for track: Track) -> URL {

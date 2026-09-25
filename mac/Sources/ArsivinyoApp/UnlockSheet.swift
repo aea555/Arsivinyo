@@ -43,6 +43,10 @@ struct UnlockSheet: View {
 
             HStack {
                 if working { ProgressView().controlSize(.small) }
+                if !creating {
+                    Button("Use Recovery Key…", action: useRecoveryKey)
+                        .disabled(working)
+                }
                 Spacer()
                 Button("Not Now") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(creating ? LocalizedStringKey("Set Passphrase") : LocalizedStringKey("Unlock"), action: submit)
@@ -57,7 +61,7 @@ struct UnlockSheet: View {
     private func submit() {
         guard !passphrase.isEmpty, !working else { return }
         if creating && passphrase != confirmation {
-            problem = "Those do not match."
+            problem = String(localized: "Those do not match.")
             return
         }
         // Argon2id at 64 MiB takes a moment; keep the sheet responsive while it runs.
@@ -66,12 +70,23 @@ struct UnlockSheet: View {
         let secret = passphrase
         let rememberThisMac = remember
         Task {
-            let failure = model.unlockVault(passphrase: secret)
+            let failure = await model.unlockVault(passphrase: secret)
             if failure == nil && rememberThisMac {
-                try? model.keybox.setRemembered(true)
+                _ = model.setRemembered(true)
             }
             working = false
             if let failure { problem = failure } else { dismiss() }
+        }
+    }
+
+    private func useRecoveryKey() {
+        let panel = NSOpenPanel()
+        panel.message = String(localized: "Choose the recovery key you exported.")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if let failure = model.unlockVault(recoveryKeyAt: url) {
+            problem = failure
+        } else {
+            dismiss()
         }
     }
 }

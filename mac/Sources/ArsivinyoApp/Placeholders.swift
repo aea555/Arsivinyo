@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The four sections, as they stand before their machinery is wired in.
+/// Sections whose machinery is not wired in yet.
 ///
 /// Each says what it will do rather than showing an empty pane, so the shape of the app is
 /// legible while it is being built.
@@ -11,19 +11,5 @@ struct DevicesView: View {
             "No devices paired",
             systemImage: "laptopcomputer.and.iphone",
             description: Text("Pair your phone to move files between it and this Mac."))
-    }
-}
-
-struct SettingsView: View {
-    var body: some View {
-        TabView {
-            Text("Folders, cookies and the engine will live here.")
-                .padding(40)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            Text("Passphrase, recovery key, and how this Mac unlocks.")
-                .padding(40)
-                .tabItem { Label("Security", systemImage: "lock") }
-        }
-        .frame(width: 520, height: 320)
     }
 }

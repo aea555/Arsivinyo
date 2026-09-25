@@ -96,6 +96,21 @@ extension CoreChecks {
         check((songs.first?["createdAt"] as? Double ?? 0) > 1_000_000_000_000,
               "with timestamps in milliseconds, as the phone writes them")
 
+        // Moving the library: all of it, or none of it.
+        let elsewhere = scratch.appendingPathComponent("Elsewhere")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try Data("in the way".utf8).write(to: elsewhere.appendingPathComponent(second.fileName))
+        check((try? library.relocate(to: elsewhere)) == nil, "a move onto a taken name is refused")
+        check(FileManager.default.fileExists(atPath: musicFolder.appendingPathComponent(first.fileName).path)
+              && library.musicFolder == musicFolder, "and nothing moved")
+        try FileManager.default.removeItem(at: elsewhere.appendingPathComponent(second.fileName))
+        try library.relocate(to: elsewhere)
+        (tracks, _) = library.load()
+        check(tracks.count == 2 && library.musicFolder == elsewhere
+              && FileManager.default.fileExists(atPath: library.fileURL(for: first).path),
+              "a move takes every track, and the library finds them there")
+        try library.relocate(to: musicFolder)
+
         // A file deleted in Finder drops out, and takes its playlist entries with it.
         try FileManager.default.removeItem(at: library.fileURL(for: second))
         (tracks, playlists) = library.load()
