@@ -21,7 +21,7 @@ export default ({ config }) => {
     android: {
       versionCode: 20600,
       adaptiveIcon: {
-        backgroundColor: "#000000",
+        backgroundColor: "#09090B",
         foregroundImage: "./assets/images/ic_launcher_foreground.png",
         backgroundImage: "./assets/images/ic_launcher_background.png",
         monochromeImage: "./assets/images/ic_launcher_monochrome.png",
