@@ -616,7 +616,9 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("startQuickDownloadWithUrl") { input: Map<String, Any?> ->
       val url = (input["url"] as? String)?.trim().orEmpty()
-      startQuickDownloadWithUrl(url, "manual")
+      // Given when the request came from a paired device, which said what it wanted.
+      val mediaKind = (input["mediaKind"] as? String)?.trim()?.ifEmpty { null }
+      startQuickDownloadWithUrl(url, "manual", mediaKindOverride = mediaKind)
     }
 
     AsyncFunction("getPrivateModeState") {
@@ -2631,7 +2633,12 @@ class LocalDownloaderModule : Module() {
     return startQuickDownloadWithUrl(url, "clipboard")
   }
 
-  private fun startQuickDownloadWithUrl(rawUrl: String, captureMode: String, visibilityOverride: String? = null): Map<String, Any?> {
+  private fun startQuickDownloadWithUrl(
+    rawUrl: String,
+    captureMode: String,
+    visibilityOverride: String? = null,
+    mediaKindOverride: String? = null,
+  ): Map<String, Any?> {
     requireNotNull(appContext.reactContext)
     // No notification-permission gate: see startDownloadInternal.
     val normalizedUrl = normalizeClipboardUrl(rawUrl)
@@ -2639,8 +2646,13 @@ class LocalDownloaderModule : Module() {
         reportQuickActionReason("INVALID_QUICK_URL")
         return mapOf("accepted" to false, "reason" to "INVALID_QUICK_URL")
       }
-    // Audio mode (persisted, toggleable from the notification) forces audio-only + public.
-    val audioOnly = audioModeEnabled
+    // Audio mode (persisted, toggleable from the notification) forces audio-only + public,
+    // unless the request named a kind itself.
+    val audioOnly = when (mediaKindOverride) {
+      "audio" -> true
+      "video" -> false
+      else -> audioModeEnabled
+    }
     val selectedVisibility = if (audioOnly) "public" else normalizeVisibility(visibilityOverride, defaultPrivate = privateModeEnabled)
 
     val admission = admitQuickUrl(normalizedUrl)

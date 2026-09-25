@@ -49,19 +49,53 @@ class PairingCoordinator(
       lastMessage = "Paired with $name"
       onChanged()
     }
-    discovery.onPeerFound = { onChanged() }
+    discovery.onPeerFound = { found ->
+      reconnect(found)
+      onChanged()
+    }
     discovery.onPeerLost = { onChanged() }
+  }
+
+  /** When each paired device was last tried, so a device that refuses is not hammered. */
+  private val lastAttempt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+  private var reconnectTimer: java.util.Timer? = null
+
+  /**
+   * Connects to a paired device the network says is here, if there is no connection yet.
+   *
+   * Before this, the phone only ever connected while pairing, so a paired device became
+   * "connected" only if it happened to connect first, and Browse, Send and Link stayed
+   * greyed out on a device sitting right there.
+   */
+  private fun reconnect(found: Discovery.Found) {
+    if (registry.all().none { it.fingerprint == found.fingerprint }) return
+    if (service.sessionFor(found.fingerprint) != null) return
+    val now = System.currentTimeMillis()
+    val last = lastAttempt[found.fingerprint] ?: 0L
+    if (now - last < RECONNECT_INTERVAL_MS) return
+    lastAttempt[found.fingerprint] = now
+    service.connectToPeer(found.host, found.port)
   }
 
   /** Start listening and announce this device. Safe to call more than once. */
   fun start(): Boolean {
     if (!service.listen()) return false
     discovery.start(identity.fingerprint, identity.deviceName, service.port)
+    // A connection that dropped comes back once the device is still being announced.
+    if (reconnectTimer == null) {
+      reconnectTimer = java.util.Timer("pairing-reconnect", true).apply {
+        schedule(object : java.util.TimerTask() {
+          override fun run() { discovery.peers().forEach { reconnect(it) } }
+        }, RECONNECT_INTERVAL_MS, RECONNECT_INTERVAL_MS)
+      }
+    }
     onChanged()
     return true
   }
 
   fun stop() {
+    reconnectTimer?.cancel()
+    reconnectTimer = null
     discovery.stop()
     service.stop()
     onChanged()
@@ -204,6 +238,8 @@ class PairingCoordinator(
   }
 
   companion object {
+    private const val RECONNECT_INTERVAL_MS = 20_000L
+
     /** MediaStore's owner model, which the music library needs, is API 29 and up. */
     fun isSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
   }

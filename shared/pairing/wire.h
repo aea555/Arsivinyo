@@ -120,4 +120,29 @@ std::vector<uint8_t> AuthTranscript(AuthRole role,
  */
 std::string PairingCode(const uint8_t* digest, size_t digestLen);
 
+// Pairing v2: commit, then reveal.
+//
+// v1 derived the six digits from the two public keys alone. Both keys are known before
+// anyone compares digits, so a man in the middle could generate key pairs until its two
+// legs showed the same code: about a million tries, seconds of work. v2 has the client
+// commit to a random nonce before it sees the server's, and derives the code from both
+// keys and both nonces. An attacker now has to commit before it learns what it would need
+// to aim at, which leaves it a one-in-a-million guess.
+//
+//   client -> {"t":"pair-commit","c": hex(sha256(CommitmentInput(clientNonce)))}
+//   server -> {"t":"pair-nonce","n": hex(serverNonce)}
+//   client -> {"t":"pair-reveal","n": hex(clientNonce)}   server checks it against "c"
+//
+// Both sides then show PairingCode(sha256(CodeInputV2(...))). Nonces are 32 bytes.
+
+inline constexpr size_t kPairingNonceBytes = 32;
+
+/** "arsivinyo-pairing-commit-v2\0" || client nonce. The caller hashes it. */
+std::vector<uint8_t> CommitmentInput(const std::vector<uint8_t>& clientNonce);
+
+/** "arsivinyo-pairing-code-v2\0" || CodeInput(keyA, keyB) || client nonce || server nonce. */
+std::vector<uint8_t> CodeInputV2(const std::vector<uint8_t>& keyA, const std::vector<uint8_t>& keyB,
+                                 const std::vector<uint8_t>& clientNonce,
+                                 const std::vector<uint8_t>& serverNonce);
+
 }  // namespace arsivinyo::pairing

@@ -32,6 +32,7 @@ import {
   sendUrlToDevice,
   setDeviceName,
   startPairing,
+  startQuickLocalDownloadWithUrl,
   subscribeToPairingState,
   type LocalPairingState,
   type LocalSound,
@@ -433,7 +434,13 @@ export default function DevicesScreen() {
           confirm: t('devices.peerUrlAccept'),
           destructive: false,
         }}
-        onConfirm={() => void clearPeerUrl()}
+        onConfirm={() => {
+          // "Download" used to only dismiss this. It starts the download now, in the
+          // background queue, as the kind the other device asked for.
+          const url = state.peerUrl;
+          const kind = state.peerMediaKind === 'audio' ? 'audio' : 'video';
+          void startQuickLocalDownloadWithUrl(url, kind).finally(() => void clearPeerUrl());
+        }}
         onCancel={() => void clearPeerUrl()}
       />
 

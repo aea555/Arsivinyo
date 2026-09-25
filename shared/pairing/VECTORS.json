@@ -5,7 +5,8 @@
     "in the code derivation shows up as 'pairing does not work' with nothing to read,",
     "so the two ends are pinned to the same bytes here rather than to prose.",
     "Byte strings are lowercase hex.",
-    "ed25519 pins signature interoperability: a signature made on one platform must verify on the other."
+    "ed25519 pins signature interoperability: a signature made on one platform must verify on the other.",
+    "pairing_v2 pins the commit-reveal ceremony: commitment = sha256(label || client nonce); code over the sorted keys and both nonces."
   ],
   "frames": [
     {
@@ -113,5 +114,37 @@
       "signature": "ff53c3b4a8ab58c44829bbaa1668383952e43aae604e67a13f7626d0d850b129031a57256e0c35e5931e49f0dc0b196d84b4bdceda192d6b6965e16b11a90d0f"
     }
   ],
-  "auth_transcript_seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+  "auth_transcript_seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "pairing_v2": [
+    {
+      "why": "the client commits to its nonce before it sees the server's; the code covers both keys and both nonces",
+      "keyA": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "keyB": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "clientNonce": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "serverNonce": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+      "commitment": "6ffe6b1a525e4c497811e00c6cca81eef16c42415cd659e9015ec8aad06511e1",
+      "codeDigest": "0cce307685d0a90f7af2a74f3a60a07f95536d13db4edb106c311ca2bcc03dfd",
+      "code": "839414"
+    },
+    {
+      "why": "the keys are sorted, so which device is A does not matter",
+      "keyA": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "keyB": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "clientNonce": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "serverNonce": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+      "commitment": "6ffe6b1a525e4c497811e00c6cca81eef16c42415cd659e9015ec8aad06511e1",
+      "codeDigest": "0cce307685d0a90f7af2a74f3a60a07f95536d13db4edb106c311ca2bcc03dfd",
+      "code": "839414"
+    },
+    {
+      "why": "the nonces are not sorted: swapping client and server nonces changes the code",
+      "keyA": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "keyB": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "clientNonce": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+      "serverNonce": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "commitment": "e455fe83197a7d507c48db2da10dc7b68d342f8c10a2285a54246f07787c82ca",
+      "codeDigest": "833859e7392e8b3fb4e0076fa535427513677921fc63f1514b8729ff5b44917e",
+      "code": "508327"
+    }
+  ]
 }

@@ -154,9 +154,43 @@ object PairingWire {
     return "%06d".format(value % 1_000_000L)
   }
 
-  /** Convenience: the code for a pair of public keys. */
+  /**
+   * Convenience: the v1 code for a pair of public keys. Kept for the vectors; the ceremony
+   * uses [pairingCodeV2].
+   */
   fun pairingCodeFor(keyA: ByteArray, keyB: ByteArray): String =
     pairingCode(MessageDigest.getInstance("SHA-256").digest(codeInput(keyA, keyB)))
+
+  // ---- pairing v2: commit, then reveal ----------------------------------------------------
+  //
+  // v1 derived the six digits from the two public keys alone. Both keys are known before
+  // anyone compares digits, so a man in the middle could generate key pairs until its two
+  // legs showed the same code — about a million tries, seconds of work. In v2 the client
+  // commits to a random nonce before it sees the server's, and the code covers both keys and
+  // both nonces, so an attacker has to commit before it learns what it would need to aim at.
+  //
+  //   client -> {"t":"pair-commit","c": hex(sha256(commitmentInput(clientNonce)))}
+  //   server -> {"t":"pair-nonce","n": hex(serverNonce)}
+  //   client -> {"t":"pair-reveal","n": hex(clientNonce)}   server checks it against "c"
+  //
+  // The counterpart of CommitmentInput and CodeInputV2 in shared/pairing/wire.cpp, and held
+  // to the same vectors.
+
+  const val PAIRING_NONCE_BYTES = 32
+
+  private val COMMIT_LABEL = "arsivinyo-pairing-commit-v2".toByteArray(Charsets.US_ASCII) + 0
+  private val CODE_LABEL_V2 = "arsivinyo-pairing-code-v2".toByteArray(Charsets.US_ASCII) + 0
+
+  fun commitmentInput(clientNonce: ByteArray): ByteArray = COMMIT_LABEL + clientNonce
+
+  fun codeInputV2(keyA: ByteArray, keyB: ByteArray, clientNonce: ByteArray, serverNonce: ByteArray): ByteArray =
+    CODE_LABEL_V2 + codeInput(keyA, keyB) + clientNonce + serverNonce
+
+  fun commitment(clientNonce: ByteArray): ByteArray =
+    MessageDigest.getInstance("SHA-256").digest(commitmentInput(clientNonce))
+
+  fun pairingCodeV2(keyA: ByteArray, keyB: ByteArray, clientNonce: ByteArray, serverNonce: ByteArray): String =
+    pairingCode(MessageDigest.getInstance("SHA-256").digest(codeInputV2(keyA, keyB, clientNonce, serverNonce)))
 
   private fun compareUnsigned(a: ByteArray, b: ByteArray): Int {
     val shared = minOf(a.size, b.size)

@@ -104,4 +104,23 @@ std::string PairingCode(const uint8_t* digest, size_t digestLen) {
     return std::string(buffer);
 }
 
+std::vector<uint8_t> CommitmentInput(const std::vector<uint8_t>& clientNonce) {
+    static const char kLabel[] = "arsivinyo-pairing-commit-v2";
+    std::vector<uint8_t> out(kLabel, kLabel + sizeof(kLabel));  // includes the NUL
+    out.insert(out.end(), clientNonce.begin(), clientNonce.end());
+    return out;
+}
+
+std::vector<uint8_t> CodeInputV2(const std::vector<uint8_t>& keyA, const std::vector<uint8_t>& keyB,
+                                 const std::vector<uint8_t>& clientNonce,
+                                 const std::vector<uint8_t>& serverNonce) {
+    static const char kLabel[] = "arsivinyo-pairing-code-v2";
+    std::vector<uint8_t> out(kLabel, kLabel + sizeof(kLabel));  // includes the NUL
+    const std::vector<uint8_t> keys = CodeInput(keyA, keyB);
+    out.insert(out.end(), keys.begin(), keys.end());
+    out.insert(out.end(), clientNonce.begin(), clientNonce.end());
+    out.insert(out.end(), serverNonce.begin(), serverNonce.end());
+    return out;
+}
+
 }  // namespace arsivinyo::pairing

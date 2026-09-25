@@ -63,9 +63,14 @@ class PeerSession(
   init {
     link.onControl = { onControl(it) }
     link.onBulk = { onBulk(it) }
+    // Chained, not replaced: the service's handler is what drops this session when the
+    // link dies. Replacing it left a dead connection listed as connected, and everything
+    // sent to that device went nowhere.
+    val serviceHandler = link.onFailed
     link.onFailed = { reason ->
       abortReceiving(reason)
       abortSending(reason)
+      serviceHandler?.invoke(reason)
     }
   }
 

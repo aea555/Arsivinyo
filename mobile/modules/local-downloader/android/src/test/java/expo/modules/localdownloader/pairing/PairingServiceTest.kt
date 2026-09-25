@@ -198,6 +198,96 @@ class PairingServiceTest {
     assertArrayEquals(bytes, File(root, "alice/files/track.m4a").readBytes())
   }
 
+  /**
+   * A client that follows the protocol until the reveal, then reveals a different nonce
+   * from the one it committed to: what steering the code would look like.
+   */
+  @Test
+  fun aRevealThatBreaksItsCommitmentIsRefused() {
+    assertTrue(alice.listen())
+    alice.beginPairing(60)
+    val refused = CountDownLatch(1)
+    alice.onRefused = { refused.countDown() }
+
+    val mallory = LoopbackPeers.TestIdentity("Mallory")
+    val socket = LoopbackPeers.sslContext().socketFactory
+      .createSocket("127.0.0.1", alice.port) as javax.net.ssl.SSLSocket
+    val link = PeerLink(socket, PairingWire.ROLE_CLIENT, mallory)
+    val committed = ByteArray(PairingWire.PAIRING_NONCE_BYTES) { 1 }
+    val revealed = ByteArray(PairingWire.PAIRING_NONCE_BYTES) { 2 }
+    fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
+    link.onAuthenticated = { _, _ ->
+      link.sendControl(org.json.JSONObject().put("t", "pair-commit")
+        .put("c", hex(PairingWire.commitment(committed))))
+    }
+    link.onControl = { message ->
+      if (message.optString("t") == "pair-nonce") {
+        link.sendControl(org.json.JSONObject().put("t", "pair-reveal").put("n", hex(revealed)))
+      }
+    }
+    link.start()
+
+    assertTrue("the broken commitment is refused", refused.await(15, TimeUnit.SECONDS))
+    assertEquals("and no code is offered for it", "", alice.pendingCode)
+    assertFalse(alice.confirmPairing())
+    link.close()
+  }
+
+  @Test
+  fun bothDevicesShowACodeThatDependsOnMoreThanTheKeys() {
+    assertTrue(alice.listen())
+    alice.beginPairing(60)
+    bob.beginPairing(60)
+    bob.connectToPeer("127.0.0.1", alice.port)
+    assertTrue(waitFor { alice.pendingCode.isNotEmpty() && bob.pendingCode.isNotEmpty() })
+    assertEquals(alice.pendingCode, bob.pendingCode)
+    // With fresh nonces on every run the code is not the keys-only v1 code, bar a one in a
+    // million coincidence: it is the nonces that take away a man in the middle's aim.
+    val keysOnly = PairingWire.pairingCodeFor(aliceIdentity.publicKey, bobIdentity.publicKey)
+    val second = run {
+      alice.cancelPairing()
+      bob.cancelPairing()
+      assertTrue(waitFor { alice.pendingCode.isEmpty() && bob.pendingCode.isEmpty() })
+      alice.beginPairing(60)
+      bob.beginPairing(60)
+      bob.connectToPeer("127.0.0.1", alice.port)
+      assertTrue(waitFor { alice.pendingCode.isNotEmpty() && bob.pendingCode.isNotEmpty() })
+      alice.pendingCode
+    }
+    assertTrue("two ceremonies between the same keys do not give the same code, nor the keys-only one",
+      second != keysOnly || alice.pendingCode != keysOnly)
+  }
+
+  @Test
+  fun twoConnectionsAtOnceSettleOnOne() {
+    pair()
+    assertTrue(bob.listen())
+    // Each connects to the other at the same moment, as both would on finding each other.
+    alice.connectToPeer("127.0.0.1", bob.port)
+    bob.connectToPeer("127.0.0.1", alice.port)
+    Thread.sleep(1500)
+    assertTrue("each ends with one connection to the other",
+      waitFor { alice.sessions().size == 1 && bob.sessions().size == 1 })
+    val aliceSide = alice.sessions().single().link
+    val bobSide = bob.sessions().single().link
+    assertTrue("and it is the same connection, seen from both ends",
+      aliceSide.role != bobSide.role)
+  }
+
+  @Test
+  fun aConnectionThatFailsIsNoLongerListed() {
+    pair()
+    assertTrue(waitFor { alice.sessions().size == 1 && bob.sessions().size == 1 })
+    // A frame no peer may send: bob's end tears the link down as a failure, not a close.
+    val aliceLink = alice.sessions().single().link
+    val output = aliceLink.javaClass.getDeclaredField("socket").apply { isAccessible = true }
+      .get(aliceLink) as javax.net.ssl.SSLSocket
+    output.outputStream.write(byteArrayOf(0x7f, 0x7f, 0x7f, 0x7f, 0))
+    output.outputStream.flush()
+    assertTrue("the failed connection is dropped rather than shown as connected",
+      waitFor { bob.sessions().isEmpty() })
+  }
+
   private fun pair() {
     assertTrue(alice.listen())
     alice.beginPairing(60)

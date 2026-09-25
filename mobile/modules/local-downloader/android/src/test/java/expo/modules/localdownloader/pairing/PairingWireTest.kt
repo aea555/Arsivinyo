@@ -92,6 +92,23 @@ class PairingWireTest {
   }
 
   @Test
+  fun theV2CommitmentAndCodeMatchTheVectors() {
+    val cases = vectors.getJSONArray("pairing_v2")
+    for (i in 0 until cases.length()) {
+      val v = cases.getJSONObject(i)
+      val keyA = unhex(v.getString("keyA"))
+      val keyB = unhex(v.getString("keyB"))
+      val clientNonce = unhex(v.getString("clientNonce"))
+      val serverNonce = unhex(v.getString("serverNonce"))
+      assertEquals(v.getString("why"), v.getString("commitment"), hex(PairingWire.commitment(clientNonce)))
+      assertEquals(v.getString("why"), v.getString("codeDigest"),
+        hex(MessageDigest.getInstance("SHA-256").digest(PairingWire.codeInputV2(keyA, keyB, clientNonce, serverNonce))))
+      assertEquals(v.getString("why"), v.getString("code"),
+        PairingWire.pairingCodeV2(keyA, keyB, clientNonce, serverNonce))
+    }
+  }
+
+  @Test
   fun bothEndsAgreeWhicheverOrderTheKeysArriveIn() {
     // The property the vectors cannot express: this must hold for every pair, or two
     // devices show different codes and the user is told a genuine key does not match.

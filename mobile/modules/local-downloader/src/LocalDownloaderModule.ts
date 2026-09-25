@@ -73,7 +73,7 @@ type LocalDownloaderNativeModule = {
   ensureBackgroundPermission(): Promise<LocalBackgroundPermissionResult>;
   setStickyNotificationEnabled(input: { enabled: boolean }): Promise<LocalStickyNotificationState>;
   startQuickDownloadFromClipboard(): Promise<LocalQuickDownloadResult>;
-  startQuickDownloadWithUrl(input: { url: string }): Promise<LocalQuickDownloadResult>;
+  startQuickDownloadWithUrl(input: { url: string; mediaKind?: 'audio' | 'video' }): Promise<LocalQuickDownloadResult>;
   getPrivateModeState(): Promise<LocalPrivateModeState>;
   setPrivateModeEnabled(input: { enabled: boolean }): Promise<LocalPrivateModeState>;
   getAudioModeState(): Promise<{ enabled: boolean }>;

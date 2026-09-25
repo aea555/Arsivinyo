@@ -113,9 +113,12 @@ export async function startQuickLocalDownloadFromClipboard(): Promise<LocalQuick
   return LocalDownloaderModule.startQuickDownloadFromClipboard();
 }
 
-export async function startQuickLocalDownloadWithUrl(url: string): Promise<LocalQuickDownloadResult> {
+export async function startQuickLocalDownloadWithUrl(
+  url: string,
+  mediaKind?: 'audio' | 'video',
+): Promise<LocalQuickDownloadResult> {
   ensureAndroid();
-  return LocalDownloaderModule.startQuickDownloadWithUrl({ url });
+  return LocalDownloaderModule.startQuickDownloadWithUrl(mediaKind ? { url, mediaKind } : { url });
 }
 
 export async function getLocalPrivateModeState(): Promise<LocalPrivateModeState> {

@@ -1,12 +1,15 @@
 package expo.modules.localdownloader.pairing
 
 import java.net.InetAddress
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
+import org.json.JSONObject
 
 /**
  * Listens for peers, opens connections to them, and runs the pairing ceremony.
@@ -18,9 +21,11 @@ import javax.net.ssl.SSLSocket
  * deliberately and which ends as soon as one device is paired or the window elapses. So an
  * idle device gives an unknown peer a TLS handshake, an identity check, and a disconnect.
  *
- * **The ceremony.** Both ends show six digits derived from the two public keys. Confirming
- * they match is what authenticates each key to the other: a man in the middle holds two
- * different key pairs and cannot make both ends show the same six digits.
+ * **The ceremony.** Both ends show six digits derived from the two public keys and two
+ * nonces, exchanged commit-then-reveal (see [PairingWire.pairingCodeV2]). Confirming they
+ * match is what authenticates each key to the other. The commitment is what makes that
+ * hold: with keys alone, a man in the middle could generate key pairs until both of its
+ * legs showed the same six digits, where now it has to commit before it can aim.
  *
  * [sslContext] is a function rather than a value so the tests can supply their own — on a
  * device it is `SessionKeys::sslContext`, whose key lives in the Android Keystore and
@@ -54,6 +59,15 @@ class PairingService(
   private var acceptor: Thread? = null
   private var pendingLink: PeerLink? = null
   private var pendingKey: ByteArray = ByteArray(0)
+  /** The commit-reveal exchange with [pendingLink], until it yields a code. */
+  private var ceremony: Ceremony? = null
+  private val random = SecureRandom()
+
+  private class Ceremony(val role: Byte) {
+    var clientNonce: ByteArray? = null
+    var serverNonce: ByteArray? = null
+    var commitment: ByteArray? = null
+  }
   private var pairingTimer: Timer? = null
 
   val port: Int get() = listener?.localPort ?: 0
@@ -143,21 +157,122 @@ class PairingService(
         drop(link)
         return
       }
-      // Hold the connection while the user compares the six digits. Nothing is stored and
-      // no verb is served until confirmPairing().
-      synchronized(lock) {
-        pendingLink = link
-        pendingKey = key
+      // Hold the connection while the two sides agree on a code and the user compares it.
+      // Nothing is stored and no verb is served until confirmPairing().
+      val refused = synchronized(lock) {
+        if (pendingLink != null && pendingLink !== link) {
+          true
+        } else {
+          pendingLink = link
+          pendingKey = key
+          ceremony = Ceremony(link.role)
+          false
+        }
+      }
+      if (refused) {
+        // One ceremony at a time: two codes on the screen at once is how the wrong one
+        // gets confirmed.
+        onRefused?.invoke("another device is already pairing")
+        link.close()
+        drop(link)
+        return
       }
       pendingName = name
-      pendingCode = PairingWire.pairingCodeFor(identity.publicKey, key)
-      onPendingChanged?.invoke(pendingCode, pendingName)
+      link.onControl = { message -> onCeremonyMessage(link, message) }
+      if (link.role == PairingWire.ROLE_CLIENT) {
+        val nonce = ByteArray(PairingWire.PAIRING_NONCE_BYTES).also { random.nextBytes(it) }
+        synchronized(lock) { ceremony?.clientNonce = nonce }
+        link.sendControl(JSONObject().put("t", "pair-commit").put("c", hex(PairingWire.commitment(nonce))))
+      }
       return
+    }
+
+    // Both devices may reach each other at once, which makes two connections between the
+    // same pair. Both ends keep the one opened by the device with the smaller fingerprint,
+    // so they settle on the same connection without having to talk about it.
+    val existing = sessionFor(fingerprint)
+    if (existing != null && existing.link !== link) {
+      val mine = Ed25519Keys.fingerprint(identity.publicKey)
+      val openedBy = if (link.role == PairingWire.ROLE_CLIENT) mine else fingerprint
+      if (openedBy == minOf(mine, fingerprint)) {
+        existing.link.close()
+        drop(existing.link)
+      } else {
+        link.close()
+        drop(link)
+        return
+      }
     }
 
     registry.noteAddress(key, link.peerAddress)
     sessions.add(PeerSession(link, content))
     onPeerConnected?.invoke(fingerprint, name)
+  }
+
+  /** The commit-reveal exchange that produces the six digits. */
+  private fun onCeremonyMessage(link: PeerLink, message: JSONObject) {
+    val (current, key) = synchronized(lock) {
+      if (pendingLink !== link) return
+      (ceremony ?: return) to pendingKey
+    }
+    val kind = message.optString("t")
+    val nonce = unhex(message.optString(if (kind == "pair-commit") "c" else "n"))
+    val server = current.role == PairingWire.ROLE_SERVER
+
+    when {
+      server && kind == "pair-commit" && current.commitment == null -> {
+        if (nonce.size != 32) return failCeremony(link, "the other device sent a malformed commitment")
+        val serverNonce = ByteArray(PairingWire.PAIRING_NONCE_BYTES).also { random.nextBytes(it) }
+        synchronized(lock) {
+          current.commitment = nonce
+          current.serverNonce = serverNonce
+        }
+        link.sendControl(JSONObject().put("t", "pair-nonce").put("n", hex(serverNonce)))
+      }
+      !server && kind == "pair-nonce" && current.serverNonce == null -> {
+        val clientNonce = current.clientNonce ?: return
+        if (nonce.size != PairingWire.PAIRING_NONCE_BYTES) {
+          return failCeremony(link, "the other device sent a malformed nonce")
+        }
+        synchronized(lock) { current.serverNonce = nonce }
+        link.sendControl(JSONObject().put("t", "pair-reveal").put("n", hex(clientNonce)))
+        showCode(key, clientNonce, nonce)
+      }
+      server && kind == "pair-reveal" && current.clientNonce == null -> {
+        val commitment = current.commitment ?: return
+        val serverNonce = current.serverNonce ?: return
+        if (nonce.size != PairingWire.PAIRING_NONCE_BYTES ||
+          !MessageDigest.isEqual(PairingWire.commitment(nonce), commitment)
+        ) {
+          // The nonce revealed is not the one committed to. Either the device is broken or
+          // something is trying to steer the code; neither gets a code to confirm.
+          return failCeremony(link, "the other device did not keep to its commitment")
+        }
+        synchronized(lock) { current.clientNonce = nonce }
+        showCode(key, nonce, serverNonce)
+      }
+      // Anything else during the ceremony is ignored: no verb is served until confirmed.
+    }
+  }
+
+  private fun showCode(peerKey: ByteArray, clientNonce: ByteArray, serverNonce: ByteArray) {
+    pendingCode = PairingWire.pairingCodeV2(identity.publicKey, peerKey, clientNonce, serverNonce)
+    onPendingChanged?.invoke(pendingCode, pendingName)
+  }
+
+  private fun failCeremony(link: PeerLink, reason: String) {
+    onRefused?.invoke(reason)
+    link.close()
+    drop(link)
+  }
+
+  private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+
+  private fun unhex(text: String): ByteArray {
+    if (text.length % 2 != 0) return ByteArray(0)
+    return runCatching {
+      ByteArray(text.length / 2) { text.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    }.getOrElse { ByteArray(0) }
   }
 
   /** The user confirmed the six digits match. */
@@ -167,9 +282,11 @@ class PairingService(
     synchronized(lock) {
       link = pendingLink ?: return false
       key = pendingKey
-      if (key.isEmpty()) return false
+      // Only once the exchange has produced a code: there is nothing to confirm before.
+      if (key.isEmpty() || pendingCode.isEmpty()) return false
       pendingLink = null
       pendingKey = ByteArray(0)
+      ceremony = null
     }
 
     val name = pendingName
@@ -211,6 +328,7 @@ class PairingService(
       }
       pendingLink = null
       pendingKey = ByteArray(0)
+      ceremony = null
     }
     pendingCode = ""
     pendingName = ""
@@ -237,6 +355,7 @@ class PairingService(
       if (pendingLink === link) {
         pendingLink = null
         pendingKey = ByteArray(0)
+        ceremony = null
         pendingCode = ""
         onPendingChanged?.invoke("", "")
       }

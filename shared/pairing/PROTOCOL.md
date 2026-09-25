@@ -1,7 +1,7 @@
 # Arsivinyo device pairing
 
-The desktop implements this. The phone implements the shared halves — framing, the code
-derivation and the auth transcript — and its transport is not wired up yet.
+The phone and the Mac implement this. The frozen Qt desktop (branch `desktop-qt`)
+implemented version 1 of the ceremony and speaks nothing newer.
 
 Two devices you own, on the same network, exchanging files directly. No cloud, no
 account, no relay — the same reason the downloader has no backend.
@@ -37,8 +37,9 @@ Defended against:
 - **A passive listener on the network.** All traffic after the handshake is inside TLS —
   1.3 where both ends support it, 1.2 on Android releases that do not.
 - **An active attacker during pairing.** This is the moment that matters. Key exchange is
-  authenticated out of band — by a QR code the user scans, and a confirmation code shown
-  on both devices. An attacker who intercepts the exchange cannot make both codes agree.
+  authenticated out of band, by six digits shown on both devices and compared by the user.
+  The digits come from a commit-reveal exchange, so an attacker who intercepts it has one
+  chance in a million of making both screens agree, not a search it can run.
 - **An unpaired device on the same network.** Discovery is public; a connection from an
   unknown key is refused before any request is read.
 
@@ -70,11 +71,9 @@ the same property that makes a stolen phone's pairing useless once wiped.
 
 ## Discovery
 
-mDNS / DNS-SD, service type `_arsivinyo._tcp`. Android uses `NsdManager` from the
-platform; the Qt desktop implemented the wire format itself, in `desktop/src/DnsSd.cpp`
-on the frozen `desktop-qt` branch,
-because Qt has no mDNS and the alternatives are per-platform daemons that do not ship with
-the app. TXT records:
+mDNS / DNS-SD, service type `_arsivinyo._tcp`. Android uses `NsdManager`, the Mac
+the system's DNS-SD. The instance name is the first sixteen characters of the fingerprint.
+TXT records:
 
 ```
 v=1                 protocol version
@@ -89,24 +88,48 @@ its library. Peers may be added by address if mDNS is unavailable.
 
 The step that has to be right, because everything after it inherits this trust.
 
-1. Desktop displays a **QR code**: its fingerprint, address and port.
-2. Phone scans it. The phone now knows the desktop's real key, from a channel an attacker
-   on the network cannot reach.
-3. Phone connects, and checks that the `auth` signature it receives verifies against the
-   key from the QR code. A man in the middle fails here: the signature names this
-   connection's certificates, so one relayed from another leg does not verify.
-4. Phone sends its own public key, signed the same way, over that authenticated channel.
-5. **Both devices display the same six digits.** Hash the two public keys, ordered
-   lexicographically and concatenated; take the digest's first four bytes big-endian,
-   modulo one million, zero-padded. The user confirms they match, which authenticates the
-   phone's key to the desktop. Sorting means neither device has to be "first".
-6. Each stores the other's public key and a user-visible name.
+1. Both devices open a pairing window (two minutes). On one of them the user picks the
+   other from the devices found on the network; that one connects and is the TLS client.
+2. Both send `auth` (below), which binds each device's key to this connection.
+3. They agree on six digits by committing, then revealing:
 
-The QR authenticates one direction; the confirmation code authenticates the other. Both
-are needed. Sorting the keys before hashing keeps the code identical on both ends.
+   ```jsonc
+   {"t":"pair-commit","c":"<hex sha256(\"arsivinyo-pairing-commit-v2\\0\" || clientNonce)>"}  // client
+   {"t":"pair-nonce","n":"<hex serverNonce>"}                                              // server
+   {"t":"pair-reveal","n":"<hex clientNonce>"}                                             // client
+   ```
+
+   Nonces are 32 random bytes. The server refuses a reveal that does not match the
+   commitment. Both then compute
+
+   ```
+   code = first four bytes, big-endian, of
+          sha256("arsivinyo-pairing-code-v2\0" || sorted(keyA, keyB) || clientNonce || serverNonce)
+          modulo one million, zero-padded to six digits
+   ```
+
+4. **Both devices display the six digits**; the user confirms on each that they match.
+5. Each stores the other's public key and a user-visible name.
+
+**Why commit-reveal.** Version 1 derived the digits from the two public keys alone. Both
+keys are known before anyone compares digits, so a man in the middle, holding one leg to
+each device, could generate key pairs until both legs showed the same six digits: about a
+million tries, seconds of work, and nothing times out while it runs. Now the client commits
+to its nonce before it sees the server's, and the code covers both. An attacker has to
+commit on each leg before it learns what it would have to aim at, which leaves it a guess
+with one chance in a million. This is the numeric comparison of Bluetooth pairing, for the
+same reason.
+
+A QR code carrying the fingerprint, which earlier versions of this document described,
+was never built. The commitment gives the same guarantee without a camera.
 
 Unpairing is local and one-sided: forget the key. There is no protocol message for it,
 because a device that has been forgotten should not be told.
+
+**Reconnecting.** A paired device found on the network is connected to without asking, and
+tried again every twenty seconds while it is announced and not connected. When both ends
+connect at once, both keep the connection opened by the device with the smaller
+fingerprint and close the other, so they settle on the same one without negotiating.
 
 ## Transport
 
