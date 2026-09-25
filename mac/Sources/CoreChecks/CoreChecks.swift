@@ -1,0 +1,207 @@
+import CryptoKit
+import Foundation
+import ArsivinyoCore
+
+/// The Mac against `shared/crypto/VECTORS.json` — the same file the Android app reads.
+///
+/// The Mac app has to open a vault and a backup the phone wrote. Compiling the same C++ is
+/// not evidence of that; reproducing the recorded bytes is. Where the vectors carry a
+/// ciphertext Tink produced, this seals with the recorded header and compares byte for byte,
+/// which checks both directions rather than only that a round trip closes.
+///
+/// An executable rather than an XCTest suite, because XCTest ships with Xcode and the core
+/// has to stay verifiable without it. Same shape as the C++ tests it replaces: a line per
+/// check, a non-zero exit if any failed.
+@main
+struct CoreChecks {
+
+    // MARK: - Harness
+
+    private var failures = 0
+
+    private mutating func check(_ ok: Bool, _ what: String) {
+        print(ok ? "  ok    \(what)" : "  FAIL  \(what)")
+        if !ok { failures += 1 }
+    }
+
+    private static func unhex(_ s: String) -> Data {
+        var out = Data(capacity: s.count / 2)
+        var index = s.startIndex
+        while index < s.endIndex {
+            let next = s.index(index, offsetBy: 2)
+            out.append(UInt8(s[index..<next], radix: 16)!)
+            index = next
+        }
+        return out
+    }
+
+    private static func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
+    private static func sha256(_ d: Data) -> String { hex(Data(SHA256.hash(data: d))) }
+
+    /// `java.util.Random`, so a megabyte of plaintext need not live in the vectors file.
+    private struct JavaRandom {
+        private var seed: UInt64
+
+        init(_ s: Int64) { seed = (UInt64(bitPattern: s) ^ 0x5DEECE66D) & ((1 << 48) - 1) }
+
+        private mutating func next(_ bits: Int) -> Int32 {
+            seed = (seed &* 0x5DEECE66D &+ 0xB) & ((1 << 48) - 1)
+            return Int32(truncatingIfNeeded: Int64(bitPattern: seed >> (48 - UInt64(bits))))
+        }
+
+        mutating func bytes(_ count: Int) -> Data {
+            var out = Data(count: count)
+            var i = 0
+            while i < count {
+                var value = next(32)
+                var n = min(count - i, 4)
+                while n > 0 {
+                    out[i] = UInt8(truncatingIfNeeded: value)
+                    value >>= 8
+                    i += 1
+                    n -= 1
+                }
+            }
+            return out
+        }
+    }
+
+    /// Walk up for the repository root, the way the Kotlin suite does.
+    private static func loadVectors() -> [String: Any] {
+        var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while !FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("shared/crypto/VECTORS.json").path
+        ) {
+            let parent = dir.deletingLastPathComponent()
+            if parent == dir {
+                FileHandle.standardError.write(
+                    Data("cannot find shared/crypto/VECTORS.json above \(#filePath)\n".utf8))
+                exit(2)
+            }
+            dir = parent
+        }
+        let url = dir.appendingPathComponent("shared/crypto/VECTORS.json")
+        return try! JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+    }
+
+    // MARK: - Checks
+
+    static func main() {
+        var runner = CoreChecks()
+        do {
+            try runner.run()
+        } catch {
+            print("  FAIL  threw: \(error)")
+            runner.failures += 1
+        }
+        print("\n\(runner.failures == 0 ? "the pinned vectors hold on this Mac" : "FAILURES")")
+        exit(runner.failures == 0 ? 0 : 1)
+    }
+
+    private mutating func run() throws {
+        let vectors = Self.loadVectors()
+        func list(_ name: String) -> [[String: Any]] { vectors[name] as! [[String: Any]] }
+        func map(_ name: String) -> [String: Any] { vectors[name] as! [String: Any] }
+
+        print("argon2id")
+        for c in list("argon2id") {
+            let params = Crypto.Argon2idParams(
+                memoryKiB: UInt32(c["memoryKiB"] as! Int),
+                iterations: UInt32(c["iterations"] as! Int),
+                parallelism: UInt32(c["parallelism"] as! Int),
+                version: UInt32(c["version"] as! Int))
+            // The recorded UTF-8 bytes, not a re-encoded string: re-encoding here could
+            // make the same mistake twice and hide an encoding difference.
+            let out = try Crypto.argon2id(
+                secret: Self.unhex(c["passwordUtf8"] as! String),
+                salt: Self.unhex(c["salt"] as! String),
+                params: params,
+                outputCount: c["outLength"] as! Int)
+            check(Self.hex(out) == c["out"] as! String, c["why"] as! String)
+        }
+
+        print("hkdf-sha256")
+        for c in list("hkdf_sha256") {
+            let salt = c["salt"] as? String
+            let out = try Crypto.hkdfSHA256(
+                ikm: Self.unhex(c["ikm"] as! String),
+                salt: salt.map(Self.unhex),
+                info: Data((c["info"] as! String).utf8),
+                outputCount: c["outLength"] as! Int)
+            check(Self.hex(out) == c["out"] as! String, c["why"] as! String)
+        }
+
+        print("avsbck key hierarchy")
+        let subkeys = map("avsbck_subkeys")
+        let master = Self.unhex(subkeys["masterKey"] as! String)
+        check(Self.hex(try Crypto.backupVerifier(master: master)) == subkeys["verifier"] as! String,
+              "the verifier label")
+        for (sectionId, expected) in (subkeys["sections"] as! [String: String])
+            .sorted(by: { $0.key < $1.key }) {
+            check(Self.hex(try Crypto.backupSectionKey(master: master, sectionId: sectionId))
+                    == expected, "section key: \(sectionId)")
+        }
+
+        print("streaming aead, against Tink's own output")
+        for c in list("aead_stream") {
+            let key = Self.unhex(c["key"] as! String)
+            let aad = c["associatedData"] as! String
+            let spec = c["plaintext"] as! [String: Any]
+            let length = spec["length"] as! Int
+            var random = JavaRandom(Int64(spec["seed"] as! Int))
+            let plaintext = random.bytes(length)
+
+            let sealed = try Crypto.sealWithRecordedHeader(
+                plaintext, key: key, associatedData: aad,
+                headerSalt: Self.unhex(c["headerSalt"] as! String),
+                noncePrefix: Self.unhex(c["noncePrefix"] as! String))
+
+            check(sealed.count == c["ciphertextLength"] as! Int
+                    && Self.sha256(sealed) == c["ciphertextSha256"] as! String,
+                  "\(length) bytes: \(c["why"] as! String)")
+            check(try Crypto.open(sealed, key: key, associatedData: aad) == plaintext,
+                  "\(length) bytes: decrypts back")
+        }
+
+        print("vault index")
+        let index = map("vault_index")
+        let dek = Self.unhex(index["dek"] as! String)
+        let indexKey = try Crypto.purposeKey(master: dek, purpose: .vaultIndex)
+        check(Self.hex(indexKey) == index["indexKey"] as! String,
+              "the key label matches the phone's")
+
+        var paddingOk = true
+        for c in index["padding"] as! [[String: Any]] {
+            let length = c["length"] as! Int
+            var random = JavaRandom(Int64(length))
+            let content = random.bytes(length)
+            let padded = Crypto.pad(content)
+            if padded.count != c["paddedLength"] as! Int { paddingOk = false }
+            if Self.sha256(padded) != c["paddedSha256"] as! String { paddingOk = false }
+            if try Crypto.unpad(padded) != content { paddingOk = false }
+        }
+        check(paddingOk, "padding matches, and unpads back")
+
+        let sealedListing = Data(base64Encoded: index["sealed"] as! String)!
+        let padded = try Crypto.open(sealedListing, key: indexKey,
+                                     associatedData: index["associatedData"] as! String)
+        let listing = String(data: try Crypto.unpad(padded), encoding: .utf8)
+        check(listing == index["listing"] as! String,
+              "a vault listing sealed by the phone opens on the Mac")
+
+        print("refusals")
+        let key = try Crypto.randomBytes(32)
+        let sealed = try Crypto.seal(Data("something private".utf8), key: key,
+                                     associatedData: "vault")
+        var caught = 0
+        // A wrong key, the wrong associated data, and a flipped bit.
+        if (try? Crypto.open(sealed, key: Crypto.randomBytes(32), associatedData: "vault")) == nil {
+            caught += 1
+        }
+        if (try? Crypto.open(sealed, key: key, associatedData: "music")) == nil { caught += 1 }
+        var bent = sealed
+        bent[bent.count - 1] ^= 1
+        if (try? Crypto.open(bent, key: key, associatedData: "vault")) == nil { caught += 1 }
+        check(caught == 3, "a wrong key, the wrong associated data and a flipped bit are refused")
+    }
+}

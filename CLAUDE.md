@@ -7,9 +7,14 @@ that applies to it — read `mobile/CLAUDE.md` before touching anything under `m
 
 ```
 mobile/     Android app (Expo + a Kotlin native module).
+mac/        macOS app (SwiftUI over the shared C++ core). Needs Xcode; see mac/README.md.
 shared/     Anything the apps must agree on: the device-pairing protocol, the security
             core, the audio DSP, and the yt-dlp download engine.
 ```
+
+`mac/` does not reimplement the security core. It compiles the same C++ through a symlink,
+so `shared/crypto/VECTORS.json` binds all of it and `swift run CoreChecks` proves the Mac
+reproduces what the phone recorded.
 
 `mobile/` is a self-contained Expo project: its `package.json`, `node_modules`,
 `.gitignore` and scripts all live there, so npm commands run from `mobile/`, not from the
