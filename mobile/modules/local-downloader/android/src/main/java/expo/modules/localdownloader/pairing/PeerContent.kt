@@ -12,6 +12,8 @@ import org.json.JSONArray
 data class ItemSource(
   val name: String,
   val sizeBytes: Long,
+  /** The track's cover, sent along with it. The phone keeps covers beside the files. */
+  val artwork: java.io.File? = null,
   val open: () -> InputStream,
 )
 
@@ -47,7 +49,7 @@ interface PeerContent {
   fun destinationFor(name: String, kind: String): String?
 
   /** A completed file has landed at [path]; take it into the library. */
-  fun accepted(path: String, kind: String)
+  fun accepted(path: String, kind: String, artworkPath: String?)
 
   /** The peer asked this device to fetch a URL itself. */
   fun download(url: String, mediaKind: String)

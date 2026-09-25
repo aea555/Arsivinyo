@@ -172,17 +172,19 @@ final class AppModel {
                 FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
             }
             // A track from a paired device goes into the library like a download does.
-            devices.content.onTrackArrived = { [weak self] file in
+            devices.content.onTrackArrived = { [weak self] file, artwork in
                 Task { @MainActor in
                     guard let self else { return }
+                    defer { if let artwork { try? FileManager.default.removeItem(at: artwork) } }
                     do {
-                        try await self.library.adopt(file)
+                        try await self.library.adopt(file, artwork: artwork)
                         self.refreshMusic()
                     } catch {
                         self.musicProblem = String(describing: error)
                     }
                 }
             }
+            devices.onAutoDownload = { [weak self] url, audio in self?.queue.enqueue(url: url, audioOnly: audio) }
             devices.start()
             self.devices = devices
         } catch {

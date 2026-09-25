@@ -47,6 +47,11 @@ private struct DevicesList: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Section {
+                Toggle("Download links from paired devices without asking",
+                       isOn: $devices.autoDownloadLinks)
+            }
+
             Section("Paired") {
                 if devices.peers.isEmpty {
                     Text("None yet. Open Devices on your phone and tap Add device, then pair with it below.")
@@ -126,13 +131,6 @@ private struct DevicesList: View {
         }
         .sheet(item: $linkTarget) { peer in
             SendLinkSheet { url, audio in devices.sendLink(url, audio: audio, to: peer.fingerprint) }
-        }
-        .sheet(item: $devices.linkRequest) { request in
-            LinkRequestSheet(request: request) { audio in
-                model.pendingURL = request.url
-                model.queue.enqueue(url: request.url, audioOnly: audio)
-                model.section = .download
-            }
         }
         .confirmationDialog(Text("Forget “\(forgetting?.name ?? "")”?"),
                             isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } })) {
@@ -252,7 +250,7 @@ private struct SendLinkSheet: View {
 }
 
 /// A paired device asked this Mac to download something. Shown, never started unasked.
-private struct LinkRequestSheet: View {
+struct LinkRequestSheet: View {
     @Environment(\.dismiss) private var dismiss
     let request: DevicesModel.LinkRequest
     let download: (Bool) -> Void

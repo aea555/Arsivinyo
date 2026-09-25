@@ -47,6 +47,7 @@ export const EMPTY_PAIRING_STATE: LocalPairingState = {
   listing: [],
   peerUrl: '',
   peerMediaKind: '',
+  autoDownloadLinks: false,
 };
 
 export function isPairingSupported(): boolean {
@@ -167,6 +168,22 @@ export async function cancelTransfer(fingerprint: string): Promise<boolean> {
 export async function clearPeerUrl(): Promise<boolean> {
   if (!isPairingSupported()) return false;
   return LocalDownloaderModule.pairingClearPeerUrl();
+}
+
+/** Download links from paired devices without asking. Off unless the user turns it on. */
+export async function setAutoDownloadLinks(enabled: boolean): Promise<boolean> {
+  if (!isPairingSupported()) return false;
+  return LocalDownloaderModule.pairingSetAutoDownloadLinks(enabled);
+}
+
+/** Whether any device is paired, without starting anything to find out. */
+export async function hasPairedDevices(): Promise<boolean> {
+  if (!isPairingSupported()) return false;
+  try {
+    return await LocalDownloaderModule.pairingHasPeers();
+  } catch {
+    return false;
+  }
 }
 
 /** Fires whenever anything the pairing screen renders has changed. */

@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   TextInput,
   View,
 } from 'react-native';
@@ -19,7 +20,6 @@ import {
   beginPairing,
   browseDevice,
   cancelPairing,
-  clearPeerUrl,
   confirmPairing,
   connectToDevice,
   EMPTY_PAIRING_STATE,
@@ -30,9 +30,9 @@ import {
   listLocalSounds,
   sendToDevice,
   sendUrlToDevice,
+  setAutoDownloadLinks,
   setDeviceName,
   startPairing,
-  startQuickLocalDownloadWithUrl,
   subscribeToPairingState,
   type LocalPairingState,
   type LocalSound,
@@ -305,6 +305,23 @@ export default function DevicesScreen() {
               </Pressable>
             </View>
 
+            {/* ---- links from paired devices ---- */}
+            <View style={[styles.row, { borderColor: colors.border }]}>
+              <View style={styles.flex}>
+                <Text style={[styles.rowTitle, { color: colors.text }]}>
+                  {t('devices.autoDownloadLinks')}
+                </Text>
+                <Text style={[styles.rowSub, { color: colors.textSubtle }]}>
+                  {t('devices.autoDownloadLinksHint')}
+                </Text>
+              </View>
+              <Switch
+                value={state.autoDownloadLinks}
+                onValueChange={(on) => void setAutoDownloadLinks(on)}
+                trackColor={{ true: colors.accent, false: colors.surfaceActive }}
+              />
+            </View>
+
             {/* ---- paired ---- */}
             {state.peers.length > 0 ? (
               <Text style={[styles.section, { color: colors.textSubtle }]}>
@@ -424,25 +441,6 @@ export default function DevicesScreen() {
           </>
         )}
       </ScrollView>
-
-      {/* ---- a link a peer sent ---- */}
-      <ConfirmModal
-        visible={state.peerUrl.length > 0}
-        config={{
-          title: t('devices.peerUrlTitle'),
-          message: t('devices.peerUrlBody'),
-          confirm: t('devices.peerUrlAccept'),
-          destructive: false,
-        }}
-        onConfirm={() => {
-          // "Download" used to only dismiss this. It starts the download now, in the
-          // background queue, as the kind the other device asked for.
-          const url = state.peerUrl;
-          const kind = state.peerMediaKind === 'audio' ? 'audio' : 'video';
-          void startQuickLocalDownloadWithUrl(url, kind).finally(() => void clearPeerUrl());
-        }}
-        onCancel={() => void clearPeerUrl()}
-      />
 
       <ConfirmModal
         visible={confirm !== null}

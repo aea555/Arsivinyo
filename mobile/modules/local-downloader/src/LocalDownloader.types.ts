@@ -795,4 +795,6 @@ export interface LocalPairingState {
   /** A URL a peer asked this phone to fetch. Shown for the user to accept, never started. */
   peerUrl: string;
   peerMediaKind: string;
+  /** Links from paired devices are downloaded without asking. Opt-in. */
+  autoDownloadLinks: boolean;
 }

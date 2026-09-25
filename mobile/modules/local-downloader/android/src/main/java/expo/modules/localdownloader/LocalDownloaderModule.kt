@@ -314,15 +314,31 @@ class LocalDownloaderModule : Module() {
       store = soundsStore,
       onChanged = { runCatching { sendEvent("pairingStateChanged", pairingStateMap()) } },
       onDownloadRequested = { url, mediaKind ->
-        // Surfaced only. The user decides whether to download what a peer sent.
-        lastPeerUrl = url
-        lastPeerMediaKind = mediaKind
-        runCatching { sendEvent("pairingStateChanged", pairingStateMap()) }
+        if (pairingAutoDownloadLinks) {
+          // The user opted in: a link from a paired device goes straight into the queue,
+          // as the kind the other device asked for.
+          runCatching { startQuickDownloadWithUrl(url, "peer", mediaKindOverride = mediaKind) }
+        } else {
+          // Otherwise surfaced only. The user decides whether to download what a peer sent.
+          lastPeerUrl = url
+          lastPeerMediaKind = mediaKind
+          runCatching { sendEvent("pairingStateChanged", pairingStateMap()) }
+        }
       },
     )
     pairingCoordinator = created
     return created
   }
+
+  private val pairingPrefs by lazy {
+    requireNotNull(appContext.reactContext).applicationContext
+      .getSharedPreferences("pairing", android.content.Context.MODE_PRIVATE)
+  }
+
+  /** Opt-in: download links from paired devices without asking. Off unless turned on. */
+  private var pairingAutoDownloadLinks: Boolean
+    get() = pairingPrefs.getBoolean("autoDownloadLinks", false)
+    set(value) { pairingPrefs.edit().putBoolean("autoDownloadLinks", value).apply() }
 
   /** The most recent URL a peer asked this phone to fetch, for the screen to offer. */
   @Volatile private var lastPeerUrl: String = ""
@@ -339,6 +355,7 @@ class LocalDownloaderModule : Module() {
     (pairingCoordinator?.state().orEmpty()) + mapOf(
       "peerUrl" to lastPeerUrl,
       "peerMediaKind" to lastPeerMediaKind,
+      "autoDownloadLinks" to pairingAutoDownloadLinks,
     )
 
   private val vaultLoopbackLock = Any()
@@ -836,7 +853,27 @@ class LocalDownloaderModule : Module() {
     AsyncFunction("pairingClearPeerUrl") {
       lastPeerUrl = ""
       lastPeerMediaKind = ""
+      // The screen renders from events. Clearing without one left the prompt drawn from
+      // the old state, with both of its buttons calling this again and nothing changing:
+      // it looked frozen.
+      runCatching { sendEvent("pairingStateChanged", pairingStateMap()) }
       true
+    }
+
+    AsyncFunction("pairingSetAutoDownloadLinks") { enabled: Boolean ->
+      pairingAutoDownloadLinks = enabled
+      runCatching { sendEvent("pairingStateChanged", pairingStateMap()) }
+      enabled
+    }
+
+    /**
+     * Whether any device is paired, answered from the file alone: no identity is made and no
+     * socket opened to find out. The app starts pairing at launch only when this is true, so
+     * a paired device can reach the phone without the Devices screen being visited first.
+     */
+    AsyncFunction("pairingHasPeers") {
+      val file = java.io.File(requireNotNull(appContext.reactContext).filesDir, "pairing/peers.json")
+      file.isFile && runCatching { org.json.JSONArray(file.readText()).length() > 0 }.getOrDefault(false)
     }
 
     AsyncFunction("listSounds") {

@@ -9,7 +9,7 @@ final class LibraryContent: PeerContent, @unchecked Sendable {
     private let incoming: URL
     /// Where a received backup is left, for the user to restore deliberately.
     var backupsFolder: () -> URL
-    var onTrackArrived: ((URL) -> Void)?
+    var onTrackArrived: ((URL, URL?) -> Void)?
     var onLinkRequested: ((String, String, String) -> Void)?
 
     init(library: MusicLibrary, incoming: URL, backupsFolder: @escaping () -> URL) {
@@ -33,7 +33,7 @@ final class LibraryContent: PeerContent, @unchecked Sendable {
         let file = library.fileURL(for: track)
         let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? track.sizeBytes
         guard size > 0 else { return nil }
-        return ItemSource(name: track.fileName, sizeBytes: size, file: file)
+        return ItemSource(name: track.fileName, sizeBytes: size, file: file, artwork: library.artworkURL(for: track))
     }
 
     func destination(forName name: String, kind: String) -> URL? {
@@ -53,7 +53,7 @@ final class LibraryContent: PeerContent, @unchecked Sendable {
         return candidate
     }
 
-    func accepted(_ file: URL, kind: String) {
+    func accepted(_ file: URL, kind: String, artwork: URL?) {
         if kind == "backups" {
             // Not a library item: it waits in Downloads for a restore, with its passphrase.
             let folder = backupsFolder()
@@ -61,7 +61,7 @@ final class LibraryContent: PeerContent, @unchecked Sendable {
             try? FileManager.default.moveItem(at: file, to: folder.appendingPathComponent(file.lastPathComponent))
             return
         }
-        onTrackArrived?(file)
+        onTrackArrived?(file, artwork)
     }
 
     func downloadRequested(url: String, mediaKind: String, from peerName: String) {
@@ -108,6 +108,12 @@ final class DevicesModel {
     var listing: Listing?
     var transfer: (done: Int64, total: Int64)?
     var linkRequest: LinkRequest?
+    /// Opt-in: a link from a paired device is downloaded without asking.
+    var autoDownloadLinks: Bool = UserDefaults.standard.bool(forKey: "autoDownloadPeerLinks") {
+        didSet { UserDefaults.standard.set(autoDownloadLinks, forKey: "autoDownloadPeerLinks") }
+    }
+    /// Starts a download the user opted to take without being asked.
+    var onAutoDownload: ((String, Bool) -> Void)?
 
     private var lastAttempt: [String: Date] = [:]
     private var timer: Timer?
@@ -124,7 +130,14 @@ final class DevicesModel {
         service.onSession = { [weak self] session in Task { @MainActor in self?.attach(session) } }
         discovery.onChange = { [weak self] in Task { @MainActor in self?.refresh(); self?.reconnect() } }
         content.onLinkRequested = { [weak self] url, kind, from in
-            Task { @MainActor in self?.linkRequest = LinkRequest(url: url, audio: kind == "audio", from: from) }
+            Task { @MainActor in
+                guard let self else { return }
+                if self.autoDownloadLinks {
+                    self.onAutoDownload?(url, kind == "audio")
+                } else {
+                    self.linkRequest = LinkRequest(url: url, audio: kind == "audio", from: from)
+                }
+            }
         }
     }
 
@@ -260,7 +273,7 @@ final class DevicesModel {
         guard let session = service.session(for: fingerprint) else { return }
         let file = library.fileURL(for: track)
         let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? track.sizeBytes
-        if !session.send(ItemSource(name: track.fileName, sizeBytes: size, file: file)) {
+        if !session.send(ItemSource(name: track.fileName, sizeBytes: size, file: file, artwork: library.artworkURL(for: track))) {
             message = String(localized: "Wait for the transfer in progress to finish.")
         }
     }

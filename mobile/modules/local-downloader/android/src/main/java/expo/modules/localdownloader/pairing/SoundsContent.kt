@@ -64,7 +64,9 @@ class SoundsContent(
     val size = (song["sizeBytes"] as? Long) ?: 0L
     if (size <= 0L) return null
 
-    return ItemSource(name, size) {
+    // The cover lives beside the file, not inside it, so it is sent with the track or lost.
+    val artwork = (song["thumbnailPath"] as? String)?.let(::File)?.takeIf { it.isFile }
+    return ItemSource(name, size, artwork) {
       context.contentResolver.openInputStream(Uri.parse(uri))
         ?: throw java.io.IOException("the library entry could not be opened")
     }
@@ -91,7 +93,7 @@ class SoundsContent(
     return candidate.path
   }
 
-  override fun accepted(path: String, kind: String) {
+  override fun accepted(path: String, kind: String, artworkPath: String?) {
     val file = File(path)
     if (!file.isFile) return
 
@@ -103,12 +105,14 @@ class SoundsContent(
 
     runCatching {
       // sourceUrl is null: this came from a device, not a download.
-      store.registerDownloadedSound(file.path, file.name, null, null)
+      store.registerDownloadedSound(file.path, file.name, null, artworkPath)
     }.onFailure {
       Log.w(TAG, "a received track could not be added to the library: ${it.message}")
     }
-    // Registering copies the bytes into MediaStore, so the staged copy is now a duplicate.
+    // Registering copies the bytes into MediaStore, so the staged copy is now a duplicate;
+    // the cover has been copied into the sidecar store the same way.
     file.delete()
+    artworkPath?.let { File(it).delete() }
   }
 
   override fun download(url: String, mediaKind: String) {

@@ -149,6 +149,8 @@ type LocalDownloaderNativeModule = {
   pairingSendUrl(fingerprint: string, url: string, mediaKind: string): Promise<boolean>;
   pairingCancelTransfer(fingerprint: string): Promise<boolean>;
   pairingClearPeerUrl(): Promise<boolean>;
+  pairingSetAutoDownloadLinks(enabled: boolean): Promise<boolean>;
+  pairingHasPeers(): Promise<boolean>;
 
   listSounds(): Promise<LocalSoundsLibrary>;
   importSounds(): Promise<LocalSoundsImportResult>;
@@ -268,6 +270,8 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       pairingSendUrl: async () => unsupported(),
       pairingCancelTransfer: async () => unsupported(),
       pairingClearPeerUrl: async () => unsupported(),
+      pairingSetAutoDownloadLinks: async () => unsupported(),
+      pairingHasPeers: async () => false,
       listSounds: async () => unsupported(),
       importSounds: async () => unsupported(),
       deleteSounds: async () => unsupported(),

@@ -72,13 +72,17 @@ extension CoreChecks {
 final class LoopbackContent: PeerContent, @unchecked Sendable {
     let folder: URL
     let offered: URL?
+    let offeredArtwork: URL?
     private let lock = NSLock()
     private var landed: [URL] = []
+    private var covers: [Data] = []
     var received: [URL] { lock.withLock { landed } }
+    var receivedArtwork: [Data] { lock.withLock { covers } }
 
-    init(folder: URL, offering file: URL? = nil) {
+    init(folder: URL, offering file: URL? = nil, artwork: URL? = nil) {
         self.folder = folder
         offered = file
+        offeredArtwork = artwork
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
 
@@ -90,14 +94,20 @@ final class LoopbackContent: PeerContent, @unchecked Sendable {
     func openItem(id: String) -> ItemSource? {
         guard id == "one", let offered else { return nil }
         let size = Int64((try? offered.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        return ItemSource(name: offered.lastPathComponent, sizeBytes: size, file: offered)
+        return ItemSource(name: offered.lastPathComponent, sizeBytes: size, file: offered, artwork: offeredArtwork)
     }
 
     func destination(forName name: String, kind: String) -> URL? {
         folder.appendingPathComponent("incoming-" + (name as NSString).lastPathComponent)
     }
 
-    func accepted(_ file: URL, kind: String) { lock.withLock { landed.append(file) } }
+    func accepted(_ file: URL, kind: String, artwork: URL?) {
+        let cover = artwork.flatMap { try? Data(contentsOf: $0) }
+        lock.withLock {
+            landed.append(file)
+            if let cover { covers.append(cover) }
+        }
+    }
     func downloadRequested(url: String, mediaKind: String, from peerName: String) {}
 }
 
@@ -116,18 +126,20 @@ extension CoreChecks {
         let track = scratch.appendingPathComponent("Track.m4a")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         try Self.pattern(700_000, 29).write(to: track)
+        let cover = scratch.appendingPathComponent("cover.jpg")
+        try Self.pattern(5_000, 11).write(to: cover)
 
-        func service(_ name: String, offering file: URL? = nil) throws -> (PairingService, LoopbackContent) {
+        func service(_ name: String, offering file: URL? = nil, artwork: URL? = nil) throws -> (PairingService, LoopbackContent) {
             let dir = scratch.appendingPathComponent(name)
             let identity = try DeviceIdentity(directory: dir.appendingPathComponent("pairing"))
             identity.deviceName = name
-            let content = LoopbackContent(folder: dir.appendingPathComponent("files"), offering: file)
+            let content = LoopbackContent(folder: dir.appendingPathComponent("files"), offering: file, artwork: artwork)
             return (PairingService(identity: identity, registry: PeerRegistry(url: dir.appendingPathComponent("peers.json")),
                                    content: content), content)
         }
 
         let (alice, aliceFiles) = try service("Alice")
-        let (bob, _) = try service("Bob", offering: track)
+        let (bob, _) = try service("Bob", offering: track, artwork: cover)
         try alice.start()
         try bob.start()
         defer { alice.stop(); bob.stop() }
@@ -159,6 +171,7 @@ extension CoreChecks {
         check(Self.waitFor(30) { aliceFiles.received.count == 1 }, "a requested track crosses")
         check(aliceFiles.received.first.flatMap { try? Data(contentsOf: $0) } == Self.pattern(700_000, 29),
               "whole, and verified before it was kept")
+        check(aliceFiles.receivedArtwork.first == Self.pattern(5_000, 11), "with its cover, which lives beside the file")
 
         // A restart of Bob: same identity, a fresh session certificate, no ceremony.
         bob.stop()
@@ -205,7 +218,9 @@ extension CoreChecks {
             identity.deviceName = "Mac"
             let track = work.appendingPathComponent("Mac Track.m4a")
             try pattern(234_567, 37).write(to: track)
-            let content = LoopbackContent(folder: work.appendingPathComponent("files"), offering: track)
+            let macCover = work.appendingPathComponent("mac-cover.jpg")
+            try pattern(3_000, 5).write(to: macCover)
+            let content = LoopbackContent(folder: work.appendingPathComponent("files"), offering: track, artwork: macCover)
             let mac = PairingService(identity: identity, registry: PeerRegistry(url: work.appendingPathComponent("peers.json")),
                                      content: content)
             try mac.start()
@@ -228,13 +243,16 @@ extension CoreChecks {
             runner.check(waitFor(60) { content.received.count == 1 }
                          && content.received.first.flatMap { try? Data(contentsOf: $0) } == pattern(345_678, 31),
                          "a track from the phone arrives whole")
+            runner.check(content.receivedArtwork.first == pattern(4_000, 7), "with the phone's cover")
 
             var sent = false
             mac.sessions.first?.onSent = { sent = true }
-            let source = ItemSource(name: track.lastPathComponent, sizeBytes: 234_567, file: track)
+            let source = ItemSource(name: track.lastPathComponent, sizeBytes: 234_567, file: track, artwork: macCover)
             runner.check(mac.sessions.first?.send(source) == true && waitFor(60) { sent }, "a track goes to the phone")
             let expected = SHA256Hash.of(pattern(234_567, 37)).map { String(format: "%02x", $0) }.joined()
             runner.check(waitFor(30) { text("phone-received-sha256") == expected }, "and the phone verified it")
+            let coverHash = SHA256Hash.of(pattern(3_000, 5)).map { String(format: "%02x", $0) }.joined()
+            runner.check(waitFor(10) { text("phone-received-artwork-sha256") == coverHash }, "with the Mac's cover")
 
             _ = mac.sessions.first?.requestDownload(url: "https://example.com/song", mediaKind: "audio")
             runner.check(waitFor(30) { text("phone-link") == "audio https://example.com/song" }, "a link reaches the phone, as audio")

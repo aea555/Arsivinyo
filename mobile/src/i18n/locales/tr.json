@@ -674,6 +674,8 @@
     "sendLinkTitle": "{{name}} cihazına bağlantı gönder",
     "sendLinkBody": "Diğer cihaz indirip indirmeyeceğine karar verir.",
     "sendPickTitle": "{{name}} cihazına parça gönder",
-    "empty": "Gönderilecek parça yok."
+    "empty": "Gönderilecek parça yok.",
+    "autoDownloadLinks": "Bağlantıları otomatik indir",
+    "autoDownloadLinksHint": "Eşleştirilmiş bir cihazın gönderdiği bağlantı sormadan indirilmeye başlar."
   }
 }

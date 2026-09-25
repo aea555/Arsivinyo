@@ -674,6 +674,8 @@
     "sendLinkTitle": "Send a link to {{name}}",
     "sendLinkBody": "The other device decides whether to download it.",
     "sendPickTitle": "Send a track to {{name}}",
-    "empty": "No tracks to send."
+    "empty": "No tracks to send.",
+    "autoDownloadLinks": "Download links automatically",
+    "autoDownloadLinksHint": "A link a paired device sends starts downloading without asking."
   }
 }

@@ -30,6 +30,8 @@ class MacInteropTest {
 
     val work = File(dir, "phone").apply { mkdirs() }
     val track = File(work, "Phone Track.m4a").apply { writeBytes(pattern(345_678, 31)) }
+    val cover = File(work, "phone-cover.jpg").apply { writeBytes(pattern(4_000, 7)) }
+    var receivedArtwork: String? = null
     var requestedUrl = ""
     var requestedKind = ""
     val received = mutableListOf<File>()
@@ -39,9 +41,12 @@ class MacInteropTest {
         .put("id", "p1").put("title", "Phone Track").put("artist", "Phone")
         .put("durationSec", 1.0).put("sizeBytes", track.length()))
       override fun openItem(id: String) =
-        if (id == "p1") ItemSource(track.name, track.length()) { track.inputStream() } else null
+        if (id == "p1") ItemSource(track.name, track.length(), cover) { track.inputStream() } else null
       override fun destinationFor(name: String, kind: String) = File(work, "in-" + File(name).name).path
-      override fun accepted(path: String, kind: String) { synchronized(received) { received.add(File(path)) } }
+      override fun accepted(path: String, kind: String, artworkPath: String?) {
+        receivedArtwork = artworkPath
+        synchronized(received) { received.add(File(path)) }
+      }
       override fun download(url: String, mediaKind: String) {
         requestedUrl = url
         requestedKind = mediaKind
@@ -71,6 +76,8 @@ class MacInteropTest {
       assertTrue("a track from the Mac arrives", waitFor(60) { synchronized(received) { received.isNotEmpty() } })
       val got = synchronized(received) { received.first() }
       File(dir, "phone-received-sha256").writeText(hex(MessageDigest.getInstance("SHA-256").digest(got.readBytes())))
+      File(dir, "phone-received-artwork-sha256").writeText(
+        receivedArtwork?.let { hex(MessageDigest.getInstance("SHA-256").digest(File(it).readBytes())) } ?: "none")
 
       assertTrue("the Mac sends a link", waitFor(30) { requestedUrl.isNotEmpty() })
       File(dir, "phone-link").writeText("$requestedKind $requestedUrl")

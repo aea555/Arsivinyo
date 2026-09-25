@@ -6,11 +6,14 @@ public struct ItemSource: Sendable {
     public let name: String
     public let sizeBytes: Int64
     public let file: URL
+    /// The cover, sent along: both apps keep covers beside the files, not inside them.
+    public let artwork: URL?
 
-    public init(name: String, sizeBytes: Int64, file: URL) {
+    public init(name: String, sizeBytes: Int64, file: URL, artwork: URL? = nil) {
         self.name = name
         self.sizeBytes = sizeBytes
         self.file = file
+        self.artwork = artwork
     }
 }
 
@@ -23,8 +26,8 @@ public protocol PeerContent: AnyObject, Sendable {
     func openItem(id: String) -> ItemSource?
     /// Where an incoming file should be written. The sender's name is a hint, never a path.
     func destination(forName name: String, kind: String) -> URL?
-    /// A verified file has landed; take it in.
-    func accepted(_ file: URL, kind: String)
+    /// A verified file has landed, with the cover that came with it; take them in.
+    func accepted(_ file: URL, kind: String, artwork: URL?)
     /// The peer asks this Mac to fetch a link. Shown to the user, never started unasked.
     func downloadRequested(url: String, mediaKind: String, from peerName: String)
 }
@@ -56,16 +59,21 @@ public final class PeerSession: @unchecked Sendable {
         let partURL: URL
         let total: Int64
         let expected: Data
+        /// The cover from the offer, held until the file itself verifies.
+        let artwork: Data?
+        let artworkExtension: String
         let handle: FileHandle
         var hasher = SHA256()
         var received: Int64 = 0
 
-        init(kind: String, finalURL: URL, total: Int64, expected: Data) throws {
+        init(kind: String, finalURL: URL, total: Int64, expected: Data, artwork: Data?, artworkExtension: String) throws {
             self.kind = kind
             self.finalURL = finalURL
             partURL = finalURL.appendingPathExtension("part")
             self.total = total
             self.expected = expected
+            self.artwork = artwork
+            self.artworkExtension = artworkExtension
             FileManager.default.createFile(atPath: partURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
             handle = try FileHandle(forWritingTo: partURL)
         }
@@ -152,8 +160,15 @@ public final class PeerSession: @unchecked Sendable {
 
     private func stream(_ source: ItemSource, kind: String) {
         guard let digest = Self.sha256(of: source.file) else { return abortSending(String(localized: "could not read the item")) }
-        guard link.send(control: ["t": "put", "name": source.name, "kind": kind,
-                                  "sizeBytes": source.sizeBytes, "sha256": digest.hexString]) else {
+        var offer: [String: Any] = ["t": "put", "name": source.name, "kind": kind,
+                                    "sizeBytes": source.sizeBytes, "sha256": digest.hexString]
+        // The cover rides in the offer: small, optional, ignored by a receiver that does not
+        // know it, and left out over the cap rather than making the offer huge.
+        if let art = source.artwork, let data = try? Data(contentsOf: art), (1...Self.maxArtworkBytes).contains(data.count) {
+            offer["artwork"] = data.base64EncodedString()
+            offer["artworkName"] = art.lastPathComponent
+        }
+        guard link.send(control: offer) else {
             return abortSending(String(localized: "the connection went away"))
         }
         // A peer that never answers must not leave a send hanging for the life of the app.
@@ -239,8 +254,14 @@ public final class PeerSession: @unchecked Sendable {
             return
         }
         let kind = message["kind"] as? String ?? "music"
+        let artwork = (message["artwork"] as? String).flatMap { Data(base64Encoded: $0) }
+            .flatMap { (1...Self.maxArtworkBytes).contains($0.count) ? $0 : nil }
+        // Only the extension is taken from the peer's name, and only a plain one.
+        let proposed = ((message["artworkName"] as? String ?? "") as NSString).pathExtension.lowercased()
+        let artworkExtension = (1...5).contains(proposed.count) && proposed.allSatisfy({ $0.isLetter || $0.isNumber }) ? proposed : "jpg"
         guard let destination = content.destination(forName: message["name"] as? String ?? "", kind: kind),
-              let started = try? Receiving(kind: kind, finalURL: destination, total: size, expected: expected) else {
+              let started = try? Receiving(kind: kind, finalURL: destination, total: size, expected: expected,
+                                           artwork: artwork, artworkExtension: artworkExtension) else {
             link.send(control: ["t": "reject", "reason": "refused"])
             return
         }
@@ -279,7 +300,12 @@ public final class PeerSession: @unchecked Sendable {
             return abortReceiving(String(localized: "could not store the file"))
         }
         lock.withLock { receiving = nil }
-        content.accepted(current.finalURL, kind: current.kind)
+        var artworkURL: URL?
+        if let artwork = current.artwork {
+            let url = current.finalURL.appendingPathExtension("cover").appendingPathExtension(current.artworkExtension)
+            if (try? artwork.write(to: url)) != nil { artworkURL = url }
+        }
+        content.accepted(current.finalURL, kind: current.kind, artwork: artworkURL)
         onReceived?(current.kind)
     }
 
@@ -304,6 +330,9 @@ public final class PeerSession: @unchecked Sendable {
         accepted.signal()
         onTransferFailed?(reason)
     }
+
+    /// A cover is a few hundred kilobytes at most; anything bigger is not sent along.
+    static let maxArtworkBytes = 1024 * 1024
 
     static func sha256(of url: URL) -> Data? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }

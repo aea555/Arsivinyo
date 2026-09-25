@@ -74,6 +74,9 @@ class PeerSession(
     val partPath: File,
     val total: Long,
     val expectedHash: ByteArray,
+    /** The cover that came with the offer, held until the file itself verifies. */
+    val artwork: ByteArray?,
+    val artworkName: String,
   ) {
     val digest: MessageDigest = MessageDigest.getInstance("SHA-256")
     val stream = partPath.outputStream()
@@ -143,9 +146,18 @@ class PeerSession(
     }
 
     val total = source.sizeBytes
-    if (!link.sendControl(JSONObject()
-        .put("t", "put").put("name", source.name).put("kind", kind)
-        .put("sizeBytes", total).put("sha256", hex(digest)))) {
+    val offer = JSONObject()
+      .put("t", "put").put("name", source.name).put("kind", kind)
+      .put("sizeBytes", total).put("sha256", hex(digest))
+    // The cover rides in the offer: small, optional, and ignored by a receiver that does not
+    // know it. Over the cap it is left out rather than making the offer huge.
+    source.artwork?.takeIf { it.isFile && it.length() in 1..MAX_ARTWORK_BYTES }?.let { art ->
+      runCatching { art.readBytes() }.getOrNull()?.let { bytes ->
+        offer.put("artwork", expo.modules.localdownloader.backup.BackupFormat.Base64Codec.encode(bytes))
+          .put("artworkName", art.name)
+      }
+    }
+    if (!link.sendControl(offer)) {
       abortSending("the connection went away")
       return
     }
@@ -250,10 +262,17 @@ class PeerSession(
       return
     }
 
+    val artwork = message.optString("artwork").takeIf { it.isNotEmpty() }?.let {
+      runCatching { expo.modules.localdownloader.backup.BackupFormat.Base64Codec.decode(it) }.getOrNull()
+    }?.takeIf { it.size in 1..MAX_ARTWORK_BYTES }
+    // Only the extension is taken from the peer's name, and only a plain one.
+    val artworkExtension = message.optString("artworkName").substringAfterLast('.', "jpg").lowercase()
+      .takeIf { it.matches(Regex("^[a-z0-9]{1,5}$")) } ?: "jpg"
+
     val started = runCatching {
       val finalPath = File(destination)
       finalPath.parentFile?.mkdirs()
-      Receiving(kind, finalPath, File("$destination.part"), size, expected)
+      Receiving(kind, finalPath, File("$destination.part"), size, expected, artwork, "cover.$artworkExtension")
     }.getOrNull()
     if (started == null) {
       link.sendControl(JSONObject().put("t", "reject").put("reason", "unwritable"))
@@ -304,7 +323,12 @@ class PeerSession(
     }
 
     synchronized(lock) { receiving = null }
-    content.accepted(current.finalPath.path, current.kind)
+    val artworkPath = current.artwork?.let { bytes ->
+      runCatching {
+        File("${current.finalPath.path}.${current.artworkName}").apply { writeBytes(bytes) }.path
+      }.getOrNull()
+    }
+    content.accepted(current.finalPath.path, current.kind, artworkPath)
     onFileReceived?.invoke(current.finalPath.path, current.kind)
     onTransferComplete?.invoke()
   }
@@ -360,5 +384,7 @@ class PeerSession(
     const val CHUNK_BYTES = 256 * 1024
     const val SHA256_BYTES = 32
     const val ACCEPT_TIMEOUT_SECONDS = 60L
+    /** A cover is a few hundred kilobytes at most; anything bigger is not sent along. */
+    const val MAX_ARTWORK_BYTES = 1L * 1024 * 1024
   }
 }

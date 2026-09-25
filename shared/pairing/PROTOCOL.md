@@ -199,7 +199,10 @@ control message without tearing down the connection.
 ]}
 
 {"t":"get","id":"..."}
-{"t":"put","name":"...","kind":"music","sizeBytes":0,"sha256":"..."}
+{"t":"put","name":"...","kind":"music","sizeBytes":0,"sha256":"...",
+ "artwork":"<base64, optional, at most 1 MiB>","artworkName":"cover.jpg"}
+                                            // both apps keep covers beside the files, so
+                                            // the cover travels in the offer or not at all
 {"t":"accept","transferId":"..."}           // receiver agrees; sender then streams type 1
 {"t":"reject","reason":"..."}
 {"t":"complete","transferId":"...","sha256":"..."}

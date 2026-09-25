@@ -93,6 +93,7 @@
 "Download Video" = "Videoyu İndir";
 "Download as" = "Şu olarak indir";
 "Download failed" = "İndirme başarısız oldu";
+"Download links from paired devices without asking" = "Eşleştirilmiş cihazlardan gelen bağlantıları sormadan indir";
 "Downloaded" = "İndirildi";
 "Downloading" = "İndiriliyor";
 "Downloads" = "İndirmeler";

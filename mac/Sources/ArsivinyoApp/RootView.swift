@@ -54,6 +54,13 @@ struct RootView: View {
                 .toolbar { toolbar }
         }
         .sheet(isPresented: $model.showUnlockSheet) { UnlockSheet() }
+        // A link from a paired device is offered wherever the window is, not only on Devices.
+        .sheet(item: Binding(get: { model.devices?.linkRequest }, set: { model.devices?.linkRequest = $0 })) { request in
+            LinkRequestSheet(request: request) { audio in
+                model.queue.enqueue(url: request.url, audioOnly: audio)
+                model.section = .download
+            }
+        }
         .sheet(isPresented: $creatingPlaylist) {
             NameSheet(title: "New Playlist", initial: "") { model.createPlaylist(named: $0) }
         }
