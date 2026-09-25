@@ -1,6 +1,12 @@
 /* Turkish. Keys are the English text in the source; vocabulary follows the phone app. */
 
 "%@, downloaded" = "%@, indirilen";
+"%lld added" = "%lld eklendi";
+"%lld already here" = "%lld zaten vardı";
+"%lld cookie profiles kept as they were" = "%lld cookie profili olduğu gibi bırakıldı";
+"%lld could not be restored: %@" = "%lld geri yüklenemedi: %@";
+"%lld items, %@" = "%lld öğe, %@";
+"%lld settings and profiles applied" = "%lld ayar ve profil uygulandı";
 "%lld songs" = "%lld şarkı";
 "1 song" = "1 şarkı";
 "A downloaded version would not load, so the one fetched with the app is in use: %@" = "İndirilen sürüm yüklenemedi, bu yüzden uygulamayla gelen kullanılıyor: %@";
@@ -29,11 +35,17 @@
 "At the same time" = "Aynı anda";
 "Audio" = "Ses";
 "Audio you download lands here. You can also drop files in, or import them." = "İndirdiğiniz sesler buraya gelir. Dosyaları buraya bırakabilir ya da içe aktarabilirsiniz.";
+"Back Up…" = "Yedekle…";
+"Backing up" = "Yedekleniyor";
+"Backup" = "Yedek";
 "Bass" = "Bas";
 "Bass Boost" = "Bas Yükseltme";
 "Bass frequency" = "Bas frekansı";
 "Cancel" = "İptal";
 "Cancelled" = "İptal edildi";
+"Cancelled." = "İptal edildi.";
+"Cancelled. Nothing was saved." = "İptal edildi. Hiçbir şey kaydedilmedi.";
+"Cancelled. What was restored before stays." = "İptal edildi. O ana kadar geri yüklenenler kalıyor.";
 "Ceiling" = "Tavan";
 "Change" = "Değiştir";
 "Change Passphrase…" = "Parola Cümlesini Değiştir…";
@@ -41,8 +53,10 @@
 "Changing the music folder moves the library's files into it." = "Müzik klasörünü değiştirmek kitaplığın dosyalarını oraya taşır.";
 "Checking" = "Denetleniyor";
 "Checking the link" = "Bağlantı denetleniyor";
+"Choose a Backup…" = "Yedek Seç…";
 "Choose a cookies.txt in Netscape format." = "Netscape biçiminde bir cookies.txt seçin.";
 "Choose a preset" = "Bir ön ayar seçin";
+"Choose an .avsbck backup." = "Bir .avsbck yedeği seçin.";
 "Choose the recovery key you exported." = "Dışa aktardığınız kurtarma anahtarını seçin.";
 "Choose…" = "Seç…";
 "Clear" = "Temizle";
@@ -50,6 +64,7 @@
 "Converting" = "Dönüştürülüyor";
 "Cookies" = "Cookie'ler";
 "Could not import: %@" = "İçe aktarılamadı: %@";
+"Could not make room for an item on its way in." = "Gelen bir öğe için yer açılamadı.";
 "Current passphrase" = "Mevcut parola cümlesi";
 "Damping" = "Sönümleme";
 "Default" = "Varsayılan";
@@ -72,6 +87,7 @@
 "Edit Presets…" = "Ön Ayarları Düzenle…";
 "Empty playlist" = "Bu çalma listesi boş";
 "Engine" = "Motor";
+"Every item, decrypted into the backup and encrypted again under its passphrase." = "Her öğe, şifresi çözülerek yedeğe girer ve yedeğin parola cümlesiyle yeniden şifrelenir.";
 "Everything here is encrypted, and so is the list of what it is." = "Buradaki her şey şifreli, neyin burada olduğunun listesi de.";
 "Everything in the vault is encrypted with your passphrase." = "Kasadaki her şey parola cümlenizle şifrelenir.";
 "Export a New Recovery Key…" = "Yeni Kurtarma Anahtarı Dışa Aktar…";
@@ -96,7 +112,9 @@
 "Limiter" = "Sınırlayıcı";
 "Lock" = "Kilitle";
 "Lock Vault" = "Kasayı Kilitle";
+"Made" = "Oluşturulma";
 "Make Default" = "Varsayılan Yap";
+"Make a Backup" = "Yedek oluştur";
 "Move Library Here" = "Kitaplığı Buraya Taşı";
 "Move to Trash" = "Çöp Sepeti'ne Taşı";
 "Music" = "Müzik";
@@ -121,10 +139,12 @@
 "Not running" = "Çalışmıyor";
 "Nothing downloading" = "İndirilen bir şey yok";
 "Notify when a download ends in the background" = "Arka planda biten indirmeleri bildir";
+"One file, encrypted with this passphrase, that the phone can restore too. It is separate from the vault's passphrase; without it the backup cannot be opened." = "Bu parola cümlesiyle şifrelenmiş, telefonun da geri yükleyebileceği tek bir dosya. Kasanın parola cümlesinden ayrıdır; o olmadan yedek açılamaz.";
 "Output" = "Çıkış";
 "PRESET" = "ÖN AYAR";
 "Pair your phone to move files between it and this Mac." = "Telefonunuzla bu Mac arasında dosya taşımak için eşleştirin.";
 "Passphrase" = "Parola cümlesi";
+"Passphrase for the backup" = "Yedeğin parola cümlesi";
 "Paste" = "Yapıştır";
 "Paste Link and Download" = "Bağlantıyı Yapıştır ve İndir";
 "Paste a link above, or drag one in from your browser." = "Yukarıya bir bağlantı yapıştırın ya da tarayıcınızdan sürükleyin.";
@@ -148,11 +168,16 @@
 "Rename Playlist" = "Çalma Listesini Yeniden Adlandır";
 "Rename…" = "Yeniden adlandır…";
 "Repeat: %@" = "Tekrar: %@";
+"Restore" = "Geri yükle";
 "Restore Defaults" = "Varsayılanlara Dön";
+"Restore from a file made here or on the phone. Nothing is replaced: what is already here stays." = "Burada ya da telefonda yapılmış bir dosyadan geri yükleyin. Hiçbir şeyin yerine yazılmaz: burada olan kalır.";
+"Restored item" = "Geri yüklenen öğe";
+"Restoring" = "Geri yükleniyor";
 "Reverb" = "Yankı";
 "Right-click songs in Music to apply one." = "Uygulamak için Müzik'te şarkılara sağ tıklayın.";
 "Room size" = "Oda boyutu";
 "Save" = "Kaydet";
+"Saved %lld items." = "%lld öğe kaydedildi.";
 "Saved. Keep it somewhere safe." = "Kaydedildi. Güvenli bir yerde saklayın.";
 "Search music" = "Müzik ara";
 "Search the vault" = "Kasada ara";
@@ -164,6 +189,7 @@
 "Show in Finder" = "Finder'da Göster";
 "Shuffle is off" = "Karıştırma kapalı";
 "Shuffle is on" = "Karıştırma açık";
+"Signed-in sessions. Anyone with the backup and its passphrase can use them." = "Açık oturumlar. Yedeğe ve parola cümlesine sahip olan herkes kullanabilir.";
 "Site" = "Site";
 "Sites change faster than apps do, so the part that reads them updates on its own. Switching restarts the engine; downloads have to finish first." = "Siteler uygulamalardan hızlı değişir, bu yüzden onları okuyan kısım ayrı güncellenir. Değiştirmek motoru yeniden başlatır; önce indirmelerin bitmesi gerekir.";
 "Size" = "Boyut";
@@ -176,8 +202,12 @@
 "That is not a cookies.txt file. Export one in Netscape format." = "Bu bir cookies.txt dosyası değil. Netscape biçiminde dışa aktarın.";
 "That is not a domain. Write it like example.com." = "Bu bir alan adı değil. example.com gibi yazın.";
 "That is the only way in. Removing it would lose everything." = "Tek giriş yolu bu. Kaldırmak her şeyi kaybettirir.";
+"That passphrase does not open this backup." = "Bu parola cümlesi bu yedeği açmıyor.";
 "That passphrase is not correct." = "Parola cümlesi doğru değil.";
 "The Keychain refused (%d)." = "Anahtar Zinciri reddetti (%d).";
+"The backup's passphrase" = "Yedeğin parola cümlesi";
+"The backup's password" = "Yedeğin parolası";
+"The counts are the backup's own claim, readable without the passphrase. What is actually in it is checked as it is restored." = "Sayılar yedeğin kendi beyanıdır ve parola olmadan okunabilir. Gerçekte içinde olan, geri yüklenirken denetlenir.";
 "The engine stopped." = "Motor durdu.";
 "The file names no domain. Say which site it is for." = "Dosyada alan adı yok. Hangi site için olduğunu belirtin.";
 "The files are copied into the library. The originals stay where they are." = "Dosyalar kitaplığa kopyalanır. Asılları yerinde kalır.";
@@ -186,14 +216,17 @@
 "The listing could not be read" = "Liste okunamadı";
 "The new folder already has files named %@. Nothing was moved." = "Yeni klasörde zaten şu adlarda dosyalar var: %@. Hiçbir şey taşınmadı.";
 "The stored key is damaged: %@" = "Saklanan anahtar bozuk: %@";
+"The vault and cookies are restored encrypted with your passphrase, so unlock first." = "Kasa ve cookie'ler parola cümlenizle şifrelenerek geri yüklenir, bu yüzden önce kilidi açın.";
 "The vault is locked." = "Kasa kilitli.";
 "The vault is unlocked. Lock it now." = "Kasanın kilidi açık. Şimdi kilitleyin.";
 "There is no other copy, and this cannot be undone." = "Başka bir kopyası yok ve bu geri alınamaz.";
+"This backup cannot be read: %@" = "Bu yedek okunamıyor: %@";
 "This writes a decrypted copy. It is not protected once it leaves the vault." = "Bu, şifresi çözülmüş bir kopya yazar. Kasadan çıktıktan sonra korunmaz.";
 "Those do not match." = "İkisi birbirini tutmuyor.";
 "Time" = "Süre";
 "Title" = "Başlık";
 "Tone" = "Ton";
+"Tracks, artwork, playlists and Favorites." = "Parçalar, kapak görselleri, çalma listeleri ve Favoriler.";
 "Treble" = "Tiz";
 "Treble frequency" = "Tiz frekansı";
 "Unlock" = "Kilidi aç";
@@ -201,6 +234,7 @@
 "Unlock first, so the cookie file can be encrypted." = "Cookie dosyasının şifrelenebilmesi için önce kilidi açın.";
 "Unlock first." = "Önce kilidi açın.";
 "Unlock the Vault" = "Kasanın Kilidini Açın";
+"Unlock the vault first: its contents and your cookies are encrypted." = "Önce kasanın kilidini açın: içindekiler ve cookie'leriniz şifreli.";
 "Unlock to Change These…" = "Değiştirmek İçin Kilidi Aç…";
 "Unlock…" = "Kilidi aç…";
 "Update to the Newest" = "En Yeniye Güncelle";
@@ -218,6 +252,7 @@
 "Waiting" = "Bekleniyor";
 "With presets applied to every download, whether the unchanged download stays too." = "Her indirmeye ön ayar uygulanırken değiştirilmemiş indirmenin de kalıp kalmayacağı.";
 "Your files are still here and still encrypted. Nothing has been deleted, and nothing will be written until the listing can be read again." = "Dosyalarınız hâlâ burada ve hâlâ şifreli. Hiçbir şey silinmedi ve liste yeniden okunana kadar hiçbir şey yazılmayacak.";
+"Your own presets and changes to the built-in ones." = "Kendi ön ayarlarınız ve yerleşik olanlarda yaptığınız değişiklikler.";
 "Your vault and cookies are encrypted with this. There is no way to recover it — write it down, or export a recovery key once it is set." = "Kasanız ve cookie'leriniz bununla şifrelenir. Onu kurtarmanın bir yolu yok — bir yere yazın ya da belirledikten sonra bir kurtarma anahtarı dışa aktarın.";
 "all" = "tümü";
 "off" = "kapalı";

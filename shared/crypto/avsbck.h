@@ -64,6 +64,12 @@ class BackupReader {
     using PayloadReader = std::function<bool(uint8_t *out, std::size_t length, std::size_t *got)>;
     /** Called per entry. Return false to stop the walk. Unread payload is drained. */
     using OnEntry = std::function<bool(const std::string &headerJson, const PayloadReader &payload)>;
+    /**
+     * Called after each entry, once its trailer has been checked: whether the payload the
+     * entry handed out was whole and matched its recorded size and hash, and if not, why.
+     * A restore stages each payload and commits it only on a true here.
+     */
+    using OnVerdict = std::function<void(bool verified, const std::string &why)>;
 
     /** Reads the plaintext preamble. No secret is needed, which is what drives the preview. */
     static std::unique_ptr<BackupReader> Open(Read read, std::string *headerJson,
@@ -77,8 +83,13 @@ class BackupReader {
      * entry the writer marked incomplete is refused — a truncated file whose hash matches its
      * own truncated bytes is exactly the failure worth designing against.
      */
+    ///
+    /// With `onVerdict`, an item that fails its check is reported there and the walk goes on
+    /// to the next, which is what the phone does: one damaged video does not cost the rest of
+    /// the vault. Without it, the first such item ends the walk with an error.
     bool ReadSection(const std::string &sectionId, const SecretBytes &sectionKey,
-                     const OnEntry &onEntry, std::string *error);
+                     const OnEntry &onEntry, std::string *error,
+                     const OnVerdict &onVerdict = nullptr);
 
     /** Steps over the next section without decrypting it, for a partial restore. */
     bool SkipSection(std::string *error);
@@ -86,6 +97,55 @@ class BackupReader {
  private:
     BackupReader() = default;
     Read m_read;
+};
+
+/**
+ * Writes a backup, forward only, in the layout above.
+ *
+ * The header and every entry header are opaque JSON from the caller, as on the reading side.
+ * What this owns is the framing, the encryption of each section, and each entry's trailer:
+ * the payload's size and SHA-256 are taken as it streams through, so nothing is read twice.
+ *
+ *   Open → BeginSection → (BeginEntry → WritePayload… → EndEntry)… → EndSection → … → done
+ */
+class BackupWriter {
+ public:
+    /** Sequential write to the file. */
+    using Write = std::function<bool(const uint8_t *data, std::size_t length)>;
+
+    /** Writes the magic, the version and the plaintext header. */
+    static std::unique_ptr<BackupWriter> Open(Write write, const std::string &headerJson,
+                                              std::string *error);
+
+    ~BackupWriter();
+    BackupWriter(const BackupWriter &) = delete;
+    BackupWriter &operator=(const BackupWriter &) = delete;
+
+    /** The section id is both the associated data and what names its key, as on reading. */
+    bool BeginSection(const std::string &sectionId, const SecretBytes &sectionKey,
+                      std::string *error);
+    bool BeginEntry(const std::string &entryHeaderJson, std::string *error);
+    bool WritePayload(const uint8_t *data, std::size_t length, std::string *error);
+    /**
+     * Closes the entry with its trailer. `complete` false marks it as not fully read from
+     * its source — the header was already written, so the entry has to be closed either way,
+     * and without the mark its hash would verify against the truncated bytes.
+     */
+    bool EndEntry(bool complete, std::string *error);
+    bool EndSection(std::string *error);
+
+ private:
+    BackupWriter() = default;
+    bool PlainWrite(const uint8_t *data, std::size_t length, std::string *error);
+    bool PlainU32(uint32_t value, std::string *error);
+    bool FlushPayloadChunk(std::string *error);
+
+    Write m_write;
+    std::unique_ptr<class StreamEncryptor> m_encryptor;
+    Bytes m_chunk;
+    uint64_t m_payloadBytes = 0;
+    void *m_digest = nullptr;  // EVP_MD_CTX, kept out of this header
+    bool m_inEntry = false;
 };
 
 }  // namespace arsivinyo::crypto

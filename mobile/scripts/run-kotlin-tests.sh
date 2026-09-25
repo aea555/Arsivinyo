@@ -76,6 +76,7 @@ SUITES=(
   "expo.modules.localdownloader.backup.BackupSectionsTest|$SRC_TEST/backup/BackupSectionsTest.kt"
   "expo.modules.localdownloader.backup.BackupPortsTest|$SRC_TEST/backup/BackupPortsTest.kt"
   "expo.modules.localdownloader.backup.BackupPipelineTest|$SRC_TEST/backup/BackupPipelineTest.kt"
+  "expo.modules.localdownloader.backup.CrossPlatformBackupTest|$BACKUP_SOURCES $SRC_TEST/backup/CrossPlatformBackupTest.kt"
   "expo.modules.localdownloader.vault.VaultKeyBoxTest|$BACKUP_SOURCES $VAULT_SOURCES $SRC_TEST/vault/VaultKeyBoxTest.kt"
   "expo.modules.localdownloader.vault.VaultSessionTest|$VAULT_SOURCES $SRC_TEST/vault/VaultSessionTest.kt"
   "expo.modules.localdownloader.vault.VaultAuthPolicyTest|$VAULT_SOURCES $SRC_TEST/vault/VaultAuthPolicyTest.kt"

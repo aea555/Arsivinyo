@@ -432,6 +432,10 @@ final class AppModel {
         refreshMusic()
     }
 
+    // MARK: - Backup
+
+    var backupJob: BackupJob?
+
     // MARK: - Presets
 
     let presets: PresetStore

@@ -22,6 +22,28 @@ public struct PresetParams: Codable, Equatable, Hashable, Sendable {
 
     public init() {}
 
+    /// A missing or mistyped field keeps its default, so parameters written by another
+    /// build, with fields this one lacks or lacking ones it has, still read.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func value(_ key: CodingKeys, _ fallback: Double) -> Double {
+            (try? c.decode(Double.self, forKey: key)) ?? fallback
+        }
+        rate = value(.rate, 1)
+        reverbMix = value(.reverbMix, 0)
+        reverbRoom = value(.reverbRoom, 0.5)
+        reverbDamp = value(.reverbDamp, 0.5)
+        reverbWidth = value(.reverbWidth, 1)
+        reverbPreDelayMs = value(.reverbPreDelayMs, 0)
+        bassGainDb = value(.bassGainDb, 0)
+        bassFreqHz = value(.bassFreqHz, 100)
+        trebleGainDb = value(.trebleGainDb, 0)
+        trebleFreqHz = value(.trebleFreqHz, 6000)
+        outputGainDb = value(.outputGainDb, 0)
+        limiterEnabled = (try? c.decode(Bool.self, forKey: .limiterEnabled)) ?? true
+        limiterCeilingDb = value(.limiterCeilingDb, -0.3)
+    }
+
     /// Each numeric parameter, its range and step, in the phone's order. The order matters
     /// only for the spec string, which then reads the same on both.
     ///
@@ -271,6 +293,68 @@ public final class PresetStore: @unchecked Sendable {
         let known = Set(all().map(\.id))
         setAutoApply(AutoPresetConfig(keepOriginal: blob["keepOriginal"] as? Bool != false,
                                       presetIds: ids.filter(known.contains)))
+    }
+
+    /// The user's presets and the changes to the built-ins, as the phone keeps them in its
+    /// settings: `@arsivinyo_audio_presets_custom_v1` is a JSON array of presets and
+    /// `@arsivinyo_audio_presets_builtin_overrides_v1` an object of parameters by id, each
+    /// stored as a string. A backup's settings section carries exactly these.
+    public func settingsBlob() -> [String: String] {
+        let stored = read()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        var out: [String: String] = [:]
+        if let custom = try? encoder.encode(stored.custom) {
+            out[Self.customKey] = String(decoding: custom, as: UTF8.self)
+        }
+        if let overrides = try? encoder.encode(stored.builtInOverrides) {
+            out[Self.overridesKey] = String(decoding: overrides, as: UTF8.self)
+        }
+        return out
+    }
+
+    /// Takes presets from a backup's settings. Additive, as every restore is: a preset whose
+    /// id is already here is left as it is; changes to built-ins are taken as they come.
+    public func restoreSettings(from blob: [String: Any]) {
+        let decoder = JSONDecoder()
+        let incoming = (blob[Self.customKey] as? String).flatMap {
+            try? decoder.decode([LenientPreset].self, from: Data($0.utf8))
+        } ?? []
+        let overrides = (blob[Self.overridesKey] as? String).flatMap {
+            try? decoder.decode([String: PresetParams].self, from: Data($0.utf8))
+        } ?? [:]
+        mutate { stored in
+            let have = Set(stored.custom.map(\.id))
+            for preset in incoming.compactMap(\.preset) where !have.contains(preset.id) {
+                stored.custom.append(preset)
+            }
+            for (id, params) in overrides where AudioPreset.builtIns.contains(where: { $0.id == id }) {
+                stored.builtInOverrides[id] = params.sanitized
+            }
+        }
+    }
+
+    static let customKey = "@arsivinyo_audio_presets_custom_v1"
+    static let overridesKey = "@arsivinyo_audio_presets_builtin_overrides_v1"
+
+    /// A preset as another build may have written it: anything missing takes the phone's
+    /// default, and one without an id or a name is dropped rather than failing the rest.
+    private struct LenientPreset: Decodable {
+        let preset: AudioPreset?
+
+        private enum Keys: String, CodingKey { case id, name, titleSuffix, params, createdAt, updatedAt }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: Keys.self)
+            let id = ((try? c.decode(String.self, forKey: .id)) ?? "").trimmingCharacters(in: .whitespaces)
+            let name = ((try? c.decode(String.self, forKey: .name)) ?? "").trimmingCharacters(in: .whitespaces)
+            guard !id.isEmpty, !name.isEmpty else { preset = nil; return }
+            let suffix = (try? c.decode(String.self, forKey: .titleSuffix)).flatMap { $0.isEmpty ? nil : $0 }
+            preset = AudioPreset(id: id, name: name, builtIn: false, titleSuffix: suffix ?? " (\(name))",
+                                 params: ((try? c.decode(PresetParams.self, forKey: .params)) ?? PresetParams()).sanitized,
+                                 createdAt: try? c.decode(Double.self, forKey: .createdAt),
+                                 updatedAt: try? c.decode(Double.self, forKey: .updatedAt))
+        }
     }
 
     // MARK: - Private

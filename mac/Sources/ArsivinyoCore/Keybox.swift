@@ -212,8 +212,7 @@ public final class Keybox: @unchecked Sendable {
         let salt = try Crypto.randomBytes(16)
         let kek = try Crypto.keyfileKEK(keyfile: secret, salt: salt)
         let wrapped = try Crypto.wrapMasterKey(master, kek: kek, slotId: Self.recoverySlot)
-        try secret.write(to: url, options: [.atomic, .completeFileProtection])
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try FileManager.default.writePrivately(secret, to: url)
         var slots = try load().filter { $0.kind != .recovery }
         slots.append(Slot(id: Self.recoverySlot, kind: .recovery, salt: salt,
                           verifier: wrapped.verifier, wrapped: wrapped.wrapped, kdf: nil))

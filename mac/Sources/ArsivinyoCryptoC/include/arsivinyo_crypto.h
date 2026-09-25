@@ -146,6 +146,39 @@ int64_t av_reader_read(av_reader *reader, uint64_t offset, uint8_t *out, size_t 
 
 void av_reader_close(av_reader *reader);
 
+// MARK: - The .avsbck container
+
+/// Writes a backup to a new file, created readable by its owner only.
+typedef struct av_backup_writer av_backup_writer;
+av_backup_writer *av_backup_writer_open(const char *path, const char *headerJson);
+int av_backup_writer_begin_section(av_backup_writer *writer, const char *sectionId,
+                                   const uint8_t *key, size_t keyLength);
+int av_backup_writer_begin_entry(av_backup_writer *writer, const char *entryHeaderJson);
+int av_backup_writer_write(av_backup_writer *writer, const uint8_t *data, size_t length);
+/// `complete` 0 marks an item whose source could not be read in full.
+int av_backup_writer_end_entry(av_backup_writer *writer, int complete);
+int av_backup_writer_end_section(av_backup_writer *writer);
+/// Flushes to disk and closes. The writer is freed whatever the result.
+int av_backup_writer_close(av_backup_writer *writer);
+/// Abandons a backup part way: closes and deletes the file.
+void av_backup_writer_abort(av_backup_writer *writer);
+
+/// Reads a backup. The plaintext header comes back at open, before any secret is needed.
+typedef struct av_backup_reader av_backup_reader;
+/// `headerJson` receives a malloc'd, NUL-terminated copy; free it with free().
+av_backup_reader *av_backup_reader_open(const char *path, char **headerJson);
+/// Called per entry with its header and a handle for its payload. Return 0 to stop.
+typedef int (*av_backup_entry_fn)(void *context, const char *entryHeaderJson, void *payload);
+/// Called after each entry: 1 when its payload matched its recorded size and hash.
+typedef void (*av_backup_verdict_fn)(void *context, int verified, const char *why);
+/// Reads the current entry's payload. `got` below `length` means the payload is finished.
+int av_backup_payload_read(void *payload, uint8_t *out, size_t length, size_t *got);
+int av_backup_reader_read_section(av_backup_reader *reader, const char *sectionId,
+                                  const uint8_t *key, size_t keyLength, av_backup_entry_fn onEntry,
+                                  av_backup_verdict_fn onVerdict, void *context);
+int av_backup_reader_skip_section(av_backup_reader *reader);
+void av_backup_reader_close(av_backup_reader *reader);
+
 #ifdef __cplusplus
 }
 #endif

@@ -76,6 +76,9 @@ extension CoreChecks {
 
         let recovery = scratch.appendingPathComponent("recovery.key")
         try fourth.exportRecoveryKey(to: recovery)
+        let recoveryMode = (try FileManager.default.attributesOfItem(atPath: recovery.path)[.posixPermissions]
+                            as? NSNumber)?.intValue ?? 0
+        check(recoveryMode & 0o077 == 0, "the recovery key is readable only by its owner")
         let fifth = keybox()
         try fifth.unlock(recoveryKey: try Data(contentsOf: recovery))
         check(try fifth.key(for: .cookies) == cookieKey, "a recovery key opens it")

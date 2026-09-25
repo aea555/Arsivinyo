@@ -66,6 +66,17 @@ struct CoreChecks {
         }
     }
 
+    /// The repository, found by walking up from this file.
+    static var repositoryRoot: URL {
+        var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: dir.appendingPathComponent("shared/crypto/VECTORS.json").path) {
+            let parent = dir.deletingLastPathComponent()
+            if parent == dir { return dir }
+            dir = parent
+        }
+        return dir
+    }
+
     /// Walk up for the repository root, the way the Kotlin suite does.
     private static func loadVectors() -> [String: Any] {
         var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -87,6 +98,18 @@ struct CoreChecks {
     // MARK: - Checks
 
     static func main() async {
+        // Writes shared/crypto/fixtures/mac-written.avsbck, which the phone's
+        // CrossPlatformBackupTest reads. Committed; written again only when asked.
+        if CommandLine.arguments.contains("--write-backup-fixture") {
+            do {
+                try await writeBackupFixture()
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("could not write the fixture: \(error)\n".utf8))
+                exit(1)
+            }
+        }
+
         var runner = CoreChecks()
         do {
             try runner.run()
@@ -95,6 +118,8 @@ struct CoreChecks {
             try await runner.checkMusic()
             try runner.checkCookies()
             try await runner.checkPresets()
+            try await runner.checkBackup()
+            try await runner.checkPhoneBackup()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")

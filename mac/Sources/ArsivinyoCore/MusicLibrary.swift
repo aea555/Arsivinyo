@@ -289,6 +289,11 @@ public final class MusicLibrary: @unchecked Sendable {
         }
     }
 
+    /// Points a preset render at the track it was made from.
+    public func setSource(of id: String, to sourceSongId: String?) throws {
+        try mutateTrack(id) { $0.sourceSongId = sourceSongId }
+    }
+
     private func mutateTrack(_ id: String, _ body: (inout Track) -> Void) throws {
         try guardLock.withLock {
             var (tracks, playlists) = readIndex()

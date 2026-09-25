@@ -21,6 +21,9 @@ struct SettingsView: View {
             SecuritySettings()
                 .frame(width: 560, height: 440)
                 .tabItem { Label("Security", systemImage: "lock") }
+            BackupSettings()
+                .frame(width: 600, height: 620)
+                .tabItem { Label("Backup", systemImage: "externaldrive") }
         }
     }
 }

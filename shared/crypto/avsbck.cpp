@@ -181,7 +181,8 @@ bool BackupReader::SkipSection(std::string *error) {
 }
 
 bool BackupReader::ReadSection(const std::string &sectionId, const SecretBytes &sectionKey,
-                               const OnEntry &onEntry, std::string *error) {
+                               const OnEntry &onEntry, std::string *error,
+                               const OnVerdict &onVerdict) {
     // The section's ciphertext arrives as length-prefixed chunks; the decryptor sees one
     // continuous stream and never learns about the framing.
     Bytes carry;
@@ -328,25 +329,189 @@ bool BackupReader::ReadSection(const std::string &sectionId, const SecretBytes &
         // The trailer records the plaintext size and hash. Checking them here is what catches
         // a payload that was truncated at export: its own bytes would hash consistently.
         const std::string computed = HexDigest(digest, digestLength);
-        if (trailerJson.find(computed) == std::string::npos) {
-            if (error) {
-                *error = "an item's contents do not match the hash recorded with it";
-            }
-            return false;
-        }
-        if (trailerJson.find("\"incomplete\":true") != std::string::npos ||
-            trailerJson.find("\"incomplete\": true") != std::string::npos) {
-            if (error) *error = "an item was not fully written when the backup was made";
-            return false;
-        }
         const std::string sizeField = "\"size\":" + std::to_string(payloadBytes);
-        if (trailerJson.find(sizeField) == std::string::npos &&
-            trailerJson.find("\"size\": " + std::to_string(payloadBytes)) == std::string::npos) {
-            if (error) *error = "an item's length does not match the length recorded with it";
+        std::string why;
+        if (trailerJson.find(computed) == std::string::npos) {
+            why = "an item's contents do not match the hash recorded with it";
+        } else if (trailerJson.find("\"incomplete\":true") != std::string::npos ||
+                   trailerJson.find("\"incomplete\": true") != std::string::npos) {
+            why = "an item was not fully written when the backup was made";
+        } else if (trailerJson.find(sizeField) == std::string::npos &&
+                   trailerJson.find("\"size\": " + std::to_string(payloadBytes)) ==
+                       std::string::npos) {
+            why = "an item's length does not match the length recorded with it";
+        }
+        if (onVerdict) {
+            onVerdict(why.empty(), why);
+        } else if (!why.empty()) {
+            if (error) *error = why;
             return false;
         }
 
         if (!keepGoing) return SkipSection(error);
+    }
+    return true;
+}
+
+// MARK: - Writing
+
+namespace {
+void WriteU16To(uint8_t *out, uint16_t value) {
+    out[0] = static_cast<uint8_t>(value >> 8);
+    out[1] = static_cast<uint8_t>(value);
+}
+void WriteU32To(uint8_t *out, uint32_t value) {
+    out[0] = static_cast<uint8_t>(value >> 24);
+    out[1] = static_cast<uint8_t>(value >> 16);
+    out[2] = static_cast<uint8_t>(value >> 8);
+    out[3] = static_cast<uint8_t>(value);
+}
+// A payload is framed in 1 MiB chunks, the phone's size. The reader takes any size up to
+// kMaxChunkBytes, so this is a choice, not part of the format.
+constexpr std::size_t kPayloadChunkBytes = 1u << 20;
+}  // namespace
+
+std::unique_ptr<BackupWriter> BackupWriter::Open(Write write, const std::string &headerJson,
+                                                 std::string *error) {
+    if (write == nullptr) return nullptr;
+    if (headerJson.empty() || headerJson.size() > kMaxBackupHeaderBytes) {
+        if (error) *error = "the header is not a size this format allows";
+        return nullptr;
+    }
+    uint8_t preamble[kBackupMagicBytes + 2 + 4];
+    std::memcpy(preamble, kMagic, kBackupMagicBytes);
+    WriteU16To(preamble + kBackupMagicBytes, kBackupFormatVersion);
+    WriteU32To(preamble + kBackupMagicBytes + 2, static_cast<uint32_t>(headerJson.size()));
+    if (!write(preamble, sizeof(preamble)) ||
+        !write(reinterpret_cast<const uint8_t *>(headerJson.data()), headerJson.size())) {
+        if (error) *error = "could not write the header";
+        return nullptr;
+    }
+    std::unique_ptr<BackupWriter> writer(new BackupWriter());
+    writer->m_write = std::move(write);
+    return writer;
+}
+
+BackupWriter::~BackupWriter() {
+    if (m_digest != nullptr) EVP_MD_CTX_free(static_cast<EVP_MD_CTX *>(m_digest));
+}
+
+bool BackupWriter::BeginSection(const std::string &sectionId, const SecretBytes &sectionKey,
+                                std::string *error) {
+    if (m_encryptor != nullptr) {
+        if (error) *error = "a section is already open";
+        return false;
+    }
+    // Each piece of ciphertext the encryptor produces goes to the file as one chunk: the
+    // reader reassembles the stream from chunks and never sees their boundaries.
+    Write write = m_write;
+    auto sink = [write](const uint8_t *data, std::size_t length) {
+        if (length == 0) return true;
+        uint8_t prefix[4];
+        WriteU32To(prefix, static_cast<uint32_t>(length));
+        return write(prefix, 4) && write(data, length);
+    };
+    m_encryptor = StreamEncryptor::Create(sectionKey.data(), sectionKey.size(), sectionId, sink, error);
+    return m_encryptor != nullptr;
+}
+
+bool BackupWriter::PlainWrite(const uint8_t *data, std::size_t length, std::string *error) {
+    if (m_encryptor == nullptr) {
+        if (error) *error = "no section is open";
+        return false;
+    }
+    return m_encryptor->Write(data, length, error);
+}
+
+bool BackupWriter::PlainU32(uint32_t value, std::string *error) {
+    uint8_t buffer[4];
+    WriteU32To(buffer, value);
+    return PlainWrite(buffer, 4, error);
+}
+
+bool BackupWriter::BeginEntry(const std::string &entryHeaderJson, std::string *error) {
+    if (m_inEntry) {
+        if (error) *error = "an entry is already open";
+        return false;
+    }
+    if (entryHeaderJson.empty() || entryHeaderJson.size() > kMaxEntryHeaderBytes) {
+        if (error) *error = "an entry header is not a size this format allows";
+        return false;
+    }
+    if (!PlainU32(static_cast<uint32_t>(entryHeaderJson.size()), error) ||
+        !PlainWrite(reinterpret_cast<const uint8_t *>(entryHeaderJson.data()),
+                    entryHeaderJson.size(), error)) {
+        return false;
+    }
+    if (m_digest == nullptr) m_digest = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(static_cast<EVP_MD_CTX *>(m_digest), EVP_sha256(), nullptr);
+    m_chunk.clear();
+    m_payloadBytes = 0;
+    m_inEntry = true;
+    return true;
+}
+
+bool BackupWriter::FlushPayloadChunk(std::string *error) {
+    if (m_chunk.empty()) return true;
+    if (!PlainU32(static_cast<uint32_t>(m_chunk.size()), error) ||
+        !PlainWrite(m_chunk.data(), m_chunk.size(), error)) {
+        return false;
+    }
+    m_chunk.clear();
+    return true;
+}
+
+bool BackupWriter::WritePayload(const uint8_t *data, std::size_t length, std::string *error) {
+    if (!m_inEntry) {
+        if (error) *error = "no entry is open";
+        return false;
+    }
+    EVP_DigestUpdate(static_cast<EVP_MD_CTX *>(m_digest), data, length);
+    m_payloadBytes += length;
+    while (length > 0) {
+        const std::size_t take = std::min(kPayloadChunkBytes - m_chunk.size(), length);
+        m_chunk.insert(m_chunk.end(), data, data + take);
+        data += take;
+        length -= take;
+        if (m_chunk.size() == kPayloadChunkBytes && !FlushPayloadChunk(error)) return false;
+    }
+    return true;
+}
+
+bool BackupWriter::EndEntry(bool complete, std::string *error) {
+    if (!m_inEntry) {
+        if (error) *error = "no entry is open";
+        return false;
+    }
+    m_inEntry = false;
+    if (!FlushPayloadChunk(error) || !PlainU32(0, error)) return false;
+
+    uint8_t digest[EVP_MAX_MD_SIZE];
+    unsigned int digestLength = 0;
+    EVP_DigestFinal_ex(static_cast<EVP_MD_CTX *>(m_digest), digest, &digestLength);
+    // No spaces, keys in the phone's order: the phone parses this as JSON, and a reader that
+    // only searches for "size":N (as the one above does) finds it either way.
+    std::string trailer = "{\"size\":" + std::to_string(m_payloadBytes) + ",\"sha256\":\"" +
+                          HexDigest(digest, digestLength) + "\"";
+    if (!complete) trailer += ",\"incomplete\":true";
+    trailer += "}";
+    return PlainU32(static_cast<uint32_t>(trailer.size()), error) &&
+           PlainWrite(reinterpret_cast<const uint8_t *>(trailer.data()), trailer.size(), error);
+}
+
+bool BackupWriter::EndSection(std::string *error) {
+    if (m_inEntry) {
+        if (error) *error = "an entry is still open";
+        return false;
+    }
+    // The entry terminator inside the stream, then the stream's last segment, then the
+    // zero-length chunk that ends the section in the file.
+    if (!PlainU32(0, error) || !m_encryptor->Finish(error)) return false;
+    m_encryptor.reset();
+    uint8_t terminator[4] = {0, 0, 0, 0};
+    if (!m_write(terminator, 4)) {
+        if (error) *error = "could not write the end of a section";
+        return false;
     }
     return true;
 }

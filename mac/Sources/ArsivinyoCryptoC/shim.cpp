@@ -1,11 +1,15 @@
 #include "include/arsivinyo_crypto.h"
 
 #include <cstdio>
+#include <cstdlib>
+#include <fcntl.h>
+#include <unistd.h>
 #include <cstring>
 #include <memory>
 #include <string>
 
 #include "aead_stream.h"
+#include "avsbck.h"
 #include "argon2.h"
 #include "hkdf.h"
 #include "keybox.h"
@@ -386,3 +390,166 @@ int av_decrypt_file(const char *sourcePath, const char *destinationPath, const u
     if (std::fflush(output.get()) != 0) return fail("could not write the destination file");
     return ok();
 }
+
+// MARK: - The .avsbck container
+
+struct av_backup_writer {
+    int fd = -1;
+    std::string path;
+    std::unique_ptr<BackupWriter> writer;
+};
+
+av_backup_writer *av_backup_writer_open(const char *path, const char *headerJson) {
+    auto handle = std::make_unique<av_backup_writer>();
+    handle->path = path;
+    // O_EXCL: a backup never overwrites a file it did not create. The save panel has
+    // already asked about replacing, and the caller removes the old one first if so.
+    handle->fd = ::open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (handle->fd < 0) {
+        fail("could not create the backup file");
+        return nullptr;
+    }
+    const int fd = handle->fd;
+    auto write = [fd](const uint8_t *data, std::size_t length) {
+        while (length > 0) {
+            const ssize_t n = ::write(fd, data, length);
+            if (n <= 0) return false;
+            data += n;
+            length -= static_cast<std::size_t>(n);
+        }
+        return true;
+    };
+    std::string error;
+    handle->writer = BackupWriter::Open(write, headerJson, &error);
+    if (!handle->writer) {
+        ::close(fd);
+        ::unlink(path);
+        fail(error);
+        return nullptr;
+    }
+    ok();
+    return handle.release();
+}
+
+int av_backup_writer_begin_section(av_backup_writer *writer, const char *sectionId,
+                                   const uint8_t *key, size_t keyLength) {
+    std::string error;
+    if (!writer->writer->BeginSection(sectionId, SecretBytes(Bytes(key, key + keyLength)), &error)) {
+        return fail(error);
+    }
+    return ok();
+}
+
+int av_backup_writer_begin_entry(av_backup_writer *writer, const char *entryHeaderJson) {
+    std::string error;
+    if (!writer->writer->BeginEntry(entryHeaderJson, &error)) return fail(error);
+    return ok();
+}
+
+int av_backup_writer_write(av_backup_writer *writer, const uint8_t *data, size_t length) {
+    std::string error;
+    if (!writer->writer->WritePayload(data, length, &error)) return fail(error);
+    return ok();
+}
+
+int av_backup_writer_end_entry(av_backup_writer *writer, int complete) {
+    std::string error;
+    if (!writer->writer->EndEntry(complete != 0, &error)) return fail(error);
+    return ok();
+}
+
+int av_backup_writer_end_section(av_backup_writer *writer) {
+    std::string error;
+    if (!writer->writer->EndSection(&error)) return fail(error);
+    return ok();
+}
+
+int av_backup_writer_close(av_backup_writer *writer) {
+    std::unique_ptr<av_backup_writer> owned(writer);
+    owned->writer.reset();
+    const bool synced = ::fsync(owned->fd) == 0;
+    const bool closed = ::close(owned->fd) == 0;
+    if (!synced || !closed) {
+        ::unlink(owned->path.c_str());
+        return fail("could not finish writing the backup file");
+    }
+    return ok();
+}
+
+void av_backup_writer_abort(av_backup_writer *writer) {
+    std::unique_ptr<av_backup_writer> owned(writer);
+    owned->writer.reset();
+    ::close(owned->fd);
+    ::unlink(owned->path.c_str());
+}
+
+struct av_backup_reader {
+    File file;
+    std::unique_ptr<BackupReader> reader;
+};
+
+av_backup_reader *av_backup_reader_open(const char *path, char **headerJson) {
+    auto handle = std::make_unique<av_backup_reader>();
+    handle->file.reset(std::fopen(path, "rb"));
+    if (!handle->file) {
+        fail("could not open the file");
+        return nullptr;
+    }
+    FILE *file = handle->file.get();
+    auto read = [file](uint8_t *out, std::size_t length, std::size_t *got) {
+        *got = std::fread(out, 1, length, file);
+        return !std::ferror(file);
+    };
+    std::string header;
+    std::string error;
+    handle->reader = BackupReader::Open(read, &header, &error);
+    if (!handle->reader) {
+        fail(error);
+        return nullptr;
+    }
+    *headerJson = static_cast<char *>(std::malloc(header.size() + 1));
+    std::memcpy(*headerJson, header.data(), header.size());
+    (*headerJson)[header.size()] = '\0';
+    ok();
+    return handle.release();
+}
+
+int av_backup_payload_read(void *payload, uint8_t *out, size_t length, size_t *got) {
+    auto *read = static_cast<const BackupReader::PayloadReader *>(payload);
+    std::size_t total = 0;
+    // Filled as far as the payload goes, so a short count means the end and nothing else.
+    while (total < length) {
+        std::size_t step = 0;
+        if (!(*read)(out + total, length - total, &step)) return fail("the payload could not be read");
+        if (step == 0) break;
+        total += step;
+    }
+    *got = total;
+    return ok();
+}
+
+int av_backup_reader_read_section(av_backup_reader *reader, const char *sectionId,
+                                  const uint8_t *key, size_t keyLength, av_backup_entry_fn onEntry,
+                                  av_backup_verdict_fn onVerdict, void *context) {
+    std::string error;
+    auto entry = [onEntry, context](const std::string &header,
+                                    const BackupReader::PayloadReader &payload) {
+        return onEntry(context, header.c_str(), const_cast<BackupReader::PayloadReader *>(&payload)) != 0;
+    };
+    auto verdict = [onVerdict, context](bool verified, const std::string &why) {
+        onVerdict(context, verified ? 1 : 0, why.c_str());
+    };
+    if (!reader->reader->ReadSection(sectionId, SecretBytes(Bytes(key, key + keyLength)), entry, &error,
+                                     verdict)) {
+        return fail(error);
+    }
+    return ok();
+}
+
+int av_backup_reader_skip_section(av_backup_reader *reader) {
+    std::string error;
+    if (!reader->reader->SkipSection(&error)) return fail(error);
+    return ok();
+}
+
+void av_backup_reader_close(av_backup_reader *reader) { delete reader; }

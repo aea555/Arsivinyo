@@ -190,7 +190,7 @@ public final class CookieStore: @unchecked Sendable {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         let firstHere = profiles().allSatisfy { $0.scope != scope }
-        try Self.writePrivately(sealed, to: file(scope, name))
+        try FileManager.default.writePrivately(sealed, to: file(scope, name))
 
         if makeDefault ?? firstHere { try setDefault(scope, name: name) }
     }
@@ -268,7 +268,7 @@ public final class CookieStore: @unchecked Sendable {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         let out = dir.appendingPathComponent("cookie.txt")
-        try Self.writePrivately(plain, to: out)
+        try FileManager.default.writePrivately(plain, to: out)
         return (out, platform)
     }
 
@@ -332,6 +332,15 @@ public final class CookieStore: @unchecked Sendable {
         return text
     }
 
+    /// A name from elsewhere, a backup from the phone, made into one this store accepts:
+    /// anything else becomes a dash, and an empty result becomes "main".
+    public static func sanitizedName(_ name: String) -> String {
+        let mapped = String(name.map { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" || $0 == "_" ? $0 : "-" })
+            .trimmingCharacters(in: .whitespaces)
+        let cut = String(mapped.prefix(40)).trimmingCharacters(in: .whitespaces)
+        return cut.isEmpty ? "main" : cut
+    }
+
     public static func isValidName(_ name: String) -> Bool {
         (1...40).contains(name.count) && name.trimmingCharacters(in: .whitespaces) == name
             && name.allSatisfy { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" || $0 == "_" }
@@ -355,26 +364,6 @@ public final class CookieStore: @unchecked Sendable {
         "cookies/" + scope.folderName + "/" + name
     }
 
-    /// Created with owner-only permissions, so the file is never briefly readable by others.
-    private static func writePrivately(_ data: Data, to url: URL) throws {
-        let temporary = url.deletingLastPathComponent()
-            .appendingPathComponent(".\(UUID().uuidString).tmp")
-        guard FileManager.default.createFile(atPath: temporary.path, contents: data,
-                                             attributes: [.posixPermissions: 0o600]) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        do {
-            if FileManager.default.fileExists(atPath: url.path) {
-                _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
-            } else {
-                try FileManager.default.moveItem(at: temporary, to: url)
-            }
-        } catch {
-            try? FileManager.default.removeItem(at: temporary)
-            throw error
-        }
-    }
-
     private static func lines(of data: Data) -> [Substring] {
         String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline)
     }
@@ -391,4 +380,30 @@ public final class CookieStore: @unchecked Sendable {
 
 extension Data {
     var hex: String { map { String(format: "%02x", $0) }.joined() }
+}
+
+extension FileManager {
+    /// Writes a file created with owner-only permissions, so it is never briefly readable by
+    /// others, and moved into place whole.
+    ///
+    /// No data-protection class: "complete" protection makes a file unreadable while the
+    /// Mac is locked, which a backup of it, or a copy carried to another machine, cannot
+    /// live with.
+    func writePrivately(_ data: Data, to url: URL) throws {
+        let temporary = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).tmp")
+        guard createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        do {
+            if fileExists(atPath: url.path) {
+                _ = try replaceItemAt(url, withItemAt: temporary)
+            } else {
+                try moveItem(at: temporary, to: url)
+            }
+        } catch {
+            try? removeItem(at: temporary)
+            throw error
+        }
+    }
 }

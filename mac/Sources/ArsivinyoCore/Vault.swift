@@ -70,6 +70,8 @@ public final class Vault: @unchecked Sendable {
 
     /// True when the listing exists but will not open. Never collapses into "empty".
     public var isUnreadable: Bool { guardLock.withLock { unreadable } }
+    /// Whether the key the vault's contents are under is here, without touching them.
+    public var keyboxIsUnlocked: Bool { keybox.isUnlocked }
 
     /// Forgets the decrypted listing, for when the key box locks.
     public func forget() { guardLock.withLock { cache = nil; unreadable = false } }
