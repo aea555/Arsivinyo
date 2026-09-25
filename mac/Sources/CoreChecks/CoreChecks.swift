@@ -91,6 +91,7 @@ struct CoreChecks {
         do {
             try runner.run()
             try runner.checkKeyboxAndVault()
+            try await runner.checkPlayback()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")

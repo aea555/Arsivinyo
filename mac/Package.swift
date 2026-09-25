@@ -51,6 +51,10 @@ let package = Package(
         // terminal rather than only from the IDE.
         .executableTarget(name: "ArsivinyoApp", dependencies: ["ArsivinyoCore"]),
 
+        // Fills a vault in a scratch directory so the vault screen can be looked at with
+        // something in it. A development tool, on the footing the Qt app's vault_seed had.
+        .executableTarget(name: "VaultSeed", dependencies: ["ArsivinyoCore"]),
+
         // An executable rather than a .testTarget: XCTest ships with Xcode, and the core
         // has to be verifiable without it. This is also the harness the C++ tests already
         // use — print a line per check, exit non-zero if any failed.

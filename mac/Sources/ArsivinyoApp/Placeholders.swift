@@ -14,24 +14,6 @@ struct LibraryView: View {
     }
 }
 
-struct VaultView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(model.vaultUnlocked ? "Vault is empty" : "Vault is locked",
-                  systemImage: model.vaultUnlocked ? "lock.open" : "lock.shield")
-        } description: {
-            Text(model.vaultUnlocked
-                 ? "Files you add are encrypted, and so is the list of what they are."
-                 : "Everything here is encrypted. Unlock to see what is in it.")
-        } actions: {
-            Button(model.vaultUnlocked ? "Add Files…" : "Unlock") { model.toggleVaultLock() }
-                .buttonStyle(.borderedProminent)
-        }
-    }
-}
-
 struct DevicesView: View {
     var body: some View {
         ContentUnavailableView(

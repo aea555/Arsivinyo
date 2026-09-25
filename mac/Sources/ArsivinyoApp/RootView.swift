@@ -31,6 +31,7 @@ struct RootView: View {
                 .navigationTitle(model.section.title)
                 .toolbar { toolbar }
         }
+        .sheet(isPresented: $model.showUnlockSheet) { UnlockSheet() }
     }
 
     private func row(_ section: AppSection) -> some View {
