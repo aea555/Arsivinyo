@@ -6,9 +6,9 @@ that applies to it — read `mobile/CLAUDE.md` before touching anything under `m
 ## Layout
 
 ```
-mobile/     Android app (Expo + a Kotlin native module). The only app that exists today.
-desktop/    Desktop app. Not started.
-shared/     Anything both apps must agree on, chiefly the device-pairing protocol.
+mobile/     Android app (Expo + a Kotlin native module).
+shared/     Anything the apps must agree on: the device-pairing protocol, the security
+            core, the audio DSP, and the yt-dlp download engine.
 ```
 
 `mobile/` is a self-contained Expo project: its `package.json`, `node_modules`,
@@ -17,6 +17,19 @@ repository root.
 
 The subfolder is `mobile/` and not `android/` because Expo generates an `android/`
 directory inside the app itself (`mobile/android/`), and the two names would collide.
+
+## The Qt desktop app is frozen
+
+There was a Qt/QML desktop app under `desktop/`. It is no longer on this branch: the
+branch `desktop-qt` holds it, checked out at `../arsivinyo-desktop-qt`.
+
+It worked — pairing, an encrypted vault, playback without plaintext on disk — but it never
+grew past a download button and some settings, and it never felt like a native app. The
+maintainer moved to a Mac as a daily driver, so the effort goes there instead. Read it for
+reference if a question about the vault or pairing has already been answered there; do not
+extend it.
+
+Nothing in `shared/` or `mobile/` depends on it. The dependency only ever ran one way.
 
 ## The rule that matters most
 

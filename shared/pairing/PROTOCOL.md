@@ -71,7 +71,8 @@ the same property that makes a stolen phone's pairing useless once wiped.
 ## Discovery
 
 mDNS / DNS-SD, service type `_arsivinyo._tcp`. Android uses `NsdManager` from the
-platform; the desktop implements the wire format itself, in `desktop/src/DnsSd.cpp`,
+platform; the Qt desktop implemented the wire format itself, in `desktop/src/DnsSd.cpp`
+on the frozen `desktop-qt` branch,
 because Qt has no mDNS and the alternatives are per-platform daemons that do not ship with
 the app. TXT records:
 
