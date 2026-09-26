@@ -82,6 +82,16 @@ class VaultSession(private val now: () -> Long = System::currentTimeMillis) {
     }
   }
 
+  /**
+   * The key while the vault is open, without counting as use. For showing what is already on
+   * screen, such as the private memes among the rest: browsing them must not hold the vault
+   * open past its idle window.
+   */
+  fun peekDek(): ByteArray? = synchronized(lock) {
+    expireLocked()
+    dek?.copyOf()
+  }
+
   fun beginLease(purpose: String, ceilingMs: Long = LEASE_CEILING_MS): Lease {
     synchronized(lock) {
       expireLocked()

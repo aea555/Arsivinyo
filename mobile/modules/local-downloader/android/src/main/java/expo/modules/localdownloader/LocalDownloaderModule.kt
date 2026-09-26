@@ -84,6 +84,10 @@ import java.time.Instant
 import java.util.ArrayDeque
 import java.util.LinkedHashMap
 import java.util.UUID
+import expo.modules.kotlin.Promise
+import expo.modules.localdownloader.memes.MemeCollection
+import expo.modules.localdownloader.pairing.ItemSource
+import expo.modules.localdownloader.memes.MemeStore
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -325,6 +329,7 @@ class LocalDownloaderModule : Module() {
           runCatching { sendEvent("pairingStateChanged", pairingStateMap()) }
         }
       },
+      onMemeReceived = { file, meme -> receiveMeme(file, meme) },
     )
     pairingCoordinator = created
     return created
@@ -339,6 +344,293 @@ class LocalDownloaderModule : Module() {
   private var pairingAutoDownloadLinks: Boolean
     get() = pairingPrefs.getBoolean("autoDownloadLinks", false)
     set(value) { pairingPrefs.edit().putBoolean("autoDownloadLinks", value).apply() }
+
+  // ---- memes -------------------------------------------------------------------
+
+  private val memes: MemeCollection by lazy {
+    MemeCollection(requireNotNull(appContext.reactContext).applicationContext, memePrivateHalf)
+  }
+
+  /**
+   * Where a download saved by the screen came from, held by its file path until the screen
+   * saves it. The engine reports the source with the result; the save comes later, from TS.
+   */
+  private val pendingMemeSources = ConcurrentHashMap<String, MemeStore.Source>()
+
+  private val memePrefs by lazy {
+    requireNotNull(appContext.reactContext).applicationContext
+      .getSharedPreferences("memes", android.content.Context.MODE_PRIVATE)
+  }
+
+  /** The quick prompt after a meme download. On unless turned off. */
+  private var memeAskForTags: Boolean
+    get() = memePrefs.getBoolean("askForTags", true)
+    set(value) { memePrefs.edit().putBoolean("askForTags", value).apply() }
+
+  /**
+   * The private memes and their labels, under a key derived from the vault's own, so they
+   * are readable exactly when the vault is.
+   */
+  private val memePrivateHalf = object : MemeStore.PrivateHalf {
+    private fun file() = File(privateVaultRoot(create = true), MEME_PRIVATE_INDEX_FILENAME)
+    private fun key(dek: ByteArray): ByteArray =
+      com.google.crypto.tink.subtle.Hkdf.computeHkdf("HMACSHA256", dek, null, MEME_PRIVATE_INFO, 32)
+
+    override fun read(): ByteArray? {
+      if (!PRIVATE_VAULT_FEATURE_FLAG) return null
+      val dek = vaultSession.peekDek() ?: return null
+      val sealed = file().takeIf { it.isFile } ?: return ByteArray(0)
+      return VaultIndexCodec.open(key(dek), sealed.readBytes()).toByteArray(Charsets.UTF_8)
+    }
+
+    override fun write(plaintext: ByteArray?) {
+      if (plaintext == null) {
+        file().delete()
+        return
+      }
+      val dek = requireVaultDek(VaultAuthPolicy.OP_TAG)
+      atomicWriteBytes(file(), VaultIndexCodec.seal(key(dek), String(plaintext, Charsets.UTF_8)))
+    }
+
+    override fun exists(): Boolean =
+      PRIVATE_VAULT_FEATURE_FLAG && File(privateVaultRoot(create = false), MEME_PRIVATE_INDEX_FILENAME).isFile
+  }
+
+  private fun memeSourceOf(result: JSONObject, url: String): MemeStore.Source {
+    val decoded = MemeStore.decodeSource(result.optJSONObject("source")) ?: MemeStore.Source()
+    return decoded.copy(url = decoded.url ?: url.takeIf { it.isNotBlank() })
+  }
+
+  private fun memesChanged() {
+    runCatching { sendEvent("memesChanged", mapOf<String, Any?>()) }
+  }
+
+  /** A download or an import has been saved to MediaStore: it joins the collection. */
+  private fun adoptMeme(uri: String, mimeType: String, source: MemeStore.Source?, ask: Boolean) {
+    runCatching {
+      val item = memes.adopt(uri, mimeType, source) ?: return
+      if (ask && memeAskForTags && item.isUntagged) memes.prompt(item)
+      memesChanged()
+    }.onFailure { addError("MEME_ADD_FAILED: ${it.javaClass.simpleName}") }
+  }
+
+  /** A private download: its vault entry joins the collection as a private meme. */
+  private fun adoptPrivateMeme(vaultId: String, plaintext: File, mimeType: String, source: MemeStore.Source?) {
+    val kind = MemeCollection.kindOf(mimeType) ?: return
+    runCatching {
+      val sha = MemeCollection.hashOf { plaintext.inputStream() } ?: return
+      val item = memes.store.registerPrivate(vaultId, kind, sha, source)
+      if (memeAskForTags && item.isUntagged) memes.prompt(item)
+      memesChanged()
+    }.onFailure { addError("MEME_ADD_FAILED: ${it.javaClass.simpleName}") }
+  }
+
+  private fun memeTagMap(tag: MemeStore.Tag) =
+    mapOf("id" to tag.id, "name" to tag.name, "facets" to tag.facets.map { it.wire })
+
+  private fun memeItemMap(item: MemeStore.Item): Map<String, Any?> = mapOf(
+    "id" to item.id,
+    "kind" to item.kind,
+    "isPrivate" to item.isPrivate,
+    "uri" to item.uri,
+    "vaultId" to item.vaultId,
+    "tags" to item.tags,
+    "people" to item.people,
+    "addedAt" to item.addedAt,
+    "taggedAt" to item.taggedAt,
+    "source" to item.source?.let {
+      mapOf(
+        "platform" to it.platform, "account" to it.account, "accountName" to it.accountName,
+        "caption" to it.caption, "url" to it.url, "postedAt" to it.postedAt, "savedAt" to it.savedAt,
+      )
+    },
+  )
+
+  private fun listMemesInternal(): Map<String, Any?> {
+    val store = memes.store
+    runCatching { memes.reconcile() }
+    // Private memes are not reconciled here: reading the vault's listing counts as using the
+    // vault, and browsing memes must not hold it open. A vault delete drops its meme instead.
+    val unlocked = store.privateReadable()
+    if (unlocked) runCatching { store.tidyPrivate() }
+    val snapshot = store.snapshot()
+    snapshot.items.filter { it.isPrivate }.forEach { memes.forgetThumbnail(it.id) }
+    return mapOf(
+      "items" to snapshot.items.map(::memeItemMap),
+      "tags" to snapshot.tags.map(::memeTagMap),
+      "people" to snapshot.people.map { mapOf("id" to it.id, "name" to it.name) },
+      "vaultUnlocked" to unlocked,
+      "hasPrivate" to store.hasPrivate(),
+      "askForTags" to memeAskForTags,
+    )
+  }
+
+  private fun findMeme(id: String): MemeStore.Item? = memes.store.snapshot().items.firstOrNull { it.id == id }
+
+  /** Public memes into the vault, or private ones out of it. The labels move with them. */
+  private fun setMemesPrivateInternal(ids: List<String>, makePrivate: Boolean): Map<String, Any?> {
+    if (!memes.store.privateReadable()) return mapOf("success" to false, "code" to "PRIVATE_VAULT_LOCKED")
+    var failed = 0
+    for (id in ids) {
+      val item = findMeme(id) ?: continue
+      runCatching {
+        if (makePrivate && !item.isPrivate) {
+          val uri = item.uri ?: throw IllegalStateException("MEME_NOT_FOUND")
+          val name = memes.displayName(item)
+          val mime = requireNotNull(appContext.reactContext).contentResolver.getType(Uri.parse(uri))
+            ?: guessMimeType(name)
+          // Copied out of MediaStore only as far as the vault's own import, then removed.
+          val temp = File(privateImportCacheDir(create = true), "${UUID.randomUUID()}")
+          try {
+            memes.open(item)?.use { input -> temp.outputStream().use { input.copyTo(it, PRIVATE_STREAM_BUFFER_BYTES) } }
+              ?: throw IllegalStateException("MEME_NOT_FOUND")
+            val entry = importFileToPrivateVault(temp.absolutePath, name, uri, mime)
+            memes.store.movedToVault(item.id, entry.id)
+            memes.forgetThumbnail(item.id)
+            requireNotNull(appContext.reactContext).contentResolver.delete(Uri.parse(uri), null, null)
+          } finally {
+            temp.delete()
+          }
+        } else if (!makePrivate && item.isPrivate) {
+          val vaultId = item.vaultId ?: throw IllegalStateException("MEME_NOT_FOUND")
+          val copied = copyPrivateVideoToPublicGalleryInternal(vaultId)
+          val uri = copied["uri"] as? String ?: throw IllegalStateException(copied["code"] as? String ?: "MEME_MOVE_FAILED")
+          memes.store.movedOutOfVault(item.id, uri)
+          deletePrivateVideoInternal(vaultId)
+        }
+      }.onFailure {
+        failed++
+        addError("MEME_MOVE_FAILED: ${it.javaClass.simpleName}")
+      }
+    }
+    memesChanged()
+    return mapOf("success" to (failed == 0), "failed" to failed)
+  }
+
+  private fun removeMemesInternal(ids: List<String>): Map<String, Any?> {
+    var failed = 0
+    for (id in ids) {
+      val item = findMeme(id) ?: continue
+      runCatching {
+        if (item.isPrivate) {
+          item.vaultId?.let { deletePrivateVideoInternal(it) }
+          memes.store.remove(item.id)
+        } else {
+          memes.delete(item)
+        }
+        memes.dismissPrompt(item.id)
+      }.onFailure {
+        failed++
+        addError("MEME_REMOVE_FAILED: ${it.javaClass.simpleName}")
+      }
+    }
+    memesChanged()
+    return mapOf("success" to (failed == 0), "failed" to failed)
+  }
+
+  /** The pick in progress: its launcher and the promise waiting on it. Main thread only. */
+  private var memePickLauncher: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.PickVisualMediaRequest>? = null
+  private var memePickPromise: Promise? = null
+
+  /**
+   * The system photo picker, launched from the app's own activity rather than a separate
+   * one. A separate activity put the picker in a task of its own, and backing out of it
+   * brought the app forward with the picker still open behind it: no result ever came, and
+   * the import waited on one. From the app's activity, every way out delivers a result.
+   *
+   * Nothing blocks while the picker is open, so the rest of the module keeps answering.
+   */
+  private fun startMemeImport(promise: Promise) {
+    val activity = appContext.currentActivity as? androidx.activity.ComponentActivity
+    if (activity == null) {
+      promise.resolve(mapOf("success" to false, "code" to MEME_IMPORT_FAILED))
+      return
+    }
+    activity.runOnUiThread {
+      // A pick still open from before is abandoned: its result has nowhere to go now.
+      finishMemeImport(emptyList())
+      memePickPromise = promise
+      val launcher = activity.activityResultRegistry.register(
+        "arsivinyo-meme-import",
+        androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(MEME_PICK_LIMIT),
+      ) { uris -> finishMemeImport(uris) }
+      memePickLauncher = launcher
+      runCatching {
+        launcher.launch(androidx.activity.result.PickVisualMediaRequest(
+          androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+      }.onFailure {
+        addError("MEME_IMPORT_FAILED: ${it.javaClass.simpleName}")
+        finishMemeImport(emptyList())
+      }
+    }
+  }
+
+  private fun finishMemeImport(uris: List<Uri>) {
+    val promise = memePickPromise ?: return
+    memePickPromise = null
+    memePickLauncher?.unregister()
+    memePickLauncher = null
+    if (uris.isEmpty()) {
+      promise.resolve(mapOf("success" to false, "code" to MEME_IMPORT_CANCELLED))
+      return
+    }
+    // Copying can take a while for videos; off the main thread, and off the module's queue.
+    Thread {
+      val result = runCatching { copyPickedMemes(uris) }.getOrElse {
+        addError("MEME_IMPORT_FAILED: ${it.javaClass.simpleName}")
+        mapOf("success" to false, "code" to MEME_IMPORT_FAILED)
+      }
+      promise.resolve(result)
+    }.start()
+  }
+
+  /** Each picked file copied into MediaStore: a picker grant does not outlast the process. */
+  private fun copyPickedMemes(picked: List<Uri>): Map<String, Any?> {
+    val resolver = requireNotNull(appContext.reactContext).contentResolver
+    var imported = 0
+    var failed = 0
+    for (uri in picked) {
+      runCatching {
+        val mime = resolver.getType(uri)?.takeIf { MemeCollection.kindOf(it) != null }
+          ?: throw IllegalStateException("MEME_IMPORT_UNSUPPORTED_TYPE")
+        val name = queryDisplayName(resolver, uri) ?: "meme_${System.currentTimeMillis()}.${extensionForMimeType(mime)}"
+        val saved = saveToMediaStoreWithWriter(name, mime, System.currentTimeMillis()) { output ->
+          resolver.openInputStream(uri)?.use { it.copyTo(output, PRIVATE_STREAM_BUFFER_BYTES) }
+            ?: throw IllegalStateException(MEME_IMPORT_FAILED)
+        }
+        memes.adopt(saved["uri"] as String, mime, MemeStore.Source(platform = "import"))
+          ?: throw IllegalStateException(MEME_IMPORT_FAILED)
+      }.onSuccess { imported++ }.onFailure {
+        failed++
+        addError("MEME_IMPORT_FAILED: ${it.javaClass.simpleName}")
+      }
+    }
+    memesChanged()
+    return mapOf("success" to true, "imported" to imported, "failed" to failed)
+  }
+
+  /** A meme from a paired device: into MediaStore, labels merged by name. */
+  private fun receiveMeme(file: File, meme: JSONObject?) {
+    try {
+      val decoded = MemeStore.decodeMeme(meme)
+      val mime = guessMimeType(file.name).let { guessed ->
+        if (MemeCollection.kindOf(guessed) != null) guessed
+        else if (decoded.kind == "image") "image/jpeg" else "video/mp4"
+      }
+      val sha = MemeCollection.hashOf { file.inputStream() } ?: return
+      val existing = memes.store.snapshot().items.firstOrNull { it.sha256 == sha && !it.isPrivate }
+      if (existing != null) {
+        memes.store.receive(existing.uri ?: return, decoded.kind, sha, decoded.source, decoded.tags, decoded.people)
+      } else {
+        val saved = saveToMediaStoreInternal(file.path, file.name, mime, System.currentTimeMillis())
+        memes.store.receive(saved["uri"] as String, MemeCollection.kindOf(mime) ?: decoded.kind, sha,
+          decoded.source, decoded.tags, decoded.people)
+      }
+      memesChanged()
+    } finally {
+      file.delete()
+    }
+  }
 
   /** The most recent URL a peer asked this phone to fetch, for the screen to offer. */
   @Volatile private var lastPeerUrl: String = ""
@@ -451,6 +743,7 @@ class LocalDownloaderModule : Module() {
       "soundPresetProgress",
       "backupProgress",
       "pairingStateChanged",
+      "memesChanged",
     )
 
     OnCreate {
@@ -780,6 +1073,103 @@ class LocalDownloaderModule : Module() {
       pickAndImportVideoToPrivateVaultInternal()
     }
 
+    // ---- memes ----------------------------------------------------------------
+
+    AsyncFunction("listMemes") { listMemesInternal() }
+
+    AsyncFunction("memeThumbnail") { id: String ->
+      val item = findMeme(id) ?: return@AsyncFunction null
+      if (item.isPrivate) {
+        item.vaultId?.let { runCatching { getPrivateThumbnailUriInternal(it)["uri"] as? String }.getOrNull() }
+      } else {
+        memes.thumbnail(item)
+      }
+    }
+
+    /** Search is here rather than in TS, so there is one Turkish folding, held to the vectors. */
+    AsyncFunction("searchMemes") { query: String, filter: Map<String, Any?> ->
+      @Suppress("UNCHECKED_CAST")
+      fun strings(key: String) = (filter[key] as? List<String>).orEmpty()
+      MemeStore.search(memes.store.snapshot(), query, MemeStore.Filter(
+        facets = strings("facets").mapNotNull { MemeStore.Facet.of(it) }.toSet(),
+        people = strings("people").toSet(),
+        platform = (filter["platform"] as? String)?.ifBlank { null },
+        onlyPrivate = filter["onlyPrivate"] as? Boolean ?: false,
+        onlyUntagged = filter["onlyUntagged"] as? Boolean ?: false,
+      )).map { it.id }
+    }
+
+    AsyncFunction("memeSuggestions") { id: String ->
+      val snapshot = memes.store.snapshot()
+      val item = snapshot.items.firstOrNull { it.id == id } ?: return@AsyncFunction emptyList<String>()
+      MemeStore.suggestions(item, snapshot).map { it.id }
+    }
+
+    AsyncFunction("createMemeTag") { name: String, facets: List<String> ->
+      val tag = memes.store.tag(name, facets.mapNotNull { MemeStore.Facet.of(it) })
+      memesChanged()
+      memeTagMap(tag)
+    }
+
+    AsyncFunction("createMemePerson") { name: String ->
+      val person = memes.store.person(name)
+      memesChanged()
+      mapOf("id" to person.id, "name" to person.name)
+    }
+
+    AsyncFunction("setMemeTagFacets") { tagId: String, facets: List<String> ->
+      memes.store.setFacets(tagId, facets.mapNotNull { MemeStore.Facet.of(it) })
+      memesChanged()
+    }
+
+    AsyncFunction("renameMemeTag") { tagId: String, name: String ->
+      memes.store.renameTag(tagId, name)
+      memesChanged()
+    }
+
+    AsyncFunction("deleteMemeTag") { tagId: String ->
+      memes.store.deleteTag(tagId)
+      memesChanged()
+    }
+
+    AsyncFunction("labelMemes") { input: Map<String, Any?> ->
+      @Suppress("UNCHECKED_CAST")
+      fun set(key: String) = (input[key] as? List<String>).orEmpty().toSet()
+      val ids = set("ids")
+      try {
+        memes.store.label(ids, set("addTags"), set("removeTags"), set("addPeople"), set("removePeople"),
+          markTagged = input["markTagged"] as? Boolean ?: true)
+      } catch (_: MemeStore.LockedException) {
+        return@AsyncFunction mapOf("success" to false, "code" to "PRIVATE_VAULT_LOCKED")
+      }
+      ids.forEach { memes.dismissPrompt(it) }
+      memesChanged()
+      mapOf("success" to true)
+    }
+
+    AsyncFunction("setMemesPrivate") { ids: List<String>, makePrivate: Boolean ->
+      setMemesPrivateInternal(ids, makePrivate)
+    }
+
+    AsyncFunction("removeMemes") { ids: List<String> -> removeMemesInternal(ids) }
+
+    AsyncFunction("importMemes") { promise: Promise -> startMemeImport(promise) }
+
+    AsyncFunction("setMemeAskForTags") { enabled: Boolean ->
+      memeAskForTags = enabled
+    }
+
+    AsyncFunction("dismissMemePrompt") { id: String -> memes.dismissPrompt(id) }
+
+    /** Sends a meme with its labels. A private one does not travel: the vault stays here. */
+    AsyncFunction("pairingSendMeme") { fingerprint: String, id: String ->
+      val item = findMeme(id)?.takeIf { !it.isPrivate } ?: return@AsyncFunction false
+      val source = ItemSource(memes.displayName(item), memes.sizeOf(item), null, memes.meme(item)) {
+        memes.open(item) ?: throw java.io.IOException("the meme could not be opened")
+      }
+      pairing().sendMemeToPeer(fingerprint, source)
+    }
+
     // ---- Music library (in-app audio player) ----
 
     Function("isSoundsSupported") {
@@ -1033,6 +1423,15 @@ class LocalDownloaderModule : Module() {
           )
         )
       }
+      if (wanted.contains(BackupFormat.SECTION_MEMES)) {
+        sections.add(
+          BackupSections.plan(
+            BackupFormat.SECTION_MEMES,
+            BackupPorts.collectMemes(backupMemesPort()),
+            slotFor(BackupFormat.SECTION_MEMES),
+          )
+        )
+      }
       if (wanted.contains(BackupFormat.SECTION_SETTINGS) && settingsBlob != null) {
         sections.add(
           BackupSections.plan(
@@ -1216,6 +1615,7 @@ class LocalDownloaderModule : Module() {
         val targets = mapOf(
           BackupFormat.SECTION_VAULT to BackupPorts.vaultTarget(backupVaultPort(), staging),
           BackupFormat.SECTION_MUSIC to BackupPorts.musicTarget(backupMusicPort(), staging),
+          BackupFormat.SECTION_MEMES to BackupPorts.memesTarget(backupMemesPort(), staging),
           BackupFormat.SECTION_SETTINGS to settingsTarget,
           BackupFormat.SECTION_COOKIES to BackupPorts.cookieTarget(backupCookiePort()),
         )
@@ -1888,7 +2288,10 @@ class LocalDownloaderModule : Module() {
       }
       val mimeType = (input["mimeType"] as? String)?.trim()?.takeIf { it.isNotBlank() } ?: guessMimeType(filename)
       val dateTakenMs = (input["dateTakenMs"] as? Number)?.toLong() ?: System.currentTimeMillis()
-      saveToMediaStoreInternal(filePath, filename, mimeType, dateTakenMs)
+      val saved = saveToMediaStoreInternal(filePath, filename, mimeType, dateTakenMs)
+      // Only downloads come through here, so a video or an image is a meme.
+      (saved["uri"] as? String)?.let { adoptMeme(it, mimeType, pendingMemeSources.remove(filePath), ask = true) }
+      saved
     }
 
     AsyncFunction("getYtDlpUpdateStatus") {
@@ -2501,6 +2904,7 @@ class LocalDownloaderModule : Module() {
                 privateVideoId = privateEntry.id
                 finalIsPrivate = true
                 finalFilePath = null
+                adoptPrivateMeme(privateEntry.id, File(filePath), guessMimeType(filename), memeSourceOf(result, url))
                 runCatching { File(filePath).delete() }
               }.onFailure { privateError ->
                 val privateMessage = privateError.message ?: "PRIVATE_STORAGE_WRITE_FAILED"
@@ -2524,6 +2928,9 @@ class LocalDownloaderModule : Module() {
                   dateTakenMs = System.currentTimeMillis(),
                 )
                 debug("Task[$taskId] background save success uri=${saveResult["uri"]}")
+                (saveResult["uri"] as? String)?.let {
+                  adoptMeme(it, guessMimeType(filename), memeSourceOf(result, url), ask = true)
+                }
               }.onFailure { saveError ->
                 val saveMessage = "Failed to save media to gallery: ${saveError.message ?: "unknown error"}"
                 updateStatus(taskId, "FAILURE", filename, filePath, sizeMb, "INTERNAL_ERROR", saveMessage)
@@ -2531,6 +2938,9 @@ class LocalDownloaderModule : Module() {
                 addError("BACKGROUND_SAVE_FAILED: task=$taskId message=$saveMessage")
                 return@runCatching
               }
+            } else if (filename != null && filePath != null) {
+              // The screen saves this one itself, later; the source waits for it.
+              pendingMemeSources[filePath] = memeSourceOf(result, url)
             }
           }
 
@@ -3367,12 +3777,27 @@ class LocalDownloaderModule : Module() {
   }
 
   private fun backupVaultPort(): BackupPorts.VaultPort = object : BackupPorts.VaultPort {
-    override fun list(): List<BackupPorts.VaultRecord> = synchronized(privateVaultLock) {
+    override fun list(): List<BackupPorts.VaultRecord> {
+      // A private meme is a vault entry with labels: they travel in its entry.
+      val snapshot = runCatching { memes.store.snapshot() }.getOrNull()
+      val privateMemes = snapshot?.items.orEmpty().filter { it.isPrivate && it.vaultId != null }.associateBy { it.vaultId!! }
+      return synchronized(privateVaultLock) { listVaultRecords(privateMemes, snapshot) }
+    }
+
+    private fun listVaultRecords(
+      privateMemes: Map<String, MemeStore.Item>,
+      snapshot: MemeStore.Snapshot?,
+    ): List<BackupPorts.VaultRecord> {
       val index = readPrivateVaultIndex()
       val items = index.optJSONArray("items") ?: JSONArray()
-      (0 until items.length()).mapNotNull { i ->
+      return (0 until items.length()).mapNotNull { i ->
         val json = items.optJSONObject(i) ?: return@mapNotNull null
         val entry = privateVideoEntryFromJson(json) ?: return@mapNotNull null
+        val meme = privateMemes[entry.id]
+        if (meme != null && snapshot != null) {
+          val (tags, people) = memes.store.labelsOf(meme, snapshot)
+          json.put("meme", MemeStore.encodeMeme(meme.kind, meme.source, tags, people))
+        }
         BackupPorts.VaultRecord(
           id = entry.id,
           title = entry.title,
@@ -3414,12 +3839,90 @@ class LocalDownloaderModule : Module() {
       name: String,
       mimeType: String,
       meta: JSONObject,
-    ): String = importFileToPrivateVault(
-      sourceFilePath = staged.absolutePath,
-      filename = sanitizePrivateTitle(name),
-      sourceUrl = meta.optString("sourceUrl").ifBlank { "backup://restore" },
-      mimeType = mimeType.ifBlank { "video/mp4" },
-    ).id
+    ): String {
+      val id = importFileToPrivateVault(
+        sourceFilePath = staged.absolutePath,
+        filename = sanitizePrivateTitle(name),
+        sourceUrl = meta.optString("sourceUrl").ifBlank { "backup://restore" },
+        mimeType = mimeType.ifBlank { "video/mp4" },
+      ).id
+      // A private meme: its labels come back with it, into the private index.
+      meta.optJSONObject("meme")?.let { memeObject ->
+        runCatching {
+          val decoded = MemeStore.decodeMeme(memeObject)
+          val sha = MemeCollection.hashOf { staged.inputStream() } ?: return@runCatching
+          memes.store.registerPrivate(id, decoded.kind, sha, decoded.source, decoded.tags, decoded.people)
+        }.onFailure { addError("MEME_RESTORE_FAILED: ${it.javaClass.simpleName}") }
+      }
+      return id
+    }
+  }
+
+  private fun backupMemesPort(): BackupPorts.MemesPort = object : BackupPorts.MemesPort {
+    override fun list(): List<BackupPorts.MemeRecord> {
+      memes.reconcile()
+      val snapshot = memes.store.snapshot()
+      return snapshot.items.filter { !it.isPrivate }.map { item ->
+        val (tags, people) = memes.store.labelsOf(item, snapshot)
+        BackupPorts.MemeRecord(
+          id = item.id,
+          fileName = memes.displayName(item),
+          sizeBytes = memes.sizeOf(item),
+          meta = JSONObject()
+            .put("memeId", item.id).put("sha256", item.sha256)
+            .put("addedAt", item.addedAt).put("taggedAt", item.taggedAt)
+            .put("meme", MemeStore.encodeMeme(item.kind, item.source, tags, people)),
+        )
+      }
+    }
+
+    override fun open(record: BackupPorts.MemeRecord): InputStream {
+      val item = findMeme(record.id) ?: throw IllegalStateException("MEME_NOT_FOUND")
+      return memes.open(item) ?: throw IllegalStateException("MEME_NOT_FOUND")
+    }
+
+    override fun vocabulary(): JSONObject {
+      val snapshot = memes.store.snapshot()
+      val open = snapshot.items.filter { !it.isPrivate }
+      val hidden = snapshot.items.filter { it.isPrivate }
+      val hiddenTags = hidden.flatMap { it.tags }.toSet() - open.flatMap { it.tags }.toSet()
+      val hiddenPeople = hidden.flatMap { it.people }.toSet() - open.flatMap { it.people }.toSet()
+      return JSONObject()
+        .put("tags", JSONArray().apply {
+          snapshot.tags.filter { it.id !in hiddenTags }.forEach {
+            put(JSONObject().put("name", it.name).put("facets", JSONArray(it.facets.map { f -> f.wire })))
+          }
+        })
+        .put("people", JSONArray().apply {
+          snapshot.people.filter { it.id !in hiddenPeople }.forEach { put(JSONObject().put("name", it.name)) }
+        })
+    }
+
+    override fun existingIdFor(sha256: String): String? =
+      memes.store.snapshot().items.firstOrNull { it.sha256 == sha256 && !it.isPrivate }?.id
+
+    override fun mergeLabels(existingId: String, meta: JSONObject) {
+      val item = findMeme(existingId) ?: return
+      val decoded = MemeStore.decodeMeme(meta.optJSONObject("meme"))
+      memes.store.receive(item.uri ?: return, item.kind, item.sha256, item.source, decoded.tags, decoded.people)
+    }
+
+    override fun restore(staged: File, name: String, meta: JSONObject): String {
+      val decoded = MemeStore.decodeMeme(meta.optJSONObject("meme"))
+      val guessed = guessMimeType(name)
+      val mime = if (MemeCollection.kindOf(guessed) != null) guessed else if (decoded.kind == "image") "image/jpeg" else "video/mp4"
+      val saved = saveToMediaStoreInternal(staged.path, name.substringAfterLast('/'), mime, System.currentTimeMillis())
+      val item = memes.store.receive(saved["uri"] as String, decoded.kind, meta.optString("sha256"), decoded.source,
+        decoded.tags, decoded.people)
+      if (meta.optLong("taggedAt") > 0 && item.isUntagged) memes.store.label(setOf(item.id))
+      return item.id
+    }
+
+    override fun restoreVocabulary(json: JSONObject) {
+      val decoded = MemeStore.decodeMeme(JSONObject().put("tags", json.optJSONArray("tags") ?: JSONArray())
+        .put("people", json.optJSONArray("people") ?: JSONArray()))
+      memes.store.ensure(decoded.tags, decoded.people)
+    }
   }
 
   /**
@@ -5223,6 +5726,8 @@ class LocalDownloaderModule : Module() {
         runCatching { File(privateVaultObjectsDir(create = true), removed.encFileName).delete() }
         deleteThumbnailFile(removed.thumbFileName)
         runCatching { File(privatePlaybackCacheDir(create = true), "${removed.id}.mp4").delete() }
+        // A private meme is this vault entry, so it goes with it.
+        runCatching { memes.store.forgetVault(removed.id) }
         runCatching {
           synchronized(vaultLoopbackLock) {
             // Invalidate any in-flight playback sessions for the deleted entry.
@@ -6018,7 +6523,7 @@ class LocalDownloaderModule : Module() {
     } ?: throw IllegalStateException("PRIVATE_VIDEO_NOT_FOUND")
     privateTrace(
       traceId,
-      "prepare internal index hit id=${entry.id} title=${entry.title} elapsedMs=${System.currentTimeMillis() - lookupStartedAt} cipherHint=${entry.cipherVersion}"
+      "prepare internal index hit id=${entry.id} elapsedMs=${System.currentTimeMillis() - lookupStartedAt} cipherHint=${entry.cipherVersion}"
     )
 
     val encryptedFile = File(privateVaultObjectsDir(create = true), entry.encFileName)
@@ -9332,6 +9837,13 @@ class LocalDownloaderModule : Module() {
      * empty one, and leaves this untouched — so a downgrade is confusing rather than fatal.
      */
     private const val PRIVATE_VAULT_INDEX_V2_FILENAME = "index.v2.enc"
+    /** Beside the vault's listing, so whatever removes the vault removes this with it. */
+    private const val MEME_IMPORT_FAILED = "MEME_IMPORT_FAILED"
+    private const val MEME_IMPORT_CANCELLED = "MEME_IMPORT_PICK_CANCELLED"
+    /** Below the platform's own ceiling (MediaStore.getPickImagesMaxLimit, 100 on stock builds). */
+    private const val MEME_PICK_LIMIT = 50
+    private const val MEME_PRIVATE_INDEX_FILENAME = "memes.v1.enc"
+    private val MEME_PRIVATE_INFO = "arsivinyo/key/v1/memes-private-index".toByteArray(Charsets.UTF_8)
     private const val PRIVATE_PLAYBACK_CACHE_DIRNAME = "private_playback"
     private const val PRIVATE_EXPORT_CACHE_DIRNAME = "private_export"
     private const val PRIVATE_IMPORT_CACHE_DIRNAME = "private_import"

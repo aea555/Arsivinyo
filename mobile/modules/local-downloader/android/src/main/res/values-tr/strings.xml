@@ -38,4 +38,9 @@
   <string name="ldl_title_backup">Arsivinyo yedekleme</string>
   <string name="ldl_sub_exporting">Yedek yazılıyor…</string>
   <string name="ldl_sub_restoring">Yedek geri yükleniyor…</string>
+
+  <string name="ldl_memes_channel_name">Mimler</string>
+  <string name="ldl_memes_channel_description">Bir mimin indirmesi bitince etiket ister</string>
+  <string name="ldl_meme_prompt_title">Bir mim indirildi</string>
+  <string name="ldl_meme_prompt_text">Etiketlemek için dokun</string>
 </resources>

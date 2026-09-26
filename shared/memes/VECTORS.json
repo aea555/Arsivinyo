@@ -1,0 +1,17 @@
+{
+  "comment": "Search folding both apps must agree on. Each input folds to the output; tokens split on anything that is not a letter or a digit.",
+  "fold": [
+    ["LAUBALİLİK", "laubalilik"],
+    ["laubalılık", "laubalilik"],
+    ["Şaşırmak", "sasirmak"],
+    ["IĞDIR", "igdir"],
+    ["Çok güzel", "cok guzel"],
+    ["Öğle Üstü", "ogle ustu"],
+    ["Arda Turan", "arda turan"],
+    ["café", "cafe"]
+  ],
+  "tokens": [
+    ["bizim laubalilik seviyesi!!", ["bizim", "laubalilik", "seviyesi"]],
+    ["@arda_turan #meme 2024", ["arda", "turan", "meme", "2024"]]
+  ]
+}

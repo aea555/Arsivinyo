@@ -14,6 +14,8 @@ data class ItemSource(
   val sizeBytes: Long,
   /** The track's cover, sent along with it. The phone keeps covers beside the files. */
   val artwork: java.io.File? = null,
+  /** A meme's kind, source and labels by name: `shared/memes/CONTRACT.md`. */
+  val meme: org.json.JSONObject? = null,
   val open: () -> InputStream,
 )
 
@@ -48,8 +50,11 @@ interface PeerContent {
    */
   fun destinationFor(name: String, kind: String): String?
 
-  /** A completed file has landed at [path]; take it into the library. */
-  fun accepted(path: String, kind: String, artworkPath: String?)
+  /**
+   * A completed file has landed at [path]; take it into the library. [meme] is what the
+   * sender said about a meme, unchecked: it is data to merge, never an instruction.
+   */
+  fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?)
 
   /** The peer asked this device to fetch a URL itself. */
   fun download(url: String, mediaKind: String)

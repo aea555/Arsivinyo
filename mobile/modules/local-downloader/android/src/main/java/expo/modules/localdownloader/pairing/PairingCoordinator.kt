@@ -21,12 +21,14 @@ class PairingCoordinator(
   private val onChanged: () -> Unit,
   /** A peer sent a URL for this phone to fetch. Shown to the user, never started. */
   private val onDownloadRequested: (url: String, mediaKind: String) -> Unit,
+  /** A meme arrived, verified, with what the sender said about it. */
+  private val onMemeReceived: (file: File, meme: org.json.JSONObject?) -> Unit = { file, _ -> file.delete() },
 ) {
 
   val identity = DeviceIdentity(context)
 
   private val registry = PeerRegistry(File(context.filesDir, "pairing/peers.json"))
-  private val content = SoundsContent(context, store, onDownloadRequested)
+  private val content = SoundsContent(context, store, onDownloadRequested, onMemeReceived)
   private val service = PairingService(identity, registry, content, SessionKeys::sslContext)
   private val discovery = Discovery(context)
 
@@ -181,6 +183,12 @@ class PairingCoordinator(
     val session = service.sessionFor(fingerprint) ?: return false
     val source = content.openItem(songId) ?: return false
     return session.send(source, "music")
+  }
+
+  /** A meme, with its labels by name. Private memes never come here: the vault does not travel. */
+  fun sendMemeToPeer(fingerprint: String, source: ItemSource): Boolean {
+    val session = service.sessionFor(fingerprint) ?: return false
+    return session.send(source, "meme")
   }
 
   fun cancelTransfer(fingerprint: String) {

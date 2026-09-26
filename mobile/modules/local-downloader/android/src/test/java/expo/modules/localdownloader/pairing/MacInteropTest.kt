@@ -1,5 +1,6 @@
 package expo.modules.localdownloader.pairing
 
+import expo.modules.localdownloader.memes.MemeStore
 import java.io.File
 import java.security.MessageDigest
 import org.json.JSONArray
@@ -32,6 +33,7 @@ class MacInteropTest {
     val track = File(work, "Phone Track.m4a").apply { writeBytes(pattern(345_678, 31)) }
     val cover = File(work, "phone-cover.jpg").apply { writeBytes(pattern(4_000, 7)) }
     var receivedArtwork: String? = null
+    var receivedMeme: String? = null
     var requestedUrl = ""
     var requestedKind = ""
     val received = mutableListOf<File>()
@@ -43,7 +45,13 @@ class MacInteropTest {
       override fun openItem(id: String) =
         if (id == "p1") ItemSource(track.name, track.length(), cover) { track.inputStream() } else null
       override fun destinationFor(name: String, kind: String) = File(work, "in-" + File(name).name).path
-      override fun accepted(path: String, kind: String, artworkPath: String?) {
+      override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?) {
+        if (kind == "meme") {
+          val decoded = MemeStore.decodeMeme(meme)
+          val tags = decoded.tags.joinToString(";") { (name, facets) -> name + ":" + facets.joinToString(",") { it.wire } }
+          receivedMeme = "${decoded.kind}|$tags|${decoded.people.joinToString(";")}|${decoded.source?.caption}"
+          return
+        }
         receivedArtwork = artworkPath
         synchronized(received) { received.add(File(path)) }
       }
@@ -81,6 +89,14 @@ class MacInteropTest {
 
       assertTrue("the Mac sends a link", waitFor(30) { requestedUrl.isNotEmpty() })
       File(dir, "phone-link").writeText("$requestedKind $requestedUrl")
+
+      assertTrue("a meme from the Mac arrives", waitFor(60) { receivedMeme != null })
+      File(dir, "phone-meme").writeText(receivedMeme!!)
+      assertTrue("the Mac asks for one back", waitFor(30) { File(dir, "mac-wants-meme").exists() })
+      val meme = File(work, "rahat.mp4").apply { writeBytes(pattern(12_000, 29)) }
+      val labels = MemeStore.encodeMeme("video", null, listOf("rahat" to listOf(MemeStore.Facet.VIBE)), listOf("Fatih Terim"))
+      assertTrue("a meme goes to the Mac",
+        service.sessions().first().send(ItemSource(meme.name, meme.length(), null, labels) { meme.inputStream() }, "meme"))
 
       assertTrue("the Mac finishes", waitFor(60) { File(dir, "mac-done").exists() })
       assertEquals("", File(dir, "mac-failures").takeIf { it.exists() }?.readText() ?: "")

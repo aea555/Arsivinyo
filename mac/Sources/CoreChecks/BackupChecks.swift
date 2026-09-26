@@ -120,9 +120,10 @@ extension CoreChecks {
         defer { world.keybox.deleteKeychainItem() }
         let report = try await Backup.restore(from: file, secret: Self.fixturePassphrase, sections: Set(BackupSection.allCases),
                                               into: world.sources, staging: scratch.appendingPathComponent("staging"))
-        check(report.restored == 3 && report.failed == 0,
+        check(report.restored == 5 && report.failed == 0,
               "a backup the phone wrote restores here (\(report.restored) added, \(report.failed) failed)")
         try Self.checkRestored(world, into: &self)
+        try Self.checkRestoredMemes(world, into: &self)
         check(!world.presets.settingsBlob().keys.contains("@arsivinyo_theme"),
               "and the phone's own settings, its theme, stay on the phone")
     }

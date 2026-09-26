@@ -74,7 +74,8 @@
     "audioModeHintOff": "Downloads video. Turn on to grab audio only.",
     "musicLibrary": "Music library",
     "musicLibraryHint": "Open the music player and manage your music.",
-    "savedToMusic": "Saved to music library."
+    "savedToMusic": "Saved to music library.",
+    "navMemes": "Memes"
   },
   "privateVault": {
     "title": "Private Vault",
@@ -568,13 +569,15 @@
       "vault": "Private vault",
       "music": "Music library",
       "settings": "Preferences",
-      "cookies": "Cookie profiles"
+      "cookies": "Cookie profiles",
+      "memes": "Memes"
     },
     "sectionHint": {
       "vault": "Videos in the private vault",
       "music": "Tracks, cover art, playlists and preset settings",
       "settings": "Theme, download location and saved presets",
-      "cookies": "Saved sign-ins for supported sites"
+      "cookies": "Saved sign-ins for supported sites",
+      "memes": "Memes with their tags, people and where they came from"
     },
     "sectionSummary": "{{count}} items · {{size}}",
     "secretTitle": "Protect it with",
@@ -677,5 +680,82 @@
     "empty": "No tracks to send.",
     "autoDownloadLinks": "Download links automatically",
     "autoDownloadLinksHint": "A link a paired device sends starts downloading without asking."
+  },
+  "memes": {
+    "title": "Memes",
+    "empty": "No memes yet",
+    "emptyHint": "Videos and images you download land here, with the post they came from. You can also import from your photos.",
+    "import": "Import",
+    "importDone": "{{count}} imported",
+    "importFailed": "{{count}} could not be imported",
+    "searchPlaceholder": "Search tags, people, captions",
+    "noResults": "Nothing matches",
+    "untagged": "Untagged",
+    "untaggedCount": "{{count}} untagged",
+    "private": "Private",
+    "people": "People",
+    "peopleCount": "People ({{count}})",
+    "review": "Review",
+    "tags": "Tags",
+    "unlockToShowPrivate": "Private memes appear while the vault is unlocked.",
+    "unlock": "Unlock",
+    "facet": {
+      "reaction": "Reaction",
+      "vibe": "Vibe",
+      "emotion": "Emotion",
+      "action": "Action",
+      "context": "Context"
+    },
+    "selected": "{{count}} selected",
+    "tag": "Tag",
+    "makePrivate": "Make private",
+    "makePublic": "Make public",
+    "send": "Send",
+    "sendTo": "Send to",
+    "sent": "Sending to {{name}}",
+    "sendFailed": "Could not send. Wait for the transfer in progress to finish.",
+    "privateNotSent": "Private memes stay on this phone.",
+    "delete": "Delete",
+    "deleteTitle": "Delete {{count}} memes?",
+    "deleteBody": "The files are deleted from this phone. This cannot be undone.",
+    "lockedError": "Unlock the vault first.",
+    "moveFailed": "{{count}} could not be moved.",
+    "source": {
+      "imported": "Imported",
+      "fromDevice": "From a paired device",
+      "account": "@{{account}}",
+      "openPost": "Open the post",
+      "savedAt": "Saved {{date}}"
+    },
+    "sheet": {
+      "one": "Tag the meme",
+      "many": "Tag {{count}} memes",
+      "review": "Untagged {{index}} of {{total}}",
+      "prompt": "New meme"
+    },
+    "addPlaceholder": "Add a tag or a person",
+    "addTag": "Tag “{{name}}”",
+    "addPerson": "Person “{{name}}”",
+    "suggestions": "Suggested",
+    "tagsLabel": "Tags",
+    "peopleLabel": "People",
+    "onSome": "On some",
+    "newTagFacets": "What this tag signifies (optional)",
+    "save": "Save",
+    "later": "Later",
+    "skip": "Skip",
+    "done": "Done",
+    "play": "Play",
+    "manager": {
+      "title": "Tags",
+      "empty": "No tags yet. Add one while tagging a meme.",
+      "rename": "Rename",
+      "delete": "Delete",
+      "deleteTitle": "Delete “{{name}}”?",
+      "deleteBody": "It is taken off every meme that has it.",
+      "facetsHint": "Facets say what kind of meaning a tag is. A tag can have any number, or none.",
+      "askForTags": "Ask for tags after a download",
+      "askForTagsHint": "A notification that opens the new meme. It names nothing about it."
+    }
   }
 }

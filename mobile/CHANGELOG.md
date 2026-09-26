@@ -16,6 +16,16 @@ All notable changes to this project are documented here. Format based on [Keep a
   SHA-256 of that key is the fingerprint shown when pairing. The vault is deliberately not
   reachable over this channel: it stays confined to the device that made it, and a
   `.avsbck` backup remains the only way to move its contents.
+- **Memes.** Every video or image you download, and anything you import from the photo
+  picker, joins a collection with the post it came from: platform, account and caption.
+  A download is found by a word of its caption with no tagging at all, and "laubalilik",
+  "LAUBALİLİK" and "laubalılık" find the same meme. Tags are free and carry any number of
+  facets (reaction, vibe, emotion, action, context); people are labels of their own. A
+  notification after a download opens the new meme for tagging; the untagged ones wait in
+  an inbox and review mode goes through them one by one; a selection is tagged in one go.
+  A meme can be moved into the vault, and its labels go with it into a second index under
+  the vault's key. Sends to a paired device and backups carry memes with their labels by
+  name, so the Mac merges them into its own. `shared/memes/CONTRACT.md` is the contract.
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is

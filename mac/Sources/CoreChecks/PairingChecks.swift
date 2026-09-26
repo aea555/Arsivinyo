@@ -273,6 +273,28 @@ extension CoreChecks {
 
             _ = mac.sessions.first?.requestDownload(url: "https://example.com/song", mediaKind: "audio")
             runner.check(waitFor(30) { text("phone-link") == "audio https://example.com/song" }, "a link reaches the phone, as audio")
+
+            // A meme, both ways, with its labels by name.
+            let arda = work.appendingPathComponent("arda.mp4")
+            try pattern(20_000, 19).write(to: arda)
+            let labels = try JSONSerialization.data(withJSONObject: [
+                "kind": "video",
+                "source": ["platform": "twitter", "caption": "bizim laubalilik seviyesi", "savedAt": 0],
+                "tags": [["name": "laubalılık", "facets": ["vibe", "action"]]],
+                "people": [["name": "Arda Turan"]],
+            ] as [String: Any])
+            sent = false
+            runner.check(mac.sessions.first?.send(ItemSource(name: "arda.mp4", sizeBytes: 20_000, file: arda, meme: labels),
+                                                  kind: "meme") == true && waitFor(60) { sent },
+                         "a meme goes to the phone")
+            runner.check(waitFor(30) { text("phone-meme") == "video|laubalılık:vibe,action|Arda Turan|bizim laubalilik seviyesi" },
+                         "and arrives there as a meme, tags, facets, people and caption intact")
+            try "".write(to: file("mac-wants-meme"), atomically: true, encoding: .utf8)
+            runner.check(waitFor(60) { content.receivedMemes.count == 1 }, "a meme from the phone arrives as a meme")
+            let back = content.receivedMemes.first.map(MemeTransfer.decode)
+            runner.check(back?.tags.first?.0 == "rahat" && back?.tags.first?.1 == [.vibe] && back?.people == ["Fatih Terim"]
+                         && content.received.last.flatMap { try? Data(contentsOf: $0) } == pattern(12_000, 29),
+                         "whole, with the phone's tags and people")
         } catch {
             runner.check(false, "threw: \(error)")
         }

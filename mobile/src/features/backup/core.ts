@@ -11,7 +11,7 @@
 export const BACKUP_EXTENSION = 'avsbck';
 
 /** Wire values, mirrored from `BackupFormat`. Never rename one in place. */
-export const BACKUP_SECTIONS = ['vault', 'music', 'settings', 'cookies'] as const;
+export const BACKUP_SECTIONS = ['vault', 'music', 'memes', 'settings', 'cookies'] as const;
 export type BackupSectionId = (typeof BACKUP_SECTIONS)[number];
 
 export type SecretKind = 'password' | 'passphrase';

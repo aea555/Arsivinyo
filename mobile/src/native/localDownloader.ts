@@ -5,10 +5,18 @@ export {
   addDownloadProgressListener,
   addPrivateVaultMigrationProgressListener,
   addPairingStateListener,
+  addMemesChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from '../../modules/local-downloader/src';
 export type {
+  LocalMeme,
+  LocalMemeFacet,
+  LocalMemeFilter,
+  LocalMemeLibrary,
+  LocalMemePerson,
+  LocalMemeSource,
+  LocalMemeTag,
   LocalAudioFormat,
   LocalAudioFormatState,
   LocalAudioPresetDiagnostics,

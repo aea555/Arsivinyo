@@ -99,6 +99,34 @@ object BackupPorts {
     fun restoreAutoPresetConfig(json: JSONObject)
   }
 
+  // ------------------------------------------------------------------ memes
+
+  data class MemeRecord(
+    val id: String,
+    val fileName: String,
+    val sizeBytes: Long,
+    /** `memeId`, `sha256`, `addedAt`, `taggedAt`, and `meme`: kind, source, labels by name. */
+    val meta: JSONObject,
+  )
+
+  /** The memes that are not private. Private ones travel in the vault section. */
+  interface MemesPort {
+    fun list(): List<MemeRecord>
+    fun open(record: MemeRecord): InputStream
+
+    /** Tags and people by name, leaving out any that only private memes use. */
+    fun vocabulary(): JSONObject
+
+    /** The local meme with this content, if there is one. */
+    fun existingIdFor(sha256: String): String?
+
+    /** The same meme is already here: it only gains the labels in [meta]. */
+    fun mergeLabels(existingId: String, meta: JSONObject)
+
+    fun restore(staged: java.io.File, name: String, meta: JSONObject): String
+    fun restoreVocabulary(json: JSONObject)
+  }
+
   // ------------------------------------------------------------------ cookies
 
   data class CookieRecord(
@@ -188,6 +216,20 @@ object BackupPorts {
       items.add(BackupSections.blobItem(BackupSections.BLOB_AUTO_PRESETS, it))
     }
     return items
+  }
+
+  fun collectMemes(port: MemesPort): List<BackupSections.BackupItem> {
+    val items = port.list().map { record ->
+      BackupSections.BackupItem(
+        name = record.fileName,
+        kind = BackupSections.KIND_MEDIA,
+        size = record.sizeBytes,
+        meta = record.meta,
+        writePayload = { out -> port.open(record).use { BackupContainer.copy(it, out) } },
+      )
+    }
+    // The vocabulary last, so tags no meme uses yet, and their facets, survive too.
+    return items + BackupSections.blobItem(BackupSections.BLOB_MEMES_INDEX, port.vocabulary())
   }
 
   fun collectCookies(port: CookiePort): List<BackupSections.BackupItem> =
@@ -389,6 +431,54 @@ object BackupPorts {
         } finally {
           staged.file.delete()
           art?.delete()
+        }
+      }
+    }
+
+  /**
+   * Memes by content: one already here only gains the labels, whatever its name. Every size
+   * could collide, because the collection keeps hashes and not sizes; the payload is staged
+   * anyway, so the only cost is a lookup.
+   */
+  fun memesTarget(port: MemesPort, staging: Staging): BackupSections.RestoreTarget =
+    object : BackupSections.RestoreTarget {
+      private val index = object : BackupSections.DuplicateIndex {
+        override fun couldCollideAt(size: Long) = true
+        override fun existingIdFor(sha256: String, size: Long) = port.existingIdFor(sha256)
+      }
+
+      override fun duplicates() = index
+
+      override fun screen(header: BackupFormat.EntryHeader) =
+        if (header.kind == BackupSections.KIND_MEDIA || header.kind == BackupSections.KIND_BLOB) null
+        else BackupSections.ItemOutcome.SKIPPED_UNWANTED
+
+      override fun isBookkeeping(header: BackupFormat.EntryHeader) = header.kind == BackupSections.KIND_BLOB
+
+      override fun store(header: BackupFormat.EntryHeader, payload: InputStream): Any? {
+        if (header.kind == BackupSections.KIND_BLOB) {
+          if (header.meta.optString("blobId") == BackupSections.BLOB_MEMES_INDEX) {
+            port.restoreVocabulary(JSONObject(String(payload.readBytes(), Charsets.UTF_8)))
+          }
+          return null
+        }
+        return stage(staging, header, payload)
+      }
+
+      override fun discard(token: Any?) {
+        (token as? StagedMedia)?.file?.delete()
+      }
+
+      override fun onDuplicate(header: BackupFormat.EntryHeader, existingId: String?) {
+        if (existingId != null && header.kind == BackupSections.KIND_MEDIA) port.mergeLabels(existingId, header.meta)
+      }
+
+      override fun commit(token: Any?, trailer: BackupFormat.EntryTrailer) {
+        val staged = token as? StagedMedia ?: return
+        try {
+          port.restore(staged.file, staged.header.name, JSONObject(staged.header.meta.toString()).put("sha256", trailer.sha256))
+        } finally {
+          staged.file.delete()
         }
       }
     }

@@ -74,7 +74,8 @@
     "audioModeHintOff": "Video indirir. Yalnızca sesi almak için açın.",
     "musicLibrary": "Müzik kitaplığı",
     "musicLibraryHint": "Müzik çaları açın ve müziğinizi yönetin.",
-    "savedToMusic": "Müzik kitaplığına kaydedildi."
+    "savedToMusic": "Müzik kitaplığına kaydedildi.",
+    "navMemes": "Mimler"
   },
   "privateVault": {
     "title": "Gizli Kasa",
@@ -568,13 +569,15 @@
       "vault": "Özel kasa",
       "music": "Müzik kitaplığı",
       "settings": "Tercihler",
-      "cookies": "Çerez profilleri"
+      "cookies": "Çerez profilleri",
+      "memes": "Mimler"
     },
     "sectionHint": {
       "vault": "Özel kasadaki videolar",
       "music": "Parçalar, kapak görselleri, çalma listeleri ve ön ayar seçenekleri",
       "settings": "Tema, indirme konumu ve kayıtlı ön ayarlar",
-      "cookies": "Desteklenen siteler için kayıtlı oturumlar"
+      "cookies": "Desteklenen siteler için kayıtlı oturumlar",
+      "memes": "Etiketleri, kişileri ve geldikleri yerle birlikte mimler"
     },
     "sectionSummary": "{{count}} öğe · {{size}}",
     "secretTitle": "Şununla koru",
@@ -677,5 +680,82 @@
     "empty": "Gönderilecek parça yok.",
     "autoDownloadLinks": "Bağlantıları otomatik indir",
     "autoDownloadLinksHint": "Eşleştirilmiş bir cihazın gönderdiği bağlantı sormadan indirilmeye başlar."
+  },
+  "memes": {
+    "title": "Mimler",
+    "empty": "Henüz mim yok",
+    "emptyHint": "İndirdiğin videolar ve görseller, geldikleri gönderiyle birlikte buraya düşer. Fotoğraflarından da içe aktarabilirsin.",
+    "import": "İçe aktar",
+    "importDone": "{{count}} içe aktarıldı",
+    "importFailed": "{{count}} içe aktarılamadı",
+    "searchPlaceholder": "Etiket, kişi, açıklama ara",
+    "noResults": "Eşleşen yok",
+    "untagged": "Etiketsiz",
+    "untaggedCount": "{{count}} etiketsiz",
+    "private": "Gizli",
+    "people": "Kişiler",
+    "peopleCount": "Kişiler ({{count}})",
+    "review": "Gözden geçir",
+    "tags": "Etiketler",
+    "unlockToShowPrivate": "Gizli mimler kasanın kilidi açıkken görünür.",
+    "unlock": "Kilidi aç",
+    "facet": {
+      "reaction": "Tepki",
+      "vibe": "Hava",
+      "emotion": "Duygu",
+      "action": "Eylem",
+      "context": "Bağlam"
+    },
+    "selected": "{{count}} seçili",
+    "tag": "Etiketle",
+    "makePrivate": "Gizli yap",
+    "makePublic": "Gizliden çıkar",
+    "send": "Gönder",
+    "sendTo": "Şuraya gönder",
+    "sent": "{{name}} cihazına gönderiliyor",
+    "sendFailed": "Gönderilemedi. Süren aktarımın bitmesini bekle.",
+    "privateNotSent": "Gizli mimler bu telefonda kalır.",
+    "delete": "Sil",
+    "deleteTitle": "{{count}} mim silinsin mi?",
+    "deleteBody": "Dosyalar bu telefondan silinir. Bu geri alınamaz.",
+    "lockedError": "Önce kasanın kilidini aç.",
+    "moveFailed": "{{count}} tanesi taşınamadı.",
+    "source": {
+      "imported": "İçe aktarıldı",
+      "fromDevice": "Eşlenmiş bir cihazdan",
+      "account": "@{{account}}",
+      "openPost": "Gönderiyi aç",
+      "savedAt": "{{date}} tarihinde kaydedildi"
+    },
+    "sheet": {
+      "one": "Mimi etiketle",
+      "many": "{{count}} mimi etiketle",
+      "review": "Etiketsiz {{index}} / {{total}}",
+      "prompt": "Yeni mim"
+    },
+    "addPlaceholder": "Etiket ya da kişi ekle",
+    "addTag": "Etiket: “{{name}}”",
+    "addPerson": "Kişi: “{{name}}”",
+    "suggestions": "Önerilen",
+    "tagsLabel": "Etiketler",
+    "peopleLabel": "Kişiler",
+    "onSome": "Bazılarında",
+    "newTagFacets": "Bu etiketin anlamı (isteğe bağlı)",
+    "save": "Kaydet",
+    "later": "Sonra",
+    "skip": "Atla",
+    "done": "Bitti",
+    "play": "Oynat",
+    "manager": {
+      "title": "Etiketler",
+      "empty": "Henüz etiket yok. Bir mimi etiketlerken ekleyebilirsin.",
+      "rename": "Yeniden adlandır",
+      "delete": "Sil",
+      "deleteTitle": "“{{name}}” silinsin mi?",
+      "deleteBody": "Bu etiket, onu taşıyan her mimden kaldırılır.",
+      "facetsHint": "Yönler, bir etiketin ne tür bir anlam taşıdığını söyler. Bir etiketin istediği kadar yönü olabilir, hiç olmayabilir de.",
+      "askForTags": "İndirmeden sonra etiket sor",
+      "askForTagsHint": "Yeni mimi açan bir bildirim. Mim hakkında hiçbir şey söylemez."
+    }
   }
 }

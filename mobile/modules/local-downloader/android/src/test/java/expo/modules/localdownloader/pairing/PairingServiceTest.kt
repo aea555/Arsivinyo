@@ -28,7 +28,7 @@ class PairingServiceTest {
     override fun listing(kind: String) = JSONArray()
     override fun openItem(id: String): ItemSource? = null
     override fun destinationFor(name: String, kind: String) = File(dir, File(name).name).path
-    override fun accepted(path: String, kind: String, artworkPath: String?) {}
+    override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?) {}
     override fun download(url: String, mediaKind: String) {}
   }
 

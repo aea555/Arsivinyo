@@ -102,6 +102,13 @@ function AppContent() {
           }}
         />
         <Stack.Screen
+          name="memes"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="sound-player"
           options={{
             presentation: 'modal',

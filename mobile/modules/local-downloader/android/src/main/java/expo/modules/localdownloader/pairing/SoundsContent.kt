@@ -9,7 +9,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * What a paired device may reach on this phone: the music library, and nothing else.
+ * What a paired device may reach on this phone: the music library, and nothing else. A peer
+ * may also hand over a meme, which goes to the meme collection; it cannot list or fetch them.
  *
  * The vault is absent deliberately — it is confined to the device that made it, and a
  * `.avsbck` backup is the only supported way to move its contents. Settings, playlists and
@@ -28,6 +29,8 @@ class SoundsContent(
   private val store: SoundsStore,
   /** Called when a peer asks this phone to fetch a URL. Never starts on its own. */
   private val onDownloadRequested: (url: String, mediaKind: String) -> Unit,
+  /** Takes a received meme into the collection; the staged file is its to keep or delete. */
+  private val onMemeReceived: (file: File, meme: JSONObject?) -> Unit = { file, _ -> file.delete() },
 ) : PeerContent {
 
   override fun listing(kind: String): JSONArray {
@@ -93,9 +96,19 @@ class SoundsContent(
     return candidate.path
   }
 
-  override fun accepted(path: String, kind: String, artworkPath: String?) {
+  override fun accepted(path: String, kind: String, artworkPath: String?, meme: JSONObject?) {
     val file = File(path)
     if (!file.isFile) return
+
+    if (kind == "meme") {
+      // A meme is not a track. It goes to the collection, its labels merged by name.
+      artworkPath?.let { File(it).delete() }
+      runCatching { onMemeReceived(file, meme) }.onFailure {
+        Log.w(TAG, "a received meme could not be added: ${it.javaClass.simpleName}")
+        file.delete()
+      }
+      return
+    }
 
     if (kind == "backups") {
       // A backup is not a library item. It stays where it landed for the user to import
@@ -107,7 +120,7 @@ class SoundsContent(
       // sourceUrl is null: this came from a device, not a download.
       store.registerDownloadedSound(file.path, file.name, null, artworkPath)
     }.onFailure {
-      Log.w(TAG, "a received track could not be added to the library: ${it.message}")
+      Log.w(TAG, "a received track could not be added to the library: ${it.javaClass.simpleName}")
     }
     // Registering copies the bytes into MediaStore, so the staged copy is now a duplicate;
     // the cover has been copied into the sidecar store the same way.

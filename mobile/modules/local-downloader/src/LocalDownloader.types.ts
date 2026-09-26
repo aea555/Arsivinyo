@@ -601,7 +601,7 @@ export interface LocalImpersonationSelfTestResult {
 }
 
 /** The sections a backup can hold. Wire values shared with `BackupFormat.kt`. */
-export type LocalBackupSectionId = 'vault' | 'music' | 'settings' | 'cookies';
+export type LocalBackupSectionId = 'vault' | 'music' | 'memes' | 'settings' | 'cookies';
 
 export type LocalBackupSecretKind = 'password' | 'passphrase';
 
@@ -797,4 +797,85 @@ export interface LocalPairingState {
   peerMediaKind: string;
   /** Links from paired devices are downloaded without asking. Opt-in. */
   autoDownloadLinks: boolean;
+}
+
+// ---- memes: shared/memes/CONTRACT.md ----------------------------------------------------
+
+/** What a tag says about a meme. Wire values: never renamed in place. */
+export type LocalMemeFacet = 'reaction' | 'vibe' | 'emotion' | 'action' | 'context';
+
+export interface LocalMemeTag {
+  id: string;
+  name: string;
+  facets: LocalMemeFacet[];
+}
+
+export interface LocalMemePerson {
+  id: string;
+  name: string;
+}
+
+/** Where a meme came from, captured at download time. Never logged, never in a notification. */
+export interface LocalMemeSource {
+  platform?: string | null;
+  account?: string | null;
+  accountName?: string | null;
+  caption?: string | null;
+  url?: string | null;
+  postedAt?: number | null;
+  savedAt: number;
+}
+
+export interface LocalMeme {
+  id: string;
+  kind: 'video' | 'image';
+  isPrivate: boolean;
+  /** MediaStore URI of one that is not private. */
+  uri?: string | null;
+  /** The vault entry of one that is. */
+  vaultId?: string | null;
+  tags: string[];
+  people: string[];
+  addedAt: number;
+  /** 0 while the meme waits in the untagged inbox. */
+  taggedAt: number;
+  source?: LocalMemeSource | null;
+}
+
+export interface LocalMemeLibrary {
+  items: LocalMeme[];
+  tags: LocalMemeTag[];
+  people: LocalMemePerson[];
+  /** Private memes are in `items` only while this is true. */
+  vaultUnlocked: boolean;
+  /** Whether any meme is private, known while locked too. */
+  hasPrivate: boolean;
+  askForTags: boolean;
+}
+
+export interface LocalMemeFilter {
+  /** All of these, across the meme's tags. */
+  facets?: LocalMemeFacet[];
+  /** Person ids, all required. */
+  people?: string[];
+  platform?: string | null;
+  onlyPrivate?: boolean;
+  onlyUntagged?: boolean;
+}
+
+export interface LocalMemeLabelInput {
+  ids: string[];
+  addTags?: string[];
+  removeTags?: string[];
+  addPeople?: string[];
+  removePeople?: string[];
+  /** Takes the memes out of the untagged inbox. Defaults to true. */
+  markTagged?: boolean;
+}
+
+export interface LocalMemeResult {
+  success: boolean;
+  code?: string;
+  failed?: number;
+  imported?: number;
 }

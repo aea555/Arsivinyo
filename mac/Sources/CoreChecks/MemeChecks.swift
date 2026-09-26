@@ -6,6 +6,14 @@ extension CoreChecks {
 
     mutating func checkMemes() throws {
         print("memes")
+        let url = Self.repositoryRoot.appendingPathComponent("shared/memes/VECTORS.json")
+        let vectors = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        for pair in vectors["fold"] as! [[String]] {
+            check(MemeLibrary.fold(pair[0]) == pair[1], "“\(pair[0])” folds to “\(pair[1])”")
+        }
+        for case let pair as [Any] in vectors["tokens"] as! [Any] {
+            check(MemeLibrary.tokens(pair[0] as! String) == pair[1] as! [String], "“\(pair[0])” splits the same way as on the phone")
+        }
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("arsivinyo-memes-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: scratch) }
         let folder = scratch.appendingPathComponent("Downloads")

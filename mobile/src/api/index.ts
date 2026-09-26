@@ -90,3 +90,4 @@ export type {
     LocalSoundsLibrary,
 } from '../native/localDownloader';
 export * from './pairing';
+export * from './memes';

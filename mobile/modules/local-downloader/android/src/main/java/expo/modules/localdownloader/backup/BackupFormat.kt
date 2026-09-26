@@ -63,10 +63,11 @@ object BackupFormat {
   /** Section identifiers. These are wire values — never rename one in place. */
   const val SECTION_VAULT = "vault"
   const val SECTION_MUSIC = "music"
+  const val SECTION_MEMES = "memes"
   const val SECTION_SETTINGS = "settings"
   const val SECTION_COOKIES = "cookies"
 
-  val ALL_SECTIONS = listOf(SECTION_VAULT, SECTION_MUSIC, SECTION_SETTINGS, SECTION_COOKIES)
+  val ALL_SECTIONS = listOf(SECTION_VAULT, SECTION_MUSIC, SECTION_MEMES, SECTION_SETTINGS, SECTION_COOKIES)
 
   /** The key slot every section points at when one secret protects the whole file. */
   const val DEFAULT_KEY_SLOT = "default"

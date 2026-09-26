@@ -50,6 +50,7 @@ type Mode = 'export' | 'import';
 const SECTION_ICONS: Record<BackupSectionId, React.ComponentProps<typeof Ionicons>['name']> = {
     vault: 'lock-closed-outline',
     music: 'musical-notes-outline',
+    memes: 'happy-outline',
     settings: 'options-outline',
     cookies: 'key-outline',
 };

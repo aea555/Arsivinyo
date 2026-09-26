@@ -353,6 +353,10 @@ export default function HomeScreen() {
     router.push('/sounds' as Href);
   }, [router]);
 
+  const openMemes = useCallback(() => {
+    router.push('/memes' as Href);
+  }, [router]);
+
   const handleSelectAudioMode = useCallback(async (next: boolean) => {
     if (next === audioModeEnabled) return;
     setAudioModeEnabled(next); // optimistic
@@ -448,7 +452,7 @@ export default function HomeScreen() {
             </Text>
           </View>
           <View style={styles.headerActions}>
-            {/* Labelled, not icon-only. These three go to entirely different screens,
+            {/* Labelled, not icon-only. These go to entirely different screens,
                 and an icon alone gives no way to know which before tapping it. */}
             <Pressable
               accessibilityRole="button"
@@ -480,6 +484,21 @@ export default function HomeScreen() {
               <Ionicons name="musical-notes-outline" size={19} color={colors.text} />
               <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
                 {t('home.navMusic')}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('home.navMemes')}
+              onPress={openMemes}
+              style={({ pressed }) => [
+                styles.headerNavButton,
+                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
+              ]}
+              hitSlop={6}
+            >
+              <Ionicons name="happy-outline" size={19} color={colors.text} />
+              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
+                {t('home.navMemes')}
               </Text>
             </Pressable>
             <Pressable

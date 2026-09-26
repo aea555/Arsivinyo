@@ -11,6 +11,13 @@ import type {
   LocalBackupRestoreInput,
   LocalBackupRestoreResult,
   LocalPairingState,
+  LocalMemeFacet,
+  LocalMemeFilter,
+  LocalMemeLabelInput,
+  LocalMemeLibrary,
+  LocalMemePerson,
+  LocalMemeResult,
+  LocalMemeTag,
   LocalSoundPresetProgressEvent,
   LocalSoundPresetStartResult,
   LocalCookieProfile,
@@ -151,6 +158,24 @@ type LocalDownloaderNativeModule = {
   pairingClearPeerUrl(): Promise<boolean>;
   pairingSetAutoDownloadLinks(enabled: boolean): Promise<boolean>;
   pairingHasPeers(): Promise<boolean>;
+  pairingSendMeme(fingerprint: string, id: string): Promise<boolean>;
+
+  // ---- memes ----
+  listMemes(): Promise<LocalMemeLibrary>;
+  memeThumbnail(id: string): Promise<string | null>;
+  memeSuggestions(id: string): Promise<string[]>;
+  searchMemes(query: string, filter: LocalMemeFilter): Promise<string[]>;
+  createMemeTag(name: string, facets: LocalMemeFacet[]): Promise<LocalMemeTag>;
+  createMemePerson(name: string): Promise<LocalMemePerson>;
+  setMemeTagFacets(tagId: string, facets: LocalMemeFacet[]): Promise<void>;
+  renameMemeTag(tagId: string, name: string): Promise<void>;
+  deleteMemeTag(tagId: string): Promise<void>;
+  labelMemes(input: LocalMemeLabelInput): Promise<LocalMemeResult>;
+  setMemesPrivate(ids: string[], makePrivate: boolean): Promise<LocalMemeResult>;
+  removeMemes(ids: string[]): Promise<LocalMemeResult>;
+  importMemes(): Promise<LocalMemeResult>;
+  setMemeAskForTags(enabled: boolean): Promise<void>;
+  dismissMemePrompt(id: string): Promise<void>;
 
   listSounds(): Promise<LocalSoundsLibrary>;
   importSounds(): Promise<LocalSoundsImportResult>;
@@ -272,6 +297,22 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       pairingClearPeerUrl: async () => unsupported(),
       pairingSetAutoDownloadLinks: async () => unsupported(),
       pairingHasPeers: async () => false,
+      pairingSendMeme: async () => unsupported(),
+      listMemes: async () => unsupported(),
+      memeThumbnail: async () => unsupported(),
+      memeSuggestions: async () => unsupported(),
+      searchMemes: async () => unsupported(),
+      createMemeTag: async () => unsupported(),
+      createMemePerson: async () => unsupported(),
+      setMemeTagFacets: async () => unsupported(),
+      renameMemeTag: async () => unsupported(),
+      deleteMemeTag: async () => unsupported(),
+      labelMemes: async () => unsupported(),
+      setMemesPrivate: async () => unsupported(),
+      removeMemes: async () => unsupported(),
+      importMemes: async () => unsupported(),
+      setMemeAskForTags: async () => unsupported(),
+      dismissMemePrompt: async () => unsupported(),
       listSounds: async () => unsupported(),
       importSounds: async () => unsupported(),
       deleteSounds: async () => unsupported(),
@@ -363,6 +404,14 @@ export function addPrivateVaultMigrationProgressListener(
  * Pairing state, whenever anything a screen renders changes — a device found or lost, a
  * code to confirm, transfer progress, a listing coming back.
  */
+/** The collection changed: a download landed, a transfer arrived, labels moved. */
+export function addMemesChangedListener(listener: () => void): EventSubscription {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+  return emitter.addListener('memesChanged', listener);
+}
+
 export function addPairingStateListener(
   listener: (state: LocalPairingState) => void
 ): EventSubscription {

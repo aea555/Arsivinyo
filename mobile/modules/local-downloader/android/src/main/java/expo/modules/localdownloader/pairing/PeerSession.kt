@@ -77,6 +77,7 @@ class PeerSession(
     /** The cover that came with the offer, held until the file itself verifies. */
     val artwork: ByteArray?,
     val artworkName: String,
+    val meme: JSONObject?,
   ) {
     val digest: MessageDigest = MessageDigest.getInstance("SHA-256")
     val stream = partPath.outputStream()
@@ -157,6 +158,7 @@ class PeerSession(
           .put("artworkName", art.name)
       }
     }
+    source.meme?.let { offer.put("meme", it) }
     if (!link.sendControl(offer)) {
       abortSending("the connection went away")
       return
@@ -272,7 +274,8 @@ class PeerSession(
     val started = runCatching {
       val finalPath = File(destination)
       finalPath.parentFile?.mkdirs()
-      Receiving(kind, finalPath, File("$destination.part"), size, expected, artwork, "cover.$artworkExtension")
+      Receiving(kind, finalPath, File("$destination.part"), size, expected, artwork, "cover.$artworkExtension",
+        message.optJSONObject("meme"))
     }.getOrNull()
     if (started == null) {
       link.sendControl(JSONObject().put("t", "reject").put("reason", "unwritable"))
@@ -328,7 +331,7 @@ class PeerSession(
         File("${current.finalPath.path}.${current.artworkName}").apply { writeBytes(bytes) }.path
       }.getOrNull()
     }
-    content.accepted(current.finalPath.path, current.kind, artworkPath)
+    content.accepted(current.finalPath.path, current.kind, artworkPath, current.meme)
     onFileReceived?.invoke(current.finalPath.path, current.kind)
     onTransferComplete?.invoke()
   }

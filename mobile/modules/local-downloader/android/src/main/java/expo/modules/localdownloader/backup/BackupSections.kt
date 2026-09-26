@@ -35,6 +35,8 @@ object BackupSections {
   const val BLOB_MUSIC_INDEX = "music-index"
   const val BLOB_AUTO_PRESETS = "auto-presets"
   const val BLOB_APP_SETTINGS = "app-settings"
+  /** The memes' tags and people by name, with facets: `shared/memes/CONTRACT.md`. */
+  const val BLOB_MEMES_INDEX = "memes-index"
 
   /**
    * One thing to put in a backup.

@@ -1,9 +1,11 @@
 package expo.modules.localdownloader.backup
 
+import expo.modules.localdownloader.memes.MemeStore
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,7 +51,7 @@ class CrossPlatformBackupTest {
     val entries = mutableMapOf<String, MutableList<Read>>()
     file.inputStream().buffered().use { input ->
       val header = BackupContainer.peek(input)
-      assertEquals(listOf("vault", "music", "settings", "cookies"), header.sections.map { it.id })
+      assertEquals(listOf("vault", "music", "memes", "settings", "cookies"), header.sections.map { it.id })
       BackupContainer.read(
         input,
         header,
@@ -65,11 +67,33 @@ class CrossPlatformBackupTest {
     }
 
     // The vault: a title, a type the importer understands, and the whole file.
-    val clip = entries["vault"]!!.single()
+    val clip = entries["vault"]!!.single { it.header.name == "Holiday clip" }
     assertEquals("media", clip.header.kind)
     assertEquals("Holiday clip", clip.header.name)
     assertEquals("video/mp4", clip.header.meta.optString("mimeType"))
     assertArrayEquals(pattern(300_000, 7), clip.payload)
+
+    // A private meme is a vault entry whose labels ride in its meta.
+    val secret = entries["vault"]!!.single { it.header.meta.has("meme") }
+    assertArrayEquals(pattern(15_000, 23), secret.payload)
+    val secretMeme = secret.header.meta.getJSONObject("meme")
+    assertEquals("gizli-etiket", secretMeme.getJSONArray("tags").getJSONObject(0).getString("name"))
+    assertEquals("emotion", secretMeme.getJSONArray("tags").getJSONObject(0).getJSONArray("facets").getString(0))
+
+    // Memes: the file with its source and labels by name, then the vocabulary.
+    val memes = entries["memes"]!!
+    val arda = memes.single { it.header.kind == "media" }
+    assertArrayEquals(pattern(20_000, 19), arda.payload)
+    assertTrue(arda.header.meta.optDouble("taggedAt") > 0)
+    val ardaMeme = arda.header.meta.getJSONObject("meme")
+    assertEquals("bizim laubalilik seviyesi", ardaMeme.getJSONObject("source").getString("caption"))
+    assertEquals("Arda Turan", ardaMeme.getJSONArray("people").getJSONObject(0).getString("name"))
+    assertEquals("action", ardaMeme.getJSONArray("tags").getJSONObject(0).getJSONArray("facets").getString(0))
+    val vocabulary = JSONObject(String(memes.single { it.header.meta.optString("blobId") == "memes-index" }.payload))
+    val tagNames = vocabulary.getJSONArray("tags").let { a -> (0 until a.length()).map { a.getJSONObject(it).getString("name") } }
+    assertTrue(tagNames.containsAll(listOf("laubalilik", "rahat")))
+    // Private-only labels are not in it: they travel with their private memes.
+    assertFalse(tagNames.contains("gizli-etiket"))
 
     // Music: artwork just before its track, both tracks, the render pointing at its source.
     val music = entries["music"]!!
@@ -127,9 +151,15 @@ class CrossPlatformBackupTest {
     val vault = object : BackupPorts.VaultPort {
       val record = BackupPorts.VaultRecord("v1", "Holiday clip", "video/mp4",
         JSONObject().apply { put("title", "Holiday clip"); put("createdAt", 1_754_870_400_000L) }, 300_000L)
-      override fun list() = listOf(record)
-      override fun writePlaintext(record: BackupPorts.VaultRecord, out: OutputStream) = out.write(pattern(300_000, 7))
-      override fun hashOf(record: BackupPorts.VaultRecord) = BackupContainer.sha256(ByteArrayInputStream(pattern(300_000, 7)))
+      val secret = BackupPorts.VaultRecord("v2", "gizli", "video/mp4",
+        JSONObject().apply {
+          put("title", "gizli"); put("createdAt", 1_754_870_400_000L)
+          put("meme", MemeStore.encodeMeme("video", null, listOf("gizli-etiket" to listOf(MemeStore.Facet.EMOTION)), emptyList()))
+        }, 15_000L)
+      override fun list() = listOf(record, secret)
+      private fun bytes(record: BackupPorts.VaultRecord) = if (record.id == "v1") pattern(300_000, 7) else pattern(15_000, 23)
+      override fun writePlaintext(record: BackupPorts.VaultRecord, out: OutputStream) = out.write(bytes(record))
+      override fun hashOf(record: BackupPorts.VaultRecord) = BackupContainer.sha256(ByteArrayInputStream(bytes(record)))
       override fun restore(staged: File, name: String, mimeType: String, meta: JSONObject) = error("not restoring")
     }
 
@@ -169,6 +199,26 @@ class CrossPlatformBackupTest {
       override fun restore(platform: String, profileName: String, isDefault: Boolean, plaintext: ByteArray) = Unit
     }
 
+    val memes = object : BackupPorts.MemesPort {
+      val arda = BackupPorts.MemeRecord("m1", "arda.mp4", 20_000L, JSONObject()
+        .put("memeId", "m1").put("sha256", BackupContainer.sha256(ByteArrayInputStream(pattern(20_000, 19))))
+        .put("addedAt", 1_754_870_400_000L).put("taggedAt", 1_754_870_400_000L)
+        .put("meme", MemeStore.encodeMeme("video",
+          MemeStore.Source(platform = "twitter", account = "futbolcaps", caption = "bizim laubalilik seviyesi", savedAt = 1_754_870_400_000L),
+          listOf("laubalilik" to listOf(MemeStore.Facet.ACTION)), listOf("Arda Turan"))))
+      override fun list() = listOf(arda)
+      override fun open(record: BackupPorts.MemeRecord): InputStream = ByteArrayInputStream(pattern(20_000, 19))
+      override fun vocabulary() = JSONObject()
+        .put("tags", JSONArray()
+          .put(JSONObject().put("name", "laubalilik").put("facets", JSONArray().put("action")))
+          .put(JSONObject().put("name", "rahat").put("facets", JSONArray().put("vibe"))))
+        .put("people", JSONArray().put(JSONObject().put("name", "Arda Turan")))
+      override fun existingIdFor(sha256: String): String? = null
+      override fun mergeLabels(existingId: String, meta: JSONObject) = Unit
+      override fun restore(staged: File, name: String, meta: JSONObject) = error("not restoring")
+      override fun restoreVocabulary(json: JSONObject) = Unit
+    }
+
     // What the settings screen collects from AsyncStorage: each value a JSON string.
     val settings = JSONObject()
       .put("@arsivinyo_audio_presets_custom_v1", JSONArray().put(JSONObject()
@@ -185,6 +235,7 @@ class CrossPlatformBackupTest {
         sections = listOf(
           BackupSections.plan(BackupFormat.SECTION_VAULT, BackupPorts.collectVault(vault)),
           BackupSections.plan(BackupFormat.SECTION_MUSIC, BackupPorts.collectMusic(music)),
+          BackupSections.plan(BackupFormat.SECTION_MEMES, BackupPorts.collectMemes(memes)),
           BackupSections.plan(BackupFormat.SECTION_SETTINGS, BackupPorts.collectSettings(settings)),
           BackupSections.plan(BackupFormat.SECTION_COOKIES, BackupPorts.collectCookies(cookies)),
         ),

@@ -40,4 +40,10 @@
   <string name="ldl_title_backup">Arsivinyo backup</string>
   <string name="ldl_sub_exporting">Writing backup…</string>
   <string name="ldl_sub_restoring">Restoring backup…</string>
+
+  <!-- Memes. The prompt names nothing about the meme: no caption, no account, no tag. -->
+  <string name="ldl_memes_channel_name">Memes</string>
+  <string name="ldl_memes_channel_description">Asks for tags when a meme finishes downloading</string>
+  <string name="ldl_meme_prompt_title">A meme finished downloading</string>
+  <string name="ldl_meme_prompt_text">Tap to tag it</string>
 </resources>

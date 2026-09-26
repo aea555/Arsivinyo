@@ -55,7 +55,7 @@ class PeerSessionTest {
     override fun destinationFor(name: String, kind: String): String =
       File(dir, File(name).name).path
 
-    override fun accepted(path: String, kind: String, artworkPath: String?) { lastAccepted = path }
+    override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?) { lastAccepted = path }
 
     override fun download(url: String, mediaKind: String) {
       lastUrl = url
