@@ -176,9 +176,7 @@ Done when, on both apps:
    test, as the vault's rule is).
 6. The index file contains none of its tags or captions in plain text.
 
-**Phase 2: people by face.** On-device face grouping: Vision on the Mac, a small embedding
-model on the phone. The user names a group once; it labels every meme with that face, past
-and future.
+**Phase 2: people by face.** Both apps. Specified in full under "Faces" below.
 
 **Phase 3, if phases 1 and 2 leave gaps:** speech in the videos transcribed on device
 (Whisper, Turkish), and visual suggestions: "looks like memes you tagged *rahat*", learned
@@ -187,3 +185,119 @@ from the user's own labels rather than an English vocabulary.
 **Not planned:** sending images to a cloud service to be described (it breaks the app's
 promise that nothing leaves the device), song identification (needs Apple's paid Shazam
 service), indexing the gallery at large (see Scope).
+
+## Faces (phase 2)
+
+Name a face once; every meme with that face is labelled with that person, past and future.
+Agreed with the maintainer: **sure matches label on their own, borderline ones ask**, and **a
+person's face signature travels with the person** between the two devices.
+
+### One pipeline, both apps
+
+Apple's Vision finds faces but has no public way to say whose they are, so the Mac needs a
+recognition model as much as the phone does. Both apps therefore run the same pipeline,
+written once in C++ in `shared/faces/` and compiled into each, over the same ONNX Runtime
+version and the same two model files:
+
+| Step | What | Model |
+|---|---|---|
+| Detect | faces and five landmarks | YuNet 2023mar (MIT, 230 KB) |
+| Align | similarity transform of the landmarks onto the 112×112 ArcFace template, bilinear | — |
+| Embed | 128 numbers, L2-normalised | SFace 2021dec int8 (Apache 2.0, 9.9 MB) |
+
+Both are from the OpenCV model zoo. `shared/faces/MODELS.json` pins each file's SHA-256 and
+the runtime version; an app refuses a model file that does not match. Because the files and
+the code are the same, a signature made on the phone is comparable with one made on the Mac,
+which is what lets a person's face travel.
+
+**What is looked at.** An image once. A video at one frame a second, at most 12 frames,
+spread evenly over the length when it is longer. A face smaller than 40 px on its short side
+is ignored: meme video is low-resolution, and a smaller face yields a signature that matches
+everyone. Detections below a score of 0.8 are dropped; overlapping ones are merged (IoU 0.3).
+
+**Within one meme** the same person appears in many frames. Faces whose signatures are
+closer than the "sure" threshold are one *face* of that meme: its signature is the mean of
+theirs, normalised, and it keeps the frame and box of its best detection for showing.
+
+### Matching
+
+Similarity is the cosine of two signatures. Against a person, it is the highest cosine over
+that person's signature set.
+
+| Similarity | Meaning |
+|---|---|
+| ≥ 0.50 | **sure**: the person is added to the meme on its own |
+| 0.36 – 0.50 | **ask**: "Is this Arda Turan?" waits in a queue |
+| < 0.36 | no match: the face joins the unnamed groups |
+
+These start from SFace's published threshold (0.363) and are constants in `shared/faces/`,
+so both apps move together if they are tuned.
+
+**Unnamed groups.** Faces with no person are grouped (average linkage at the sure
+threshold) and shown largest first. Naming a group confirms all its faces as that person.
+
+**Corrections.** Confirming a queued face adds the person. Rejecting it records that this
+face is not that person, and it is never asked again for them. Removing a label that a face
+added on its own is a rejection too; a label added by hand is never removed by the faces.
+
+**A person's signature set** is up to 8 signatures from confirmed faces, chosen to be as
+different from each other as possible (a new one replaces the one closest to the rest), so
+a person seen from several angles and ages is matched from all of them.
+
+### The data
+
+Each meme gains `faces`, and each person gains `signatures`:
+
+```jsonc
+"people": [{"id": "p…", "name": "Arda Turan", "signatures": ["<base64>", …]}],
+"items":  [{ …,
+  "faces": [{
+    "id": "f…",
+    "signature": "<base64>",           // 128 × float16, little endian
+    "frameMs": 3000, "box": [x, y, w, h],   // where to show it from; video time, source pixels
+    "person": "p…" | null,
+    "state": "auto" | "confirmed" | "asked" | "rejected" | "unnamed",
+    "rejected": ["p…"]                  // never asked again for these
+  }],
+  "facesVersion": 1                     // the pipeline that scanned it; 0 or absent: not yet
+}]
+```
+
+A signature is biometric data. It lives only inside the two encrypted indexes: a private
+meme's faces in the private index, like its other labels. It is never logged. A face crop
+shown on screen is made from the meme's file when needed; for a private meme it is never
+written outside the vault.
+
+### Scanning
+
+A meme is scanned after it joins the collection, in the background, one at a time. The
+existing collection is scanned once, resumably: `facesVersion` says what is done, so a scan
+cut short carries on where it stopped, and a later pipeline version rescans. Scanning never
+blocks the screens, and pauses while a download is running on the phone.
+
+### Between devices
+
+A person travels by name, as before, and now with their signature set:
+
+```jsonc
+"people": [{"name": "Arda Turan", "signatures": ["<base64>", …]}]
+```
+
+in a pairing `meme` object and in the backup's `memes-index`. The receiver merges the set
+into its person of the same folded name (keeping 8 as above), then rescans its unlabelled
+faces against it, so naming someone on one device teaches the other. A face's own signature
+does not travel: the receiver scans the file itself.
+
+### Done when, on both apps
+
+1. The fixture frames in `shared/faces/VECTORS.json` yield the same detections (boxes within
+   1 px) and signatures (cosine ≥ 0.999 to the pinned values) on the Mac and the phone.
+2. Naming an unnamed group labels its memes; a new meme with that face is labelled on its own
+   when sure and queued when not.
+3. A rejected suggestion is gone and never asked again; rejecting an automatic label removes
+   it; a label added by hand stays.
+4. A person named on the phone is recognised on the Mac after a pairing send or a backup
+   restore, with no naming on the Mac, and the other way round.
+5. Neither index holds a signature in plain text, none reaches a log, and no face crop of a
+   private meme is written outside the vault.
+6. A scan cut short resumes where it stopped, and the screens stay responsive during one.
