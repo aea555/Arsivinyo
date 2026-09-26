@@ -24,7 +24,11 @@ class MemeStore(
   private val indexFile: File,
   private val sealer: Sealer,
   private val privateHalf: PrivateHalf? = null,
+  /** The faces pipeline's arithmetic; without it, faces are kept but not matched. */
+  faceMath: FaceMath? = null,
 ) {
+
+  private val faceRules = faceMath?.let { FaceRules(it) }
 
   /** The private index, under the vault's key. */
   interface PrivateHalf {
@@ -58,7 +62,12 @@ class MemeStore(
   }
 
   data class Tag(val id: String, val name: String, val facets: List<Facet>)
-  data class Person(val id: String, val name: String)
+  data class Person(
+    val id: String,
+    val name: String,
+    /** Up to eight face signatures, base64 half floats: how this person is recognised. */
+    val signatures: List<String> = emptyList(),
+  )
 
   data class Source(
     val platform: String? = null,
@@ -85,6 +94,9 @@ class MemeStore(
     val addedAt: Long,
     /** 0 while the meme waits in the untagged inbox. */
     val taggedAt: Long,
+    val faces: List<Face> = emptyList(),
+    /** The faces pipeline that scanned it; 0 or older: to be scanned. */
+    val facesVersion: Int = 0,
   ) {
     val isUntagged: Boolean get() = taggedAt == 0L
   }
@@ -167,7 +179,9 @@ class MemeStore(
     tags: List<Pair<String, List<Facet>>> = emptyList(),
     people: List<String> = emptyList(),
     taggedAt: Long? = null,
+    signatures: Map<String, List<String>> = emptyMap(),
   ): Item = mutate { index ->
+    absorbInto(index, signatures)
     index.items.firstOrNull { it.vaultId == vaultId }?.let { return@mutate mergeInto(index, it.id, tags, people) }
     val now = System.currentTimeMillis()
     val item = Item(
@@ -255,15 +269,21 @@ class MemeStore(
     for (i in index.items.indices) {
       val item = index.items[i]
       if (item.id !in itemIds) continue
-      index.items[i] = item.copy(
+      val labelled = item.copy(
         tags = ((item.tags.toSet() + addTags - removeTags) intersect tagIds).toList(),
         people = ((item.people.toSet() + addPeople - removePeople) intersect personIds).toList(),
         taggedAt = if (markTagged) now else item.taggedAt,
       )
+      // Taking a person off by hand is a "no" to the faces that put them there.
+      index.items[i] = faceRules?.rejectFaces(labelled, removePeople) ?: labelled
     }
+    if (removePeople.isNotEmpty()) faceRules?.reevaluate(index.items, index.people)
   }
 
-  /** A meme from another device or a backup: labels merged into these by name. */
+  /**
+   * A meme from another device or a backup: labels merged into these by name, and the face
+   * signatures that came with its people learnt.
+   */
   fun receive(
     uri: String,
     kind: String,
@@ -271,12 +291,105 @@ class MemeStore(
     source: Source?,
     tags: List<Pair<String, List<Facet>>>,
     people: List<String>,
-  ): Item = add(uri, kind, sha256, source, tags, people)
+    signatures: Map<String, List<String>> = emptyMap(),
+  ): Item {
+    val item = add(uri, kind, sha256, source, tags, people)
+    absorb(signatures)
+    return item
+  }
 
-  /** Makes sure these labels exist, with at least these facets. */
-  fun ensure(tags: List<Pair<String, List<Facet>>>, people: List<String>) = mutate { index ->
+  /** Makes sure these labels exist, with at least these facets and signatures. */
+  fun ensure(
+    tags: List<Pair<String, List<Facet>>>,
+    people: List<String>,
+    signatures: Map<String, List<String>> = emptyMap(),
+  ) = mutate { index ->
     tags.forEach { (name, facets) -> resolveTag(name, facets, index.tags) }
     people.forEach { resolvePerson(it, index.people) }
+    absorbInto(index, signatures)
+  }
+
+  // ---- faces -----------------------------------------------------------------------------
+
+  /** Records what a scan found, matching each face against the people known. */
+  fun record(itemId: String, scanned: List<ScannedFace>) = mutate { index ->
+    val rules = faceRules ?: return@mutate
+    val at = index.items.indexOfFirst { it.id == itemId }
+    if (at >= 0) index.items[at] = rules.record(index.items[at], scanned, index.people)
+  }
+
+  /** "Is this X?" — yes. The face joins the person's signatures. */
+  fun confirmFace(faceId: String) = mutate { index ->
+    val rules = faceRules ?: return@mutate
+    val (i, f) = locate(index, faceId) ?: return@mutate
+    val face = index.items[i].faces[f]
+    val person = face.person ?: return@mutate
+    val faces = index.items[i].faces.toMutableList()
+    faces[f] = face.copy(state = FaceState.CONFIRMED)
+    index.items[i] = rules.labelFrom(index.items[i].copy(faces = faces), f, person)
+    rules.learn(face.signature, person, index.people)
+    rules.reevaluate(index.items, index.people)
+  }
+
+  /** Not this person. It is never asked about them again; a label it added goes. */
+  fun rejectFace(faceId: String) = mutate { index ->
+    val rules = faceRules ?: return@mutate
+    val (i, f) = locate(index, faceId) ?: return@mutate
+    index.items[i] = rules.unlabel(index.items[i], f)
+    rules.reevaluate(index.items, index.people)
+  }
+
+  /**
+   * Names faces: an unnamed group, or one face. They are confirmed as the person, their
+   * signatures learnt, and every other face looked at again.
+   */
+  fun nameFaces(faceIds: Set<String>, name: String): Person = mutate { index ->
+    val personId = resolvePerson(name, index.people)
+    val rules = faceRules
+    if (rules != null) {
+      for (i in index.items.indices) {
+        var item = index.items[i]
+        for (f in item.faces.indices) {
+          val face = item.faces[f]
+          if (face.id !in faceIds) continue
+          val faces = item.faces.toMutableList()
+          faces[f] = face.copy(person = personId, state = FaceState.CONFIRMED, rejected = face.rejected - personId)
+          item = rules.labelFrom(item.copy(faces = faces), f, personId)
+          rules.learn(face.signature, personId, index.people)
+        }
+        index.items[i] = item
+      }
+      rules.reevaluate(index.items, index.people)
+    }
+    index.people.first { it.id == personId }
+  }
+
+  /** Signatures that came with people by name, learnt, then every face looked at again. */
+  fun absorb(signatures: Map<String, List<String>>) {
+    if (signatures.isEmpty() || faceRules == null) return
+    mutate { index -> absorbInto(index, signatures) }
+  }
+
+  private fun absorbInto(index: Index, signatures: Map<String, List<String>>) {
+    val rules = faceRules ?: return
+    if (signatures.isEmpty()) return
+    for ((name, set) in signatures) {
+      val personId = resolvePerson(name, index.people)
+      set.forEach { rules.learn(it, personId, index.people) }
+    }
+    rules.reevaluate(index.items, index.people)
+  }
+
+  /** Unnamed faces in groups of the same person, largest first. */
+  fun unnamedGroups(snapshot: Snapshot): List<List<Pair<Item, Face>>> =
+    faceRules?.unnamedGroups(snapshot.items) ?: emptyList()
+
+  private fun locate(index: Index, faceId: String): Pair<Int, Int>? {
+    for (i in index.items.indices) {
+      val f = index.items[i].faces.indexOfFirst { it.id == faceId }
+      if (f >= 0) return i to f
+    }
+    return null
   }
 
   /** The labels of one meme by name, for sending, a backup, or a vault entry. */
@@ -493,8 +606,31 @@ class MemeStore(
 
     // ---- the meme object: pairing, backup, vault entries ------------------------------
 
+    /** Faces waiting for a yes or no. */
+    fun asked(snapshot: Snapshot): List<Pair<Item, Face>> =
+      snapshot.items.flatMap { item -> item.faces.filter { it.state == FaceState.ASKED }.map { item to it } }
+
+    /** Memes still to scan, or scanned by an older pipeline. */
+    fun needingScan(snapshot: Snapshot, pipelineVersion: Int): List<Item> =
+      snapshot.items.filter { it.facesVersion < pipelineVersion }
+
+    /** People's signatures by name, for sending: they travel with the person. */
+    fun signaturesOf(people: List<String>, snapshot: Snapshot): Map<String, List<String>> =
+      people.mapNotNull { name ->
+        snapshot.people.firstOrNull { it.name == name }?.signatures?.takeIf { it.isNotEmpty() }?.let { name to it }
+      }.toMap()
+
+    /** A signature as sent: base64 of 256 bytes. Anything else is not one. */
+    private val signatureShape = Regex("^[A-Za-z0-9+/]{342}==$")
+
     /** The contract's `meme` object: kind, source, and labels by name. */
-    fun encodeMeme(kind: String, source: Source?, tags: List<Pair<String, List<Facet>>>, people: List<String>): JSONObject =
+    fun encodeMeme(
+      kind: String,
+      source: Source?,
+      tags: List<Pair<String, List<Facet>>>,
+      people: List<String>,
+      signatures: Map<String, List<String>> = emptyMap(),
+    ): JSONObject =
       JSONObject()
         .put("kind", kind)
         .put("source", encodeSource(source))
@@ -503,9 +639,24 @@ class MemeStore(
             put(JSONObject().put("name", name).put("facets", JSONArray(facets.map { it.wire })))
           }
         })
-        .put("people", JSONArray().apply { people.forEach { put(JSONObject().put("name", it)) } })
+        // A person's face signatures travel with them, so the other device recognises them
+        // without being taught.
+        .put("people", JSONArray().apply {
+          people.forEach { name ->
+            val person = JSONObject().put("name", name)
+            signatures[name]?.takeIf { it.isNotEmpty() }?.let { person.put("signatures", JSONArray(it)) }
+            put(person)
+          }
+        })
 
-    data class Decoded(val kind: String, val source: Source?, val tags: List<Pair<String, List<Facet>>>, val people: List<String>)
+    data class Decoded(
+      val kind: String,
+      val source: Source?,
+      val tags: List<Pair<String, List<Facet>>>,
+      val people: List<String>,
+      /** Face signatures by person name; only well-formed ones, at most eight each. */
+      val signatures: Map<String, List<String>> = emptyMap(),
+    )
 
     /** Leniently: an unknown facet is dropped, a missing field is absent. */
     fun decodeMeme(json: JSONObject?): Decoded {
@@ -519,10 +670,19 @@ class MemeStore(
         tags.add(name to (0 until facetArray.length()).mapNotNull { Facet.of(facetArray.optString(it)) })
       }
       val peopleArray = json?.optJSONArray("people") ?: JSONArray()
-      val people = (0 until peopleArray.length()).mapNotNull {
-        peopleArray.optJSONObject(it)?.optString("name")?.trim()?.take(80)?.takeIf { name -> name.isNotEmpty() }
+      val people = mutableListOf<String>()
+      val signatures = mutableMapOf<String, List<String>>()
+      for (i in 0 until peopleArray.length()) {
+        val person = peopleArray.optJSONObject(i) ?: continue
+        val name = person.optString("name").trim().take(80).takeIf { it.isNotEmpty() } ?: continue
+        people.add(name)
+        val set = person.optJSONArray("signatures")?.let { a ->
+          (0 until a.length()).map { a.optString(it) }.filter { signatureShape.matches(it) }.take(8)
+        }.orEmpty()
+        if (set.isNotEmpty()) signatures[name] = set
       }
-      return Decoded(json?.optString("kind")?.ifBlank { null } ?: "video", decodeSource(json?.optJSONObject("source")), tags, people)
+      return Decoded(json?.optString("kind")?.ifBlank { null } ?: "video", decodeSource(json?.optJSONObject("source")),
+        tags, people, signatures)
     }
 
     fun encodeSource(source: Source?): JSONObject? = source?.let {
@@ -556,7 +716,13 @@ class MemeStore(
       .put("tags", JSONArray().apply {
         index.tags.forEach { put(JSONObject().put("id", it.id).put("name", it.name).put("facets", JSONArray(it.facets.map { f -> f.wire }))) }
       })
-      .put("people", JSONArray().apply { index.people.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) } })
+      .put("people", JSONArray().apply {
+        index.people.forEach { person ->
+          put(JSONObject().put("id", person.id).put("name", person.name).apply {
+            if (person.signatures.isNotEmpty()) put("signatures", JSONArray(person.signatures))
+          })
+        }
+      })
       .put("items", JSONArray().apply {
         index.items.forEach { item ->
           put(JSONObject()
@@ -564,7 +730,9 @@ class MemeStore(
             .put("uri", item.uri).put("vaultId", item.vaultId).put("sha256", item.sha256)
             .put("source", encodeSource(item.source))
             .put("tags", JSONArray(item.tags)).put("people", JSONArray(item.people))
-            .put("addedAt", item.addedAt).put("taggedAt", item.taggedAt))
+            .put("addedAt", item.addedAt).put("taggedAt", item.taggedAt)
+            .put("facesVersion", item.facesVersion)
+            .put("faces", JSONArray().apply { item.faces.forEach { put(encodeFace(it)) } }))
         }
       })
 
@@ -579,7 +747,8 @@ class MemeStore(
       val people = json.optJSONArray("people") ?: JSONArray()
       for (i in 0 until people.length()) {
         val p = people.optJSONObject(i) ?: continue
-        index.people.add(Person(p.optString("id"), p.optString("name")))
+        val set = p.optJSONArray("signatures")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+        index.people.add(Person(p.optString("id"), p.optString("name"), set))
       }
       val items = json.optJSONArray("items") ?: JSONArray()
       for (i in 0 until items.length()) {
@@ -591,9 +760,32 @@ class MemeStore(
           sha256 = m.optString("sha256"),
           source = decodeSource(m.optJSONObject("source")), tags = strings("tags"), people = strings("people"),
           addedAt = m.optLong("addedAt"), taggedAt = m.optLong("taggedAt"),
+          faces = m.optJSONArray("faces")?.let { a -> (0 until a.length()).mapNotNull { decodeFace(a.optJSONObject(it)) } }.orEmpty(),
+          facesVersion = m.optInt("facesVersion", 0),
         ))
       }
       return index
+    }
+
+    private fun encodeFace(face: Face): JSONObject = JSONObject()
+      .put("id", face.id).put("signature", face.signature).put("frameMs", face.frameMs)
+      .put("box", JSONArray(face.box)).put("person", face.person ?: JSONObject.NULL).put("state", face.state.wire)
+      .apply {
+        if (face.rejected.isNotEmpty()) put("rejected", JSONArray(face.rejected))
+        if (face.added) put("added", true)
+      }
+
+    private fun decodeFace(json: JSONObject?): Face? {
+      json ?: return null
+      val id = json.optString("id").ifBlank { return null }
+      val box = json.optJSONArray("box")?.let { a -> (0 until a.length()).map { a.optDouble(it) } }.orEmpty()
+      return Face(
+        id = id, signature = json.optString("signature"), frameMs = json.optInt("frameMs"), box = box,
+        person = if (json.isNull("person")) null else json.optString("person").ifBlank { null },
+        state = FaceState.of(json.optString("state")),
+        rejected = json.optJSONArray("rejected")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
+        added = json.optBoolean("added", false),
+      )
     }
 
     /** Padded before sealing, so the file's size does not count the memes. */

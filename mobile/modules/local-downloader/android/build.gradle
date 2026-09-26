@@ -1,9 +1,92 @@
+import javax.inject.Inject
+
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'expo-module-gradle-plugin'
 
 group = 'expo.modules.localdownloader'
 version = '1.0.0'
+
+// Faces (shared/memes/CONTRACT.md, "Faces"): ONNX Runtime and the two models.
+//
+// The runtime's AAR is not a dependency: that would also package its Java bindings and their
+// JNI library, which nothing here uses. Only its C headers and libonnxruntime.so are taken
+// out of it, the headers for CMake and the library to package. The version is the one
+// shared/faces/MODELS.json pins, so the Mac runs the same.
+//
+// Both land as generated sources (androidComponents below), so every task that reads assets
+// or native libraries, lint included, knows to wait for them.
+abstract class ExtractOnnxRuntime extends DefaultTask {
+  @InputFiles abstract ConfigurableFileCollection getAar()
+  @OutputDirectory abstract DirectoryProperty getHeaders()
+  @OutputDirectory abstract DirectoryProperty getJni()
+  @Inject abstract FileSystemOperations getFiles()
+  @Inject abstract ArchiveOperations getArchives()
+
+  @TaskAction
+  void extract() {
+    def archive = archives.zipTree(aar.singleFile)
+    files.sync { from(archive) { include "headers/**"; eachFile { it.path = it.path - "headers/" } }; into headers }
+    files.sync { from(archive) { include "jni/*/libonnxruntime.so"; eachFile { it.path = it.path - "jni/" } }; into jni }
+  }
+}
+
+abstract class CopyFaceModels extends DefaultTask {
+  @InputFiles abstract ConfigurableFileCollection getModels()
+  @OutputDirectory abstract DirectoryProperty getAssets()
+  /** The folder under assets/ they land in. */
+  @Input abstract Property<String> getTarget()
+  @Inject abstract FileSystemOperations getFiles()
+
+  CopyFaceModels() {
+    target.convention("faces")
+  }
+
+  @TaskAction
+  void copy() {
+    files.sync { from(models); into(assets.dir(target)) }
+  }
+}
+
+def sharedFaces = file("${projectDir}/../../../../shared/faces")
+def onnxRuntimeHeaders = layout.buildDirectory.dir("onnxruntime/headers")
+
+configurations {
+  onnxRuntime
+}
+
+def extractOnnxRuntime = tasks.register("extractOnnxRuntime", ExtractOnnxRuntime) {
+  aar.from(configurations.onnxRuntime)
+  headers.set(onnxRuntimeHeaders)
+  jni.set(layout.buildDirectory.dir("onnxruntime/jni"))
+}
+
+def copyFaceModels = tasks.register("copyFaceModels", CopyFaceModels) {
+  models.from(fileTree(sharedFaces) { include "MODELS.json", "models/*.onnx" })
+  assets.set(layout.buildDirectory.dir("generated/faces-assets"))
+}
+
+// CMake reads the headers and links the library straight from where they were unpacked.
+tasks.configureEach { task ->
+  if (task.name.startsWith("configureCMake") || task.name.startsWith("buildCMake")) {
+    task.dependsOn(extractOnnxRuntime)
+  }
+}
+
+// The fixtures and vectors, for the instrumented test that holds the phone to the Mac.
+def copyFaceFixtures = tasks.register("copyFaceFixtures", CopyFaceModels) {
+  models.from(fileTree(sharedFaces) { include "VECTORS.json", "fixtures/*.ppm" }.files)
+  assets.set(layout.buildDirectory.dir("generated/faces-test-assets"))
+  target.set("faces-test")
+}
+
+androidComponents {
+  onVariants(selector().all()) { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(copyFaceModels) { it.assets }
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(extractOnnxRuntime) { it.jni }
+    variant.androidTest?.sources?.assets?.addGeneratedSourceDirectory(copyFaceFixtures) { it.assets }
+  }
+}
 
 android {
   namespace "expo.modules.localdownloader"
@@ -43,6 +126,13 @@ android {
       version "3.22.1"
     }
   }
+  defaultConfig {
+    externalNativeBuild {
+      cmake {
+        arguments "-DONNXRUNTIME_DIR=${layout.buildDirectory.dir("onnxruntime").get().asFile.absolutePath}"
+      }
+    }
+  }
 
   sourceSets {
     main {
@@ -60,6 +150,7 @@ android {
 }
 
 dependencies {
+  onnxRuntime "com.microsoft.onnxruntime:onnxruntime-android:1.30.0@aar"
   implementation "androidx.core:core-ktx:1.13.1"
   implementation "androidx.activity:activity-ktx:1.9.2"
   implementation "androidx.biometric:biometric:1.1.0"

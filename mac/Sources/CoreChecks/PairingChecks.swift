@@ -281,14 +281,15 @@ extension CoreChecks {
                 "kind": "video",
                 "source": ["platform": "twitter", "caption": "bizim laubalilik seviyesi", "savedAt": 0],
                 "tags": [["name": "laubalılık", "facets": ["vibe", "action"]]],
-                "people": [["name": "Arda Turan"]],
+                "people": [["name": "Arda Turan",
+                            "signatures": [FaceMath.encode((0..<FaceMath.size).map { Float($0 % 7) / 7 })]]],
             ] as [String: Any])
             sent = false
             runner.check(mac.sessions.first?.send(ItemSource(name: "arda.mp4", sizeBytes: 20_000, file: arda, meme: labels),
                                                   kind: "meme") == true && waitFor(60) { sent },
                          "a meme goes to the phone")
-            runner.check(waitFor(30) { text("phone-meme") == "video|laubalılık:vibe,action|Arda Turan|bizim laubalilik seviyesi" },
-                         "and arrives there as a meme, tags, facets, people and caption intact")
+            runner.check(waitFor(30) { text("phone-meme") == "video|laubalılık:vibe,action|Arda Turan|bizim laubalilik seviyesi|faces:1" },
+                         "and arrives there as a meme, tags, facets, people, caption and a face signature intact")
             try "".write(to: file("mac-wants-meme"), atomically: true, encoding: .utf8)
             runner.check(waitFor(60) { content.receivedMemes.count == 1 }, "a meme from the phone arrives as a meme")
             let back = content.receivedMemes.first.map(MemeTransfer.decode)

@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  confirmMemeFace,
   createMemePerson,
   createMemeTag,
   dismissMemePrompt,
@@ -26,6 +27,8 @@ import {
   getMemeThumbnail,
   labelMemes,
   MEME_FACETS,
+  nameMemeFaces,
+  rejectMemeFace,
   type LocalMeme,
   type LocalMemeFacet,
   type LocalMemeLibrary,
@@ -34,6 +37,7 @@ import {
 import { AppText as Text, Chip } from '@/src/components';
 import { useTheme } from '@/src/theme';
 
+import { FaceCrop } from './FaceCrop';
 import { foldForMatching } from './folding';
 
 export type MemeSheetMode = 'detail' | 'batch' | 'review' | 'prompt';
@@ -342,6 +346,7 @@ export function MemeSheet({ ids, mode, library, onClose, onChanged, onPlayPrivat
             ) : null}
             {single ? <MemePreview key={single.id} meme={single} compact={typing} onPlayPrivate={onPlayPrivate} /> : null}
             {single ? <SourceView meme={single} compact={typing} /> : null}
+            {single && !typing ? <FacesRow meme={single} library={library} onChanged={onChanged} /> : null}
 
             <TextInput
               value={text}
@@ -501,6 +506,79 @@ function MemePreview({
   );
 }
 
+/**
+ * The faces in one meme: who each is, and a way to say otherwise. A tap picks a face; what
+ * can be said about it appears under the row.
+ */
+function FacesRow({
+  meme,
+  library,
+  onChanged,
+}: {
+  meme: LocalMeme;
+  library: LocalMemeLibrary;
+  onChanged: () => Promise<void> | void;
+}) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const [picked, setPicked] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const faces = meme.faces ?? [];
+  if (faces.length === 0) return null;
+  const nameOf = (id?: string | null) => library.people.find((p) => p.id === id)?.name ?? '';
+  const face = faces.find((f) => f.id === picked);
+
+  const act = async (action: () => Promise<unknown>) => {
+    await action();
+    setPicked(null);
+    setName('');
+    await onChanged();
+  };
+
+  return (
+    <View style={styles.faces}>
+      <Text style={[styles.label, { color: colors.textMuted }]}>{t('memes.faces.title')}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.faceRow}>
+        {faces.map((f) => (
+          <Pressable key={f.id} onPress={() => setPicked(picked === f.id ? null : f.id)} style={styles.faceItem}>
+            <View style={{ borderRadius: 12, borderWidth: 2, borderColor: picked === f.id ? colors.accent : 'transparent' }}>
+              <FaceCrop itemId={meme.id} faceId={f.id} size={56} />
+            </View>
+            <Text style={[styles.faceName, { color: colors.textMuted }]} numberOfLines={1}>
+              {f.state === 'unnamed' ? t('memes.faces.unknown') : f.state === 'asked' ? `${nameOf(f.person)}?` : nameOf(f.person)}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      {face ? (
+        <View style={styles.wrap}>
+          {face.state === 'asked' ? (
+            <Chip label={t('memes.faces.yesIs', { name: nameOf(face.person) })} iconName="checkmark" color={colors.accent}
+              onPress={() => void act(() => confirmMemeFace(face.id))} />
+          ) : null}
+          {face.person ? (
+            <Chip label={t('memes.faces.notIs', { name: nameOf(face.person) })} iconName="close" color={colors.error}
+              onPress={() => void act(() => rejectMemeFace(face.id))} />
+          ) : null}
+          <View style={styles.nameRow}>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder={t('memes.faces.whoIsThis')}
+              placeholderTextColor={colors.textSubtle}
+              style={[styles.input, styles.nameInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+              autoCorrect={false}
+              onSubmitEditing={() => name.trim() && void act(() => nameMemeFaces([face.id], name.trim()))}
+            />
+            <Chip label={t('memes.faces.setName')} color={colors.accent}
+              onPress={() => name.trim() && void act(() => nameMemeFaces([face.id], name.trim()))} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /** Where it came from: the account, the caption, and a way back to the post. */
 function SourceView({ meme, compact }: { meme: LocalMeme; compact: boolean }) {
   const { t } = useTranslation();
@@ -554,6 +632,12 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, marginTop: 6 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   error: { fontSize: 14 },
+  faces: { gap: 6 },
+  faceRow: { gap: 10 },
+  faceItem: { alignItems: 'center', gap: 3, width: 64 },
+  faceName: { fontSize: 11 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexBasis: '100%' },
+  nameInput: { flex: 1, paddingVertical: 6 },
   footer: {
     flexDirection: 'row',
     gap: 10,

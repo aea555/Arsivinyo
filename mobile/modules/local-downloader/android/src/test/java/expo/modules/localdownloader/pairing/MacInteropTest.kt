@@ -49,7 +49,8 @@ class MacInteropTest {
         if (kind == "meme") {
           val decoded = MemeStore.decodeMeme(meme)
           val tags = decoded.tags.joinToString(";") { (name, facets) -> name + ":" + facets.joinToString(",") { it.wire } }
-          receivedMeme = "${decoded.kind}|$tags|${decoded.people.joinToString(";")}|${decoded.source?.caption}"
+          val faces = decoded.signatures.values.sumOf { it.size }
+          receivedMeme = "${decoded.kind}|$tags|${decoded.people.joinToString(";")}|${decoded.source?.caption}|faces:$faces"
           return
         }
         receivedArtwork = artworkPath

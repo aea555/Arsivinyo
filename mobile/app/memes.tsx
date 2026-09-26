@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -18,6 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  askedFaces,
   authenticateLocalPrivateAccess,
   EMPTY_MEME_LIBRARY,
   getMemeThumbnail,
@@ -38,6 +39,7 @@ import {
   type LocalPairedDevice,
 } from '@/src/api';
 import { AppText as Text, Chip, ConfirmModal } from '@/src/components';
+import { forgetFaceCrops } from '@/src/features/memes/FaceCrop';
 import { MemeSheet, type MemeSheetMode } from '@/src/features/memes/MemeSheet';
 import { TagManager } from '@/src/features/memes/TagManager';
 import { createSession } from '@/src/features/privatePlayback/sessionStore';
@@ -164,6 +166,8 @@ export default function MemesScreen() {
 
   const setPrivate = useCallback(
     async (ids: string[], makePrivate: boolean) => {
+      // A face's crop was a file while its meme was public; it is not once it is private.
+      forgetFaceCrops(library.items.filter((item) => ids.includes(item.id)).flatMap((item) => (item.faces ?? []).map((f) => f.id)));
       let result = await setMemesPrivate(ids, makePrivate);
       if (!result.success && result.code === 'PRIVATE_VAULT_LOCKED') {
         const auth = await authenticateLocalPrivateAccess('view').catch(() => null);
@@ -174,7 +178,7 @@ export default function MemesScreen() {
       setSelection(new Set());
       await reload();
     },
-    [reload, t],
+    [library.items, reload, t],
   );
 
   const startSend = useCallback(async () => {
@@ -256,6 +260,16 @@ export default function MemesScreen() {
             {untagged.length > 0 ? (
               <HeaderButton icon="albums-outline" label={t('memes.review')}
                 onPress={() => setSheet({ ids: untagged.map((item) => item.id), mode: 'review' })} />
+            ) : null}
+            {library.facesSupported ? (
+              <View>
+                <HeaderButton icon="people-outline" label={t('memes.faces.title')} onPress={() => router.push('/faces' as Href)} />
+                {askedFaces(library).length > 0 ? (
+                  <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+                    <Text style={[styles.badgeText, { color: colors.primaryText }]}>{askedFaces(library).length}</Text>
+                  </View>
+                ) : null}
+              </View>
             ) : null}
             <HeaderButton icon="pricetags-outline" label={t('memes.tags')} onPress={() => setManagingTags(true)} />
             <HeaderButton icon="add" label={t('memes.import')} onPress={onImport} />
@@ -591,6 +605,18 @@ const styles = StyleSheet.create({
   },
   barButton: { alignItems: 'center', gap: 2, minWidth: 64 },
   barLabel: { fontSize: 12 },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: { fontSize: 10, fontWeight: '700' },
   toast: { position: 'absolute', alignSelf: 'center', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
   scrim: { flex: 1, justifyContent: 'center', padding: 24 },
   picker: { borderRadius: 16, padding: 16, gap: 10, maxHeight: '70%' },

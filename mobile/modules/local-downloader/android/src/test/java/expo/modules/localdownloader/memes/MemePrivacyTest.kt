@@ -25,15 +25,16 @@ class MemePrivacyTest {
   private val interpolated = Regex("""\$\{([^}]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)""")
 
   /** Only these may appear inside a meme log line: a type, a count, an id. */
-  private val allowed = setOf("it.javaClass.simpleName", "failed", "imported", "taskId")
+  private val allowed = setOf("it.javaClass.simpleName", "error.javaClass.simpleName", "failed", "imported", "taskId")
 
   @Test
   fun noMemeCodeLogsWhatAMemeIs() {
     val files = listOf(File(sources, "memes/MemeCollection.kt"), File(sources, "memes/MemeStore.kt"),
+      File(sources, "memes/MemeFaces.kt"), File(sources, "memes/FaceScanner.kt"), File(sources, "memes/FacesNative.kt"),
       File(sources, "pairing/SoundsContent.kt"))
     val module = File(sources, "LocalDownloaderModule.kt").readLines()
     // The module's meme code: every line that mentions a meme and logs.
-    val lines = files.flatMap { it.readLines() } + module.filter { it.contains("MEME_") || it.contains("meme", ignoreCase = true) }
+    val lines = files.flatMap { it.readLines() } + module.filter { it.contains("MEME_") || it.contains("meme", ignoreCase = true) || it.contains("FACES_") }
     for (line in lines.filter { logCall.containsMatchIn(it) }) {
       for (match in interpolated.findAll(line)) {
         val expression = match.groupValues[1].ifEmpty { match.groupValues[2] }

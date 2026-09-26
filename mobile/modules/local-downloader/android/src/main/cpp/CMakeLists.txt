@@ -47,3 +47,29 @@ set_target_properties(audiopresets PROPERTIES
 # the NDK toolchain automatically.
 find_library(log-lib log)
 target_link_libraries(audiopresets ${log-lib})
+
+# Faces in memes: shared/faces, the same C++ the Mac compiles, over ONNX Runtime. build.gradle
+# unpacks the runtime's headers and library from its AAR into ONNXRUNTIME_DIR, and packages
+# that library itself; this only links against it.
+#
+# No -ffast-math here, unlike the DSP: the phone and the Mac must reach the same signatures
+# from the same frame, and reassociation is what would let them drift.
+set(ARSIVINYO_FACES ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../../shared/faces)
+
+add_library(onnxruntime SHARED IMPORTED)
+set_target_properties(onnxruntime PROPERTIES
+    IMPORTED_LOCATION ${ONNXRUNTIME_DIR}/jni/${ANDROID_ABI}/libonnxruntime.so
+)
+
+add_library(faces SHARED
+    faces_jni.cpp
+    ${ARSIVINYO_FACES}/faces.cpp
+    ${ARSIVINYO_FACES}/runtime.cpp
+)
+target_include_directories(faces PRIVATE ${ARSIVINYO_FACES} ${ONNXRUNTIME_DIR}/headers)
+target_compile_options(faces PRIVATE -Wall -Wextra)
+set_target_properties(faces PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+target_link_libraries(faces onnxruntime ${log-lib})

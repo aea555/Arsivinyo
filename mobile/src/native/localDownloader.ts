@@ -11,6 +11,8 @@ export {
 } from '../../modules/local-downloader/src';
 export type {
   LocalMeme,
+  LocalMemeFace,
+  LocalMemeFaceGroup,
   LocalMemeFacet,
   LocalMemeFilter,
   LocalMemeLibrary,

@@ -109,6 +109,13 @@ function AppContent() {
           }}
         />
         <Stack.Screen
+          name="faces"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="sound-player"
           options={{
             presentation: 'modal',

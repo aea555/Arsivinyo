@@ -756,6 +756,25 @@
       "facetsHint": "Yönler, bir etiketin ne tür bir anlam taşıdığını söyler. Bir etiketin istediği kadar yönü olabilir, hiç olmayabilir de.",
       "askForTags": "İndirmeden sonra etiket sor",
       "askForTagsHint": "Yeni mimi açan bir bildirim. Mim hakkında hiçbir şey söylemez."
+    },
+    "faces": {
+      "title": "Yüzler",
+      "scanning": "{{count}} mim inceleniyor…",
+      "unsupported": "Yüzler için Android 9 ya da sonrası gerekir.",
+      "empty": "Henüz yüz yok",
+      "emptyHint": "Mimlerindeki yüzler, incelendikten sonra burada görünür. Birine bir kez ad ver; o yüzün geçtiği her mim etiketlenir.",
+      "asked": "Bu kişi mi…?",
+      "yes": "Evet, o",
+      "no": "Hayır, başka biri",
+      "unnamed": "Adsız",
+      "unnamedHint": "Yüzlere bakılırsa aynı kişi. Bir kez ad ver.",
+      "people": "Kişiler",
+      "memeCount": "{{count}} mim",
+      "whoIsThis": "Bu kim?",
+      "setName": "Ad ver",
+      "unknown": "Bilinmiyor",
+      "yesIs": "Evet, {{name}}",
+      "notIs": "{{name}} değil"
     }
   }
 }

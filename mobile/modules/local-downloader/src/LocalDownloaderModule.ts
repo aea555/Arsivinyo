@@ -12,6 +12,7 @@ import type {
   LocalBackupRestoreResult,
   LocalPairingState,
   LocalMemeFacet,
+  LocalMemeFaceGroup,
   LocalMemeFilter,
   LocalMemeLabelInput,
   LocalMemeLibrary,
@@ -165,6 +166,11 @@ type LocalDownloaderNativeModule = {
   memeThumbnail(id: string): Promise<string | null>;
   memeSuggestions(id: string): Promise<string[]>;
   searchMemes(query: string, filter: LocalMemeFilter): Promise<string[]>;
+  memeFaceGroups(): Promise<LocalMemeFaceGroup[]>;
+  memeFaceCrop(itemId: string, faceId: string): Promise<string | null>;
+  confirmMemeFace(faceId: string): Promise<LocalMemeResult>;
+  rejectMemeFace(faceId: string): Promise<LocalMemeResult>;
+  nameMemeFaces(faceIds: string[], name: string): Promise<LocalMemeResult>;
   createMemeTag(name: string, facets: LocalMemeFacet[]): Promise<LocalMemeTag>;
   createMemePerson(name: string): Promise<LocalMemePerson>;
   setMemeTagFacets(tagId: string, facets: LocalMemeFacet[]): Promise<void>;
@@ -302,6 +308,11 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       memeThumbnail: async () => unsupported(),
       memeSuggestions: async () => unsupported(),
       searchMemes: async () => unsupported(),
+      memeFaceGroups: async () => [],
+      memeFaceCrop: async () => null,
+      confirmMemeFace: async () => unsupported(),
+      rejectMemeFace: async () => unsupported(),
+      nameMemeFaces: async () => unsupported(),
       createMemeTag: async () => unsupported(),
       createMemePerson: async () => unsupported(),
       setMemeTagFacets: async () => unsupported(),

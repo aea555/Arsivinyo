@@ -756,6 +756,25 @@
       "facetsHint": "Facets say what kind of meaning a tag is. A tag can have any number, or none.",
       "askForTags": "Ask for tags after a download",
       "askForTagsHint": "A notification that opens the new meme. It names nothing about it."
+    },
+    "faces": {
+      "title": "Faces",
+      "scanning": "Looking at {{count}} memes…",
+      "unsupported": "Faces need Android 9 or later.",
+      "empty": "No faces yet",
+      "emptyHint": "Faces in your memes appear here once they have been looked at. Name one, and every meme with that face is labelled.",
+      "asked": "Is this…?",
+      "yes": "Yes, it is",
+      "no": "No, it is someone else",
+      "unnamed": "Unnamed",
+      "unnamedHint": "The same person, as far as the faces can tell. Name them once.",
+      "people": "People",
+      "memeCount": "{{count}} memes",
+      "whoIsThis": "Who is this?",
+      "setName": "Set name",
+      "unknown": "Unknown",
+      "yesIs": "Yes, {{name}}",
+      "notIs": "Not {{name}}"
     }
   }
 }

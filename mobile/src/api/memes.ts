@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 import LocalDownloaderModule, {
   addMemesChangedListener,
   type LocalMeme,
+  type LocalMemeFace,
+  type LocalMemeFaceGroup,
   type LocalMemeFacet,
   type LocalMemeFilter,
   type LocalMemeLibrary,
@@ -14,6 +16,8 @@ import LocalDownloaderModule, {
 
 export type {
   LocalMeme,
+  LocalMemeFace,
+  LocalMemeFaceGroup,
   LocalMemeFacet,
   LocalMemeFilter,
   LocalMemeLibrary,
@@ -74,3 +78,19 @@ export const setMemeAskForTags = (enabled: boolean) => LocalDownloaderModule.set
 export const dismissMemePrompt = (id: string) => LocalDownloaderModule.dismissMemePrompt(id);
 export const sendMemeToPeer = (fingerprint: string, id: string) =>
   LocalDownloaderModule.pairingSendMeme(fingerprint, id);
+
+// ---- faces (CONTRACT.md, "Faces") ---------------------------------------------------------
+
+export const getMemeFaceGroups = () => LocalDownloaderModule.memeFaceGroups();
+/** A crop of the face: a file for a public meme, in-memory data for a private one. */
+export const getMemeFaceCrop = (itemId: string, faceId: string) => LocalDownloaderModule.memeFaceCrop(itemId, faceId);
+export const confirmMemeFace = (faceId: string) => LocalDownloaderModule.confirmMemeFace(faceId);
+export const rejectMemeFace = (faceId: string) => LocalDownloaderModule.rejectMemeFace(faceId);
+export const nameMemeFaces = (faceIds: string[], name: string) => LocalDownloaderModule.nameMemeFaces(faceIds, name);
+
+/** Faces waiting for a yes or no, with the meme each is in. */
+export function askedFaces(library: LocalMemeLibrary): { meme: LocalMeme; face: LocalMemeFace }[] {
+  return library.items.flatMap((meme) =>
+    (meme.faces ?? []).filter((face) => face.state === 'asked').map((face) => ({ meme, face })),
+  );
+}

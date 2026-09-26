@@ -34,7 +34,7 @@ import javax.crypto.spec.GCMParameterSpec
  */
 class MemeCollection(private val context: Context, privateHalf: MemeStore.PrivateHalf) {
 
-  val store: MemeStore by lazy { MemeStore(File(context.filesDir, "memes/index.bin"), KeystoreSealer, privateHalf) }
+  val store: MemeStore by lazy { MemeStore(File(context.filesDir, "memes/index.bin"), KeystoreSealer, privateHalf, FacesNative.orNull()) }
 
   private val thumbs: File get() = File(context.cacheDir, "meme-thumbs")
 
@@ -86,11 +86,63 @@ class MemeCollection(private val context: Context, privateHalf: MemeStore.Privat
     return store.add(uri, kind, sha, source)
   }
 
-  /** The labels by name, which is how they travel. */
+  /** The labels by name, which is how they travel, with the faces of the people in them. */
   fun meme(item: MemeStore.Item): org.json.JSONObject {
     val snapshot = store.snapshot()
     val (tags, people) = store.labelsOf(item, snapshot)
-    return MemeStore.encodeMeme(item.kind, item.source, tags, people)
+    return MemeStore.encodeMeme(item.kind, item.source, tags, people, MemeStore.signaturesOf(people, snapshot))
+  }
+
+  private val faceCrops: File get() = File(context.cacheDir, "meme-faces")
+
+  /**
+   * A face cut from a meme that is not private, cached beside the grid's thumbnails. A
+   * private meme's faces are cut by the module from the vault and never written here.
+   */
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  fun faceCrop(item: MemeStore.Item, face: Face): String? {
+    if (item.isPrivate) return null
+    val uri = item.uri ?: return null
+    val cached = File(faceCrops, "${face.id}.jpg")
+    if (cached.isFile) return cached.toURI().toString()
+    val frame = frame(item, face.frameMs) ?: return null
+    val crop = FaceScanner.crop(frame, face.box) ?: return null
+    faceCrops.mkdirs()
+    cached.outputStream().use { crop.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+    return cached.toURI().toString()
+  }
+
+  /** A public meme's frame, taken the way scanning takes it. */
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  fun frame(item: MemeStore.Item, ms: Int): Bitmap? {
+    val uri = Uri.parse(item.uri ?: return null)
+    if (item.kind != "video") return FaceScanner.image(android.graphics.ImageDecoder.createSource(context.contentResolver, uri))
+    val retriever = android.media.MediaMetadataRetriever()
+    return try {
+      retriever.setDataSource(context, uri)
+      FaceScanner.frameOfVideo(retriever, ms)
+    } catch (_: Exception) {
+      null
+    } finally {
+      runCatching { retriever.release() }
+    }
+  }
+
+  /** A public meme's faces, for a scan. */
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  fun scan(item: MemeStore.Item, scanner: FaceScanner): List<ScannedFace> {
+    val uri = Uri.parse(item.uri ?: return emptyList())
+    if (item.kind != "video") {
+      val image = FaceScanner.image(android.graphics.ImageDecoder.createSource(context.contentResolver, uri)) ?: return emptyList()
+      return scanner.scan(listOf(image to 0))
+    }
+    val retriever = android.media.MediaMetadataRetriever()
+    return try {
+      retriever.setDataSource(context, uri)
+      scanner.scan(retriever)
+    } finally {
+      runCatching { retriever.release() }
+    }
   }
 
   fun open(item: MemeStore.Item): InputStream? =
@@ -124,6 +176,7 @@ class MemeCollection(private val context: Context, privateHalf: MemeStore.Privat
   fun delete(item: MemeStore.Item) {
     item.uri?.let { runCatching { context.contentResolver.delete(Uri.parse(it), null, null) } }
     File(thumbs, "${item.id}.jpg").delete()
+    forgetFaceCrops(item)
     store.remove(item.id)
   }
 
@@ -133,6 +186,11 @@ class MemeCollection(private val context: Context, privateHalf: MemeStore.Privat
    */
   fun forgetThumbnail(itemId: String) {
     File(thumbs, "$itemId.jpg").delete()
+  }
+
+  /** The same for its faces. */
+  fun forgetFaceCrops(item: MemeStore.Item) {
+    item.faces.forEach { File(faceCrops, "${it.id}.jpg").delete() }
   }
 
   /** The grid's picture: made once, kept in the cache, never for a private meme. */

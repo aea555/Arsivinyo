@@ -26,6 +26,14 @@ All notable changes to this project are documented here. Format based on [Keep a
   A meme can be moved into the vault, and its labels go with it into a second index under
   the vault's key. Sends to a paired device and backups carry memes with their labels by
   name, so the Mac merges them into its own. `shared/memes/CONTRACT.md` is the contract.
+- **Faces in memes.** Every meme is looked at for faces in the background, and the faces of
+  one person are grouped. Name a group once and every meme with that face is labelled with
+  that person, past and future: sure matches on their own, close ones as "Is this …?". A
+  "no" is remembered, and a label added by hand is never taken off. Nothing leaves the
+  phone to do this: YuNet and SFace run on the device through ONNX Runtime, from the same
+  C++ the Mac runs (`shared/faces`), so a person named on one device is recognised on the
+  other once a meme or a backup carries them across. Needs Android 9 or later; adds about
+  20 MB to the app.
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is

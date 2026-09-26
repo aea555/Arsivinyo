@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.app.KeyguardManager
 import android.net.Uri
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
 import android.os.Looper
@@ -85,7 +86,11 @@ import java.util.ArrayDeque
 import java.util.LinkedHashMap
 import java.util.UUID
 import expo.modules.kotlin.Promise
+import expo.modules.localdownloader.memes.Face
+import expo.modules.localdownloader.memes.FaceScanner
+import expo.modules.localdownloader.memes.FacesNative
 import expo.modules.localdownloader.memes.MemeCollection
+import expo.modules.localdownloader.memes.ScannedFace
 import expo.modules.localdownloader.pairing.ItemSource
 import expo.modules.localdownloader.memes.MemeStore
 import java.util.concurrent.ConcurrentHashMap
@@ -411,6 +416,7 @@ class LocalDownloaderModule : Module() {
       val item = memes.adopt(uri, mimeType, source) ?: return
       if (ask && memeAskForTags && item.isUntagged) memes.prompt(item)
       memesChanged()
+      scanFaces()
     }.onFailure { addError("MEME_ADD_FAILED: ${it.javaClass.simpleName}") }
   }
 
@@ -438,6 +444,7 @@ class LocalDownloaderModule : Module() {
     "people" to item.people,
     "addedAt" to item.addedAt,
     "taggedAt" to item.taggedAt,
+    "faces" to item.faces.map(::faceMap),
     "source" to item.source?.let {
       mapOf(
         "platform" to it.platform, "account" to it.account, "accountName" to it.accountName,
@@ -454,11 +461,17 @@ class LocalDownloaderModule : Module() {
     val unlocked = store.privateReadable()
     if (unlocked) runCatching { store.tidyPrivate() }
     val snapshot = store.snapshot()
-    snapshot.items.filter { it.isPrivate }.forEach { memes.forgetThumbnail(it.id) }
+    snapshot.items.filter { it.isPrivate }.forEach {
+      memes.forgetThumbnail(it.id)
+      memes.forgetFaceCrops(it)
+    }
+    scanFaces()
     return mapOf(
       "items" to snapshot.items.map(::memeItemMap),
       "tags" to snapshot.tags.map(::memeTagMap),
-      "people" to snapshot.people.map { mapOf("id" to it.id, "name" to it.name) },
+      "people" to snapshot.people.map { mapOf("id" to it.id, "name" to it.name, "known" to it.signatures.isNotEmpty()) },
+      "facesSupported" to facesSupported(),
+      "facesRemaining" to facesRemaining,
       "vaultUnlocked" to unlocked,
       "hasPrivate" to store.hasPrivate(),
       "askForTags" to memeAskForTags,
@@ -487,6 +500,7 @@ class LocalDownloaderModule : Module() {
             val entry = importFileToPrivateVault(temp.absolutePath, name, uri, mime)
             memes.store.movedToVault(item.id, entry.id)
             memes.forgetThumbnail(item.id)
+            memes.forgetFaceCrops(item)
             requireNotNull(appContext.reactContext).contentResolver.delete(Uri.parse(uri), null, null)
           } finally {
             temp.delete()
@@ -620,17 +634,166 @@ class LocalDownloaderModule : Module() {
       val sha = MemeCollection.hashOf { file.inputStream() } ?: return
       val existing = memes.store.snapshot().items.firstOrNull { it.sha256 == sha && !it.isPrivate }
       if (existing != null) {
-        memes.store.receive(existing.uri ?: return, decoded.kind, sha, decoded.source, decoded.tags, decoded.people)
+        memes.store.receive(existing.uri ?: return, decoded.kind, sha, decoded.source, decoded.tags, decoded.people,
+          decoded.signatures)
       } else {
         val saved = saveToMediaStoreInternal(file.path, file.name, mime, System.currentTimeMillis())
         memes.store.receive(saved["uri"] as String, MemeCollection.kindOf(mime) ?: decoded.kind, sha,
-          decoded.source, decoded.tags, decoded.people)
+          decoded.source, decoded.tags, decoded.people, decoded.signatures)
       }
       memesChanged()
     } finally {
       file.delete()
     }
   }
+
+  // ---- faces --------------------------------------------------------------------------
+
+  /** Loaded on the first scan; null until then, or where faces cannot run. */
+  @Volatile private var faceScanner: FaceScanner? = null
+  private val faceScanRunning = java.util.concurrent.atomic.AtomicBoolean(false)
+  /**
+   * Memes whose scan could not be written down, left alone until the app restarts: the
+   * listing that follows a scan starts another, and that must not become a loop.
+   */
+  private val facesUnrecordable = ConcurrentHashMap.newKeySet<String>()
+  /** How many memes are left while a scan runs; null when idle. */
+  @Volatile private var facesRemaining: Int? = null
+
+  private fun facesSupported() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && FacesNative.available
+
+  /**
+   * Scans whatever has not been scanned, one meme at a time, on a thread of its own. It
+   * waits while a download runs, so it never competes with one, and private memes are
+   * scanned only while the vault is open.
+   */
+  private fun scanFaces() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) startFaceScan()
+  }
+
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  private fun startFaceScan() {
+    if (!facesSupported() || !faceScanRunning.compareAndSet(false, true)) return
+    Thread {
+      try {
+        val scanner = faceScanner
+          ?: FaceScanner.load(requireNotNull(appContext.reactContext)).also { faceScanner = it }
+        // Tried once per run: one that cannot be recorded must not hold the rest up.
+        val tried = mutableSetOf<String>()
+        while (true) {
+          val version = FacesNative.pipelineVersion
+          val pending = MemeStore.needingScan(memes.store.snapshot(), version)
+            .filter { it.id !in tried && it.id !in facesUnrecordable }
+          facesRemaining = pending.size
+          val next = pending.firstOrNull() ?: break
+          tried.add(next.id)
+          while (activeDownloads.isNotEmpty()) Thread.sleep(2000)
+          val found = runCatching { scanMeme(next, scanner) }
+          found.exceptionOrNull()?.let { addError("FACES_SCAN_FAILED: ${it.javaClass.simpleName}") }
+          // Locked part way through: the private ones wait for the next unlock.
+          if (next.isPrivate && !memes.store.privateReadable()) break
+          // A file that cannot be read counts as scanned with nothing found, rather than
+          // being tried again on every listing.
+          runCatching { memes.store.record(next.id, found.getOrDefault(emptyList())) }
+            .onFailure { facesUnrecordable.add(next.id) }
+          memesChanged()
+        }
+      } catch (error: Throwable) {
+        addError("FACES_SCAN_FAILED: ${error.javaClass.simpleName}")
+      } finally {
+        facesRemaining = null
+        faceScanRunning.set(false)
+        memesChanged()
+      }
+    }.apply { name = "meme-faces"; priority = Thread.MIN_PRIORITY }.start()
+  }
+
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  private fun scanMeme(item: MemeStore.Item, scanner: FaceScanner): List<ScannedFace> {
+    if (!item.isPrivate) return memes.scan(item, scanner)
+    val vaultId = item.vaultId ?: return emptyList()
+    return if (item.kind == "video") {
+      withVaultVideo(vaultId) { url ->
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+          retriever.setDataSource(url, emptyMap())
+          scanner.scan(retriever)
+        } finally {
+          runCatching { retriever.release() }
+        }
+      }
+    } else {
+      val image = FaceScanner.image(decryptVaultBytes(vaultId)) ?: return emptyList()
+      scanner.scan(listOf(image to 0))
+    }
+  }
+
+  /**
+   * A private video streamed from the vault's loopback server for as long as [use] runs,
+   * as playback does: nothing decrypted is written anywhere. Only the current cipher can
+   * stream; an older entry is left alone rather than decrypted to a file.
+   */
+  private fun <T> withVaultVideo(vaultId: String, use: (String) -> T): T {
+    val entry = findPrivateVideoById(vaultId) ?: throw IllegalStateException("PRIVATE_VIDEO_NOT_FOUND")
+    check(entry.cipherVersion == PRIVATE_STORE_VERSION_V4) { "PRIVATE_LEGACY_VAULT_UNSUPPORTED" }
+    val server = ensureVaultLoopbackServer()
+    val session = server.registerVideoSession(entry.id)
+    try {
+      return use(server.videoUrl(session) ?: throw IllegalStateException("PRIVATE_VIDEO_NOT_FOUND"))
+    } finally {
+      server.invalidateVideoSession(session.token)
+    }
+  }
+
+  /** A private image, decrypted into memory only. */
+  private fun decryptVaultBytes(vaultId: String): ByteArray {
+    val entry = findPrivateVideoById(vaultId) ?: throw IllegalStateException("PRIVATE_VIDEO_NOT_FOUND")
+    val encrypted = File(privateVaultObjectsDir(create = true), entry.encFileName)
+    val out = java.io.ByteArrayOutputStream()
+    decryptPrivateVaultFileToOutput(encrypted, out, detectPrivateCipherVersion(encrypted, entry.cipherVersion),
+      traceId = "faces", entryId = entry.id)
+    return out.toByteArray()
+  }
+
+  /**
+   * A face cut from its meme. A public meme's crop is cached like its thumbnail; a private
+   * one's is made in memory and handed over as data, never written outside the vault.
+   */
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  private fun faceCropInternal(itemId: String, faceId: String): String? {
+    val item = findMeme(itemId) ?: return null
+    val face = item.faces.firstOrNull { it.id == faceId } ?: return null
+    if (!item.isPrivate) return memes.faceCrop(item, face)
+    val vaultId = item.vaultId ?: return null
+    val frame = if (item.kind == "video") {
+      withVaultVideo(vaultId) { url ->
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+          retriever.setDataSource(url, emptyMap())
+          FaceScanner.frameOfVideo(retriever, face.frameMs)
+        } finally {
+          runCatching { retriever.release() }
+        }
+      }
+    } else {
+      FaceScanner.image(decryptVaultBytes(vaultId))
+    } ?: return null
+    val crop = FaceScanner.crop(frame, face.box) ?: return null
+    val bytes = java.io.ByteArrayOutputStream().also { crop.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+    return "data:image/jpeg;base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+  }
+
+  private fun facesAction(action: () -> Unit): Map<String, Any?> {
+    try {
+      action()
+    } catch (_: MemeStore.LockedException) {
+      return mapOf("success" to false, "code" to "PRIVATE_VAULT_LOCKED")
+    }
+    memesChanged()
+    return mapOf("success" to true)
+  }
+
+  private fun faceMap(face: Face) = mapOf("id" to face.id, "person" to face.person, "state" to face.state.wire)
 
   /** The most recent URL a peer asked this phone to fetch, for the screen to offer. */
   @Volatile private var lastPeerUrl: String = ""
@@ -1097,6 +1260,30 @@ class LocalDownloaderModule : Module() {
         onlyPrivate = filter["onlyPrivate"] as? Boolean ?: false,
         onlyUntagged = filter["onlyUntagged"] as? Boolean ?: false,
       )).map { it.id }
+    }
+
+    /** Unnamed faces in groups of the same person, largest first: (meme, face) ids. */
+    AsyncFunction("memeFaceGroups") {
+      memes.store.unnamedGroups(memes.store.snapshot()).map { group ->
+        mapOf("count" to group.size, "faces" to group.take(12).map { (item, face) -> mapOf("itemId" to item.id, "faceId" to face.id) })
+      }
+    }
+
+    AsyncFunction("memeFaceCrop") { itemId: String, faceId: String ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return@AsyncFunction null
+      runCatching { faceCropInternal(itemId, faceId) }.getOrNull()
+    }
+
+    AsyncFunction("confirmMemeFace") { faceId: String ->
+      facesAction { memes.store.confirmFace(faceId) }
+    }
+
+    AsyncFunction("rejectMemeFace") { faceId: String ->
+      facesAction { memes.store.rejectFace(faceId) }
+    }
+
+    AsyncFunction("nameMemeFaces") { faceIds: List<String>, name: String ->
+      facesAction { memes.store.nameFaces(faceIds.toSet(), name.trim().take(80)) }
     }
 
     AsyncFunction("memeSuggestions") { id: String ->
@@ -3796,7 +3983,7 @@ class LocalDownloaderModule : Module() {
         val meme = privateMemes[entry.id]
         if (meme != null && snapshot != null) {
           val (tags, people) = memes.store.labelsOf(meme, snapshot)
-          json.put("meme", MemeStore.encodeMeme(meme.kind, meme.source, tags, people))
+          json.put("meme", MemeStore.encodeMeme(meme.kind, meme.source, tags, people, MemeStore.signaturesOf(people, snapshot)))
         }
         BackupPorts.VaultRecord(
           id = entry.id,
@@ -3851,7 +4038,8 @@ class LocalDownloaderModule : Module() {
         runCatching {
           val decoded = MemeStore.decodeMeme(memeObject)
           val sha = MemeCollection.hashOf { staged.inputStream() } ?: return@runCatching
-          memes.store.registerPrivate(id, decoded.kind, sha, decoded.source, decoded.tags, decoded.people)
+          memes.store.registerPrivate(id, decoded.kind, sha, decoded.source, decoded.tags, decoded.people,
+            signatures = decoded.signatures)
         }.onFailure { addError("MEME_RESTORE_FAILED: ${it.javaClass.simpleName}") }
       }
       return id
@@ -3871,7 +4059,7 @@ class LocalDownloaderModule : Module() {
           meta = JSONObject()
             .put("memeId", item.id).put("sha256", item.sha256)
             .put("addedAt", item.addedAt).put("taggedAt", item.taggedAt)
-            .put("meme", MemeStore.encodeMeme(item.kind, item.source, tags, people)),
+            .put("meme", MemeStore.encodeMeme(item.kind, item.source, tags, people, MemeStore.signaturesOf(people, snapshot))),
         )
       }
     }
@@ -3894,7 +4082,12 @@ class LocalDownloaderModule : Module() {
           }
         })
         .put("people", JSONArray().apply {
-          snapshot.people.filter { it.id !in hiddenPeople }.forEach { put(JSONObject().put("name", it.name)) }
+          // A person's face signatures travel with them (CONTRACT.md, "Faces").
+          snapshot.people.filter { it.id !in hiddenPeople }.forEach { person ->
+            put(JSONObject().put("name", person.name).apply {
+              if (person.signatures.isNotEmpty()) put("signatures", JSONArray(person.signatures))
+            })
+          }
         })
     }
 
@@ -3904,7 +4097,8 @@ class LocalDownloaderModule : Module() {
     override fun mergeLabels(existingId: String, meta: JSONObject) {
       val item = findMeme(existingId) ?: return
       val decoded = MemeStore.decodeMeme(meta.optJSONObject("meme"))
-      memes.store.receive(item.uri ?: return, item.kind, item.sha256, item.source, decoded.tags, decoded.people)
+      memes.store.receive(item.uri ?: return, item.kind, item.sha256, item.source, decoded.tags, decoded.people,
+        decoded.signatures)
     }
 
     override fun restore(staged: File, name: String, meta: JSONObject): String {
@@ -3913,7 +4107,7 @@ class LocalDownloaderModule : Module() {
       val mime = if (MemeCollection.kindOf(guessed) != null) guessed else if (decoded.kind == "image") "image/jpeg" else "video/mp4"
       val saved = saveToMediaStoreInternal(staged.path, name.substringAfterLast('/'), mime, System.currentTimeMillis())
       val item = memes.store.receive(saved["uri"] as String, decoded.kind, meta.optString("sha256"), decoded.source,
-        decoded.tags, decoded.people)
+        decoded.tags, decoded.people, decoded.signatures)
       if (meta.optLong("taggedAt") > 0 && item.isUntagged) memes.store.label(setOf(item.id))
       return item.id
     }
@@ -3921,7 +4115,7 @@ class LocalDownloaderModule : Module() {
     override fun restoreVocabulary(json: JSONObject) {
       val decoded = MemeStore.decodeMeme(JSONObject().put("tags", json.optJSONArray("tags") ?: JSONArray())
         .put("people", json.optJSONArray("people") ?: JSONArray()))
-      memes.store.ensure(decoded.tags, decoded.people)
+      memes.store.ensure(decoded.tags, decoded.people, decoded.signatures)
     }
   }
 

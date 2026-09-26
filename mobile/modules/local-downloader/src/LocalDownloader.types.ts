@@ -813,6 +813,21 @@ export interface LocalMemeTag {
 export interface LocalMemePerson {
   id: string;
   name: string;
+  /** Whether the faces know what this person looks like. */
+  known?: boolean;
+}
+
+/** A face in a meme. Its signature stays native. */
+export interface LocalMemeFace {
+  id: string;
+  person?: string | null;
+  state: 'auto' | 'confirmed' | 'asked' | 'unnamed';
+}
+
+/** Unnamed faces of one person, as far as the faces can tell: the first twelve, and how many. */
+export interface LocalMemeFaceGroup {
+  count: number;
+  faces: { itemId: string; faceId: string }[];
 }
 
 /** Where a meme came from, captured at download time. Never logged, never in a notification. */
@@ -840,6 +855,7 @@ export interface LocalMeme {
   /** 0 while the meme waits in the untagged inbox. */
   taggedAt: number;
   source?: LocalMemeSource | null;
+  faces?: LocalMemeFace[];
 }
 
 export interface LocalMemeLibrary {
@@ -851,6 +867,10 @@ export interface LocalMemeLibrary {
   /** Whether any meme is private, known while locked too. */
   hasPrivate: boolean;
   askForTags: boolean;
+  /** Android 9 and later, with the faces libraries loaded. */
+  facesSupported?: boolean;
+  /** Memes left to look at while a scan runs; null when idle. */
+  facesRemaining?: number | null;
 }
 
 export interface LocalMemeFilter {
