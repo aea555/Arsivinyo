@@ -206,7 +206,8 @@ final class AppModel {
                         try FileManager.default.createDirectory(at: self.downloadDirectory, withIntermediateDirectories: true)
                         try FileManager.default.moveItem(at: file, to: target)
                         let decoded = MemeTransfer.decode(object)
-                        try self.memes.receive(target, source: decoded.source, tags: decoded.tags, people: decoded.people)
+                        try self.memes.receive(target, source: decoded.source, tags: decoded.tags, people: decoded.people,
+                                               signatures: MemeTransfer.signatures(object))
                         self.refreshMemes()
                     } catch {
                         self.memeProblem = String(describing: error)
@@ -531,6 +532,11 @@ final class AppModel {
     var memeProblem: String?
     /// Memes that just downloaded, waiting for their quick tag prompt, oldest first.
     var tagPrompts: [String] = []
+    /// The faces pipeline, loaded on first scan. Nil until then, or if the models are missing.
+    @ObservationIgnored var faceScanner: FaceScanner?
+    var faceProblem: String?
+    /// How many memes are left to scan while a scan runs; nil when idle.
+    var facesRemaining: Int?
     /// The quick prompt after a meme downloads. On unless turned off.
     var askForMemeTags: Bool = UserDefaults.standard.object(forKey: "askForMemeTags") as? Bool ?? true {
         didSet { UserDefaults.standard.set(askForMemeTags, forKey: "askForMemeTags") }

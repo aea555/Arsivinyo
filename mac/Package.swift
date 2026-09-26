@@ -1,4 +1,5 @@
 // swift-tools-version: 6.0
+import Foundation
 import PackageDescription
 
 // The macOS app.
@@ -13,6 +14,13 @@ import PackageDescription
 // application bundle.
 
 let openSSLRoot = "/opt/homebrew/opt/openssl@3"
+
+// ONNX Runtime for the faces pipeline, the version shared/faces/MODELS.json pins, fetched by
+// shared/faces/fetch-runtime.sh. Only a dynamic library is published for macOS, so the app
+// bundle carries it in Contents/Frameworks (scripts/bundle.sh); the rpath to the fetched
+// copy is for `swift run` and CoreChecks.
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+let onnxRuntime = "\(packageRoot)/../shared/faces/runtime/onnxruntime-osx-arm64-1.30.0"
 
 let package = Package(
     name: "Arsivinyo",
@@ -71,7 +79,26 @@ let package = Package(
                 .unsafeFlags(["\(openSSLRoot)/lib/libssl.a"]),
             ]
         ),
-        .target(name: "ArsivinyoCore", dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC", "ArsivinyoPairingC"]),
+        // Faces in memes: shared/faces by symlink, the same C++ and models the phone runs, so a
+        // face named on one device is recognised on the other.
+        .target(
+            name: "ArsivinyoFacesC",
+            path: "Sources/ArsivinyoFacesC",
+            exclude: ["shared/models", "shared/fixtures", "shared/test", "shared/runtime", "shared/MODELS.json",
+                      "shared/VECTORS.json", "shared/fetch-runtime.sh", "shared/.gitignore"],
+            sources: ["shim.cpp", "shared/faces.cpp", "shared/runtime.cpp"],
+            cxxSettings: [
+                .headerSearchPath("shared"),
+                .unsafeFlags(["-I\(onnxRuntime)/include", "-std=c++17"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-L\(onnxRuntime)/lib", "-lonnxruntime",
+                              "-Xlinker", "-rpath", "-Xlinker", "\(onnxRuntime)/lib",
+                              "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
+            ]
+        ),
+        .target(name: "ArsivinyoCore",
+                dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC", "ArsivinyoPairingC", "ArsivinyoFacesC"]),
 
         // The app. SwiftPM rather than an .xcodeproj: Xcode opens Package.swift directly,
         // and a command-line build means the app can be launched and looked at from a

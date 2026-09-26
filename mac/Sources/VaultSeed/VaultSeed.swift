@@ -90,6 +90,28 @@ struct VaultSeed {
                 if hidden { try memes.makePrivate(item.id) }
                 print("meme: \(name)")
             }
+
+            // Real faces, for the faces screen: the public-domain fixture frames as images,
+            // and one as a short video, so both paths are scanned.
+            var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            while !FileManager.default.fileExists(atPath: dir.appendingPathComponent("shared/faces/fixtures").path) {
+                dir = dir.deletingLastPathComponent()
+            }
+            for name in ["crew", "armstrong", "aldrin"] {
+                let png = folder.appendingPathComponent("\(name).png")
+                for args in [["-i", dir.appendingPathComponent("shared/faces/fixtures/\(name).ppm").path, png.path]]
+                    + (name == "armstrong" ? [["-loop", "1", "-i", png.path, "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                                               "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", folder.appendingPathComponent("neil.mp4").path]] : []) {
+                    let p = Process()
+                    p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+                    p.arguments = ["-hide_banner", "-loglevel", "error", "-y"] + args
+                    try p.run()
+                    p.waitUntilExit()
+                }
+                try memes.add(png, source: .init(platform: "import"))
+                print("meme: \(name).png")
+            }
+            try memes.add(folder.appendingPathComponent("neil.mp4"), source: .init(platform: "import"))
         }
 
         // A music library too, when a music folder is given, with tags, artwork, a

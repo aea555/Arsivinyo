@@ -12,6 +12,8 @@ CONFIG="${1:-debug}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/.build/Arsivinyo.app"
 
+# The faces pipeline's runtime; a no-op when it is already there.
+"$ROOT/../shared/faces/fetch-runtime.sh" >/dev/null
 swift build -c "$CONFIG" --product ArsivinyoApp
 
 BINARY="$ROOT/.build/$CONFIG/ArsivinyoApp"
@@ -22,6 +24,15 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/Arsivinyo"
 # SwiftUI looks its text up in the main bundle, which is this one, not the SwiftPM target.
 cp -R "$ROOT"/Resources/*.lproj "$APP/Contents/Resources/"
+
+# Faces: the two pinned models and what pins them, and the runtime they run in. The app
+# checks each model against MODELS.json before loading it.
+FACES="$ROOT/../shared/faces"
+mkdir -p "$APP/Contents/Resources/faces/models" "$APP/Contents/Frameworks"
+cp "$FACES/MODELS.json" "$APP/Contents/Resources/faces/"
+cp "$FACES"/models/*.onnx "$FACES"/models/LICENSE-* "$APP/Contents/Resources/faces/models/"
+cp "$FACES/runtime/onnxruntime-osx-arm64-1.30.0/lib/libonnxruntime.1.30.0.dylib" \
+    "$APP/Contents/Frameworks/libonnxruntime.1.dylib"
 
 # The icon is vector layers (Resources/AppIcon.icon). actool renders them into the asset
 # catalog macOS draws as glass, plus an .icns for anything that reads the old format.
@@ -63,6 +74,7 @@ PLIST
 
 # Ad-hoc signature. Not for distribution — it is what stops macOS treating each rebuild as
 # a brand new, unidentified binary and re-asking for every permission.
+codesign --force --sign - "$APP/Contents/Frameworks/libonnxruntime.1.dylib" >/dev/null 2>&1 || true
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "note: ad-hoc signing skipped"
 
 echo "$APP"

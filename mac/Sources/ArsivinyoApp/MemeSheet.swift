@@ -40,6 +40,7 @@ struct MemeSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     header
                     if let current, let source = current.source { SourceView(source: source) }
+                    if let current { MemeFacesRow(item: current) }
                     TagEditor(targets: targets)
                 }
                 .frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)

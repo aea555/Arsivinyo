@@ -256,8 +256,9 @@ Each meme gains `faces`, and each person gains `signatures`:
     "signature": "<base64>",           // 128 × float16, little endian
     "frameMs": 3000, "box": [x, y, w, h],   // where to show it from; video time, source pixels
     "person": "p…" | null,
-    "state": "auto" | "confirmed" | "asked" | "rejected" | "unnamed",
-    "rejected": ["p…"]                  // never asked again for these
+    "state": "auto" | "confirmed" | "asked" | "unnamed",
+    "rejected": ["p…"],                 // never asked again for these; a "no" leaves it unnamed
+    "added": true                       // this face put its person's label on the meme
   }],
   "facesVersion": 1                     // the pipeline that scanned it; 0 or absent: not yet
 }]

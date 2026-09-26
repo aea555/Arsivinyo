@@ -29,6 +29,35 @@ public final class MemeLibrary: @unchecked Sendable {
     public struct Person: Codable, Hashable, Sendable, Identifiable {
         public var id: String
         public var name: String
+        /// Up to eight face signatures, base64 half floats: how this person is recognised.
+        public var signatures: [String]? = nil
+    }
+
+    /// One person's face in one meme (`CONTRACT.md`, "Faces").
+    public struct Face: Codable, Hashable, Sendable, Identifiable {
+        public enum State: String, Codable, Sendable {
+            /// Sure enough to label on its own.
+            case auto
+            /// Named or confirmed by the user.
+            case confirmed
+            /// Close to `person`, waiting for a yes or no.
+            case asked
+            /// Nobody known.
+            case unnamed
+        }
+
+        public var id: String
+        /// 128 half floats, base64.
+        public var signature: String
+        /// Where to show it from: the video time, and the box in source pixels.
+        public var frameMs: Int
+        public var box: [Double]
+        public var person: String?
+        public var state: State
+        /// People this face has been said not to be.
+        public var rejected: [String]? = nil
+        /// Whether this face put its person's label on the meme, and so may take it off.
+        public var added: Bool? = nil
     }
 
     public struct Source: Codable, Hashable, Sendable {
@@ -67,6 +96,9 @@ public final class MemeLibrary: @unchecked Sendable {
         public var addedAt: Double
         /// 0 while the meme waits in the untagged inbox.
         public var taggedAt: Double
+        public var faces: [Face]? = nil
+        /// The faces pipeline that scanned it; nil or older: to be scanned.
+        public var facesVersion: Int? = nil
 
         public init(id: String, kind: String, isPrivate: Bool, path: String?, vaultId: String?, sha256: String,
                     source: Source?, tags: [String], people: [String], addedAt: Double, taggedAt: Double) {
@@ -89,6 +121,7 @@ public final class MemeLibrary: @unchecked Sendable {
 
         enum CodingKeys: String, CodingKey {
             case id, kind, isPrivate = "private", path, vaultId, sha256, source, tags, people, addedAt, taggedAt
+            case faces, facesVersion
         }
     }
 
@@ -217,7 +250,7 @@ public final class MemeLibrary: @unchecked Sendable {
         }
     }
 
-    private func mutate<T>(_ change: (inout Index) throws -> T) throws -> T {
+    func mutate<T>(_ change: (inout Index) throws -> T) throws -> T {
         try lock.withLock {
             let lockedBefore = !keybox.isUnlocked
             var all = try merged()
@@ -361,7 +394,10 @@ public final class MemeLibrary: @unchecked Sendable {
                 people.formIntersection(Set(all.people.map(\.id)))
                 all.items[index].people = Array(people)
                 if markTagged { all.items[index].taggedAt = now }
+                // Taking a person off by hand is a "no" to the faces that put them there.
+                if !removePeople.isEmpty { Self.rejectFaces(of: removePeople, in: &all.items[index]) }
             }
+            if !removePeople.isEmpty { Self.reevaluate(&all) }
         }
     }
 
@@ -487,16 +523,23 @@ public final class MemeLibrary: @unchecked Sendable {
     /// A meme arriving from another device or a backup: filed, with its labels merged into
     /// this collection's by name.
     @discardableResult
-    public func receive(_ file: URL, source: Source?, tags: [(String, [Facet])], people: [String], taggedAt: Double? = nil) throws -> Item {
+    public func receive(_ file: URL, source: Source?, tags: [(String, [Facet])], people: [String], taggedAt: Double? = nil,
+                        signatures: [String: [String]] = [:]) throws -> Item {
         let item = try add(file, source: source, tagNames: tags, people: people, tagged: !tags.isEmpty || !people.isEmpty)
         if let taggedAt, taggedAt > 0 { try label([item.id], markTagged: true) }
+        try absorb(signatures: signatures)
         return item
     }
 
     /// Adds labels by name to a meme already here: a duplicate arriving again still brings
     /// whatever labels it carries.
-    public func merge(labels tags: [(String, [Facet])], people: [String], into itemId: String) throws {
+    public func merge(labels tags: [(String, [Facet])], people: [String], into itemId: String,
+                      signatures: [String: [String]] = [:]) throws {
         try mutate { all in
+            if !signatures.isEmpty {
+                Self.absorb(signatures, into: &all)
+                Self.reevaluate(&all)
+            }
             let tagIds = tags.map { Self.resolveTag($0.0, facets: $0.1, in: &all) }
             let personIds = people.map { Self.resolvePerson($0, in: &all) }
             guard let index = all.items.firstIndex(where: { $0.id == itemId }) else { return }
@@ -509,19 +552,25 @@ public final class MemeLibrary: @unchecked Sendable {
     }
 
     /// Makes sure these tags and people exist, with at least these facets.
-    public func ensure(tags: [(String, [Facet])], people: [String]) throws {
+    public func ensure(tags: [(String, [Facet])], people: [String], signatures: [String: [String]] = [:]) throws {
         try mutate { all in
             tags.forEach { _ = Self.resolveTag($0.0, facets: $0.1, in: &all) }
             people.forEach { _ = Self.resolvePerson($0, in: &all) }
+            if !signatures.isEmpty {
+                Self.absorb(signatures, into: &all)
+                Self.reevaluate(&all)
+            }
         }
     }
 
     /// Records a vault item as a private meme, for a restore. The vault item already exists.
     @discardableResult
     public func registerPrivate(vaultId: String, kind: String, sha256: String, source: Source?,
-                                tags: [(String, [Facet])], people: [String]) throws -> Item {
+                                tags: [(String, [Facet])], people: [String],
+                                signatures: [String: [String]] = [:]) throws -> Item {
         guard keybox.isUnlocked else { throw Failure.locked }
         return try mutate { all in
+            if !signatures.isEmpty { Self.absorb(signatures, into: &all) }
             let tagIds = tags.map { Self.resolveTag($0.0, facets: $0.1, in: &all) }
             let personIds = people.map { Self.resolvePerson($0, in: &all) }
             let now = Date().timeIntervalSince1970 * 1000
@@ -570,7 +619,7 @@ public final class MemeLibrary: @unchecked Sendable {
         return tag.id
     }
 
-    private static func resolvePerson(_ name: String, in all: inout Index) -> String {
+    static func resolvePerson(_ name: String, in all: inout Index) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = fold(trimmed)
         if let existing = all.people.first(where: { fold($0.name) == key }) { return existing.id }
@@ -646,7 +695,8 @@ public enum MemeDeviceKey {
 /// A meme's `meme` object in a pairing offer (`shared/memes/CONTRACT.md`, "Between devices").
 /// Labels travel by name: ids mean nothing on another device.
 public enum MemeTransfer {
-    public static func encode(item: MemeLibrary.Item, tags: [(String, [MemeLibrary.Facet])], people: [String]) -> Data? {
+    public static func encode(item: MemeLibrary.Item, tags: [(String, [MemeLibrary.Facet])], people: [String],
+                              signatures: [String: [String]] = [:]) -> Data? {
         var source: [String: Any] = ["savedAt": item.source?.savedAt ?? item.addedAt]
         if let value = item.source?.platform { source["platform"] = value }
         if let value = item.source?.account { source["account"] = value }
@@ -658,8 +708,27 @@ public enum MemeTransfer {
             "kind": item.kind,
             "source": source,
             "tags": tags.map { ["name": $0.0, "facets": $0.1.map(\.rawValue)] },
-            "people": people.map { ["name": $0] },
+            // A person's face signatures travel with them, so the other device recognises
+            // them without being taught.
+            "people": people.map { name -> [String: Any] in
+                var person: [String: Any] = ["name": name]
+                if let set = signatures[name], !set.isEmpty { person["signatures"] = set }
+                return person
+            },
         ])
+    }
+
+    /// The face signatures that came with people, by name. Anything that is not a valid
+    /// signature is dropped.
+    public static func signatures(_ object: [String: Any]) -> [String: [String]] {
+        var out: [String: [String]] = [:]
+        for person in object["people"] as? [[String: Any]] ?? [] {
+            guard let name = (person["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty
+            else { continue }
+            let set = (person["signatures"] as? [String] ?? []).prefix(8).filter { FaceMath.decode($0) != nil }
+            if !set.isEmpty { out[String(name.prefix(80))] = Array(set) }
+        }
+        return out
     }
 
     /// Reads one back, leniently: an unknown facet is dropped, a missing field is absent.

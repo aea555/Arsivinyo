@@ -10,7 +10,8 @@ mobile/     Android app (Expo + a Kotlin native module).
 mac/        macOS app (SwiftUI over the shared C++ core). Needs Xcode; see mac/README.md.
 shared/     Anything the apps must agree on: the device-pairing protocol, the security
             core, the audio DSP, the yt-dlp download engine, the icon (brand/), and the
-            memes contract (memes/CONTRACT.md), which both apps build to.
+            memes contract (memes/CONTRACT.md), which both apps build to, and the faces
+            pipeline (faces/): C++ over pinned ONNX models, held to faces/VECTORS.json.
 ```
 
 `mac/` does not reimplement the security core. It compiles the same C++ through a symlink,

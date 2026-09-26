@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import ArsivinyoCore
 import Foundation
+import UniformTypeIdentifiers
 
 extension AppModel {
     typealias Meme = MemeLibrary.Item
@@ -13,6 +14,86 @@ extension AppModel {
         } catch {
             memeProblem = String(describing: error)
         }
+        scanFaces()
+    }
+
+    // MARK: Faces
+
+    /// Scans whatever has not been scanned, one meme at a time, off the main actor. Private
+    /// memes are scanned only while the vault is open; the rest wait for it.
+    func scanFaces() {
+        guard facesRemaining == nil else { return }
+        let pending = MemeLibrary.needingScan(memeSnapshot).filter { !$0.isPrivate || vaultUnlocked }
+        guard !pending.isEmpty else { return }
+        if faceScanner == nil {
+            guard let folder = FaceScanner.modelsFolder() else {
+                faceProblem = FaceScanner.Failure.modelsMissing.description
+                return
+            }
+            do {
+                faceScanner = try FaceScanner(folder: folder)
+            } catch {
+                faceProblem = String(describing: error)
+                return
+            }
+        }
+        guard let scanner = faceScanner else { return }
+        facesRemaining = pending.count
+        let memes = memes, vault = vault
+        let vaultTypes = Dictionary(uniqueKeysWithValues: vaultItems.map { ($0.id, $0.contentType) })
+        Task.detached(priority: .utility) { [weak self] in
+            for (done, item) in pending.enumerated() {
+                let faces: [MemeLibrary.ScannedFace]
+                do {
+                    faces = try await Self.scan(item, scanner: scanner, vault: vault, vaultTypes: vaultTypes)
+                } catch {
+                    // A file that cannot be read is recorded as scanned with nothing found,
+                    // rather than tried again on every launch.
+                    faces = []
+                }
+                try? memes.record(faces: faces, for: item.id)
+                await MainActor.run { self?.facesRemaining = pending.count - done - 1 }
+            }
+            await MainActor.run {
+                guard let self else { return }
+                self.facesRemaining = nil
+                self.memeSnapshot = (try? memes.load()) ?? self.memeSnapshot
+                // Anything that arrived during the scan.
+                self.scanFaces()
+            }
+        }
+    }
+
+    nonisolated private static func scan(_ item: Meme, scanner: FaceScanner, vault: Vault,
+                                         vaultTypes: [String: String]) async throws -> [MemeLibrary.ScannedFace] {
+        if let file = item.fileURL {
+            return try await scanner.scan(file: file, kind: item.kind)
+        }
+        guard let vaultId = item.vaultId else { return [] }
+        let reader = try vault.reader(for: vaultId)
+        if item.isVideo {
+            // From the vault through the same loader playback uses: no plaintext on disk.
+            let loader = VaultAssetLoader(reader: reader, contentType: vaultTypes[vaultId] ?? UTType.mpeg4Movie.identifier)
+            return try await scanner.scan(asset: loader.makeAsset(id: vaultId))
+        }
+        return scanner.scan(imageData: try reader.read(offset: 0, length: Int(reader.size)))
+    }
+
+    func confirmFace(_ faceId: String) {
+        do { try memes.confirm(face: faceId) } catch { memeProblem = String(describing: error) }
+        refreshMemes()
+    }
+
+    func rejectFace(_ faceId: String) {
+        do { try memes.reject(face: faceId) } catch { memeProblem = String(describing: error) }
+        refreshMemes()
+    }
+
+    func nameFaces(_ faceIds: Set<String>, as name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do { try memes.name(faces: faceIds, as: trimmed) } catch { memeProblem = String(describing: error) }
+        refreshMemes()
     }
 
     /// A video or image download joins the collection with where it came from, and asks for
@@ -121,7 +202,8 @@ extension AppModel {
               let session = devices?.service.session(for: fingerprint) else { return }
         let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
         let labels = MemeLibrary.labels(of: item, in: memeSnapshot)
-        let meme = MemeTransfer.encode(item: item, tags: labels.tags, people: labels.people)
+        let meme = MemeTransfer.encode(item: item, tags: labels.tags, people: labels.people,
+                                       signatures: MemeLibrary.signatures(of: labels.people, in: memeSnapshot))
         if !session.send(ItemSource(name: file.lastPathComponent, sizeBytes: size, file: file, meme: meme), kind: "meme") {
             devices?.message = String(localized: "Wait for the transfer in progress to finish.")
         }

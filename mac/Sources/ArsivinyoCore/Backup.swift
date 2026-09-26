@@ -179,7 +179,9 @@ public enum Backup {
                 if let folder = item.folderId { meta["folderId"] = folder }
                 if let meme = privateMemes[item.id], let snapshot,
                    let data = MemeTransfer.encode(item: meme, tags: MemeLibrary.labels(of: meme, in: snapshot).tags,
-                                                  people: MemeLibrary.labels(of: meme, in: snapshot).people),
+                                                  people: MemeLibrary.labels(of: meme, in: snapshot).people,
+                                                  signatures: MemeLibrary.signatures(of: MemeLibrary.labels(of: meme, in: snapshot).people,
+                                                                                     in: snapshot)),
                    let object = try? JSONSerialization.jsonObject(with: data) {
                     meta["meme"] = object
                 }
@@ -235,7 +237,8 @@ public enum Backup {
                 guard let file = item.fileURL else { continue }
                 let labels = MemeLibrary.labels(of: item, in: snapshot)
                 var meta: [String: Any] = ["memeId": item.id, "sha256": item.sha256, "addedAt": item.addedAt, "taggedAt": item.taggedAt]
-                if let data = MemeTransfer.encode(item: item, tags: labels.tags, people: labels.people),
+                if let data = MemeTransfer.encode(item: item, tags: labels.tags, people: labels.people,
+                                                  signatures: MemeLibrary.signatures(of: labels.people, in: snapshot)),
                    let object = try? JSONSerialization.jsonObject(with: data) {
                     meta["meme"] = object
                 }
@@ -252,7 +255,12 @@ public enum Backup {
             let privatePeople = Set(snapshot.items.filter(\.isPrivate).flatMap(\.people)).subtracting(publicPeople)
             out.append(blob("memes-index", [
                 "tags": snapshot.tags.filter { !privateTags.contains($0.id) }.map { ["name": $0.name, "facets": $0.facets.map(\.rawValue)] },
-                "people": snapshot.people.filter { !privatePeople.contains($0.id) }.map { ["name": $0.name] },
+                // A person's face signatures travel with them (CONTRACT.md, "Faces").
+                "people": snapshot.people.filter { !privatePeople.contains($0.id) }.map { person -> [String: Any] in
+                    var entry: [String: Any] = ["name": person.name]
+                    if let set = person.signatures, !set.isEmpty { entry["signatures"] = set }
+                    return entry
+                },
             ]))
             return out
 
@@ -567,7 +575,7 @@ private struct RestoreContext {
         if let object = staged.entry.meta["meme"] as? [String: Any], let memes = sources.memes {
             let decoded = MemeTransfer.decode(object)
             try memes.registerPrivate(vaultId: item.id, kind: object["kind"] as? String ?? (item.isVideo ? "video" : "image"),
-                                      sha256: staged.sha256, source: decoded.source, tags: decoded.tags, people: decoded.people)
+                                      sha256: staged.sha256, source: decoded.source, tags: decoded.tags, people: decoded.people, signatures: MemeTransfer.signatures(object))
         }
         report.restored += 1
     }
@@ -579,14 +587,16 @@ private struct RestoreContext {
         guard let memes = sources.memes, let folder = sources.memeFolder else { return }
         let decoded = MemeTransfer.decode(staged.entry.meta["meme"] as? [String: Any] ?? [:])
         if let existing = try memes.load().items.first(where: { $0.sha256 == staged.sha256 && !$0.isPrivate }) {
-            try memes.merge(labels: decoded.tags, people: decoded.people, into: existing.id)
+            try memes.merge(labels: decoded.tags, people: decoded.people, into: existing.id,
+                            signatures: MemeTransfer.signatures(staged.entry.meta["meme"] as? [String: Any] ?? [:]))
             report.duplicates += 1
             return
         }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let target = MemeLibrary.unique((staged.entry.name as NSString).lastPathComponent, in: folder)
         try FileManager.default.moveItem(at: staged.file, to: target)
-        let item = try memes.receive(target, source: decoded.source, tags: decoded.tags, people: decoded.people)
+        let item = try memes.receive(target, source: decoded.source, tags: decoded.tags, people: decoded.people,
+                                     signatures: MemeTransfer.signatures(staged.entry.meta["meme"] as? [String: Any] ?? [:]))
         if (staged.entry.meta["taggedAt"] as? Double ?? 0) > 0, item.isUntagged { try memes.label([item.id]) }
         report.restored += 1
     }
@@ -649,7 +659,8 @@ private struct RestoreContext {
             report.applied += 1
         case "memes-index":
             let decoded = MemeTransfer.decode(["tags": object["tags"] ?? [], "people": object["people"] ?? []])
-            try sources.memes?.ensure(tags: decoded.tags, people: decoded.people)
+            try sources.memes?.ensure(tags: decoded.tags, people: decoded.people,
+                                      signatures: MemeTransfer.signatures(["people": object["people"] ?? []]))
             report.applied += 1
         default:
             break

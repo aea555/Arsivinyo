@@ -13,6 +13,7 @@ struct MemesView: View {
     @State private var batch: Set<String>?
     @State private var reviewing = false
     @State private var managingTags = false
+    @State private var showingFaces = false
     @State private var isDropTarget = false
 
     private var visible: [MemeLibrary.Item] {
@@ -50,6 +51,9 @@ struct MemesView: View {
                 Button { reviewing = true } label: { Label("Review Untagged", systemImage: "rectangle.stack") }
                     .disabled(untagged == 0)
                     .help("Go through the untagged memes one by one")
+                Button { showingFaces = true } label: { Label("Faces", systemImage: "person.crop.square") }
+                    .badge(MemeLibrary.asked(model.memeSnapshot).count)
+                    .help("Name the faces in your memes, and answer what the app is unsure of")
                 Button { managingTags = true } label: { Label("Tags", systemImage: "tag") }
                     .help("Rename tags, change their facets, or delete them")
                 Button(action: chooseFiles) { Label("Import", systemImage: "plus") }
@@ -72,6 +76,10 @@ struct MemesView: View {
             MemeSheet(ids: Set(model.memeSnapshot.items.filter(\.isUntagged).map(\.id)), mode: .review)
         }
         .sheet(isPresented: $managingTags) { TagManager() }
+        .sheet(isPresented: $showingFaces) { FacesView() }
+        // `-openFaces YES` on the command line, for looking at the screen from a terminal,
+        // as `-section` does for the sidebar.
+        .onAppear { if UserDefaults.standard.bool(forKey: "openFaces") { showingFaces = true } }
     }
 
     private struct Opened: Identifiable { let id: String }

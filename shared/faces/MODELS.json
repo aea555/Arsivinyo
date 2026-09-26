@@ -1,0 +1,24 @@
+{
+  "comment": "What the faces pipeline runs on. Both apps load these exact files and this runtime version; a file that does not match its hash is refused, because a different model makes signatures that match nothing already stored.",
+  "runtime": {
+    "name": "ONNX Runtime",
+    "version": "1.30.0",
+    "android": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
+    "macos": {
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/onnxruntime-osx-arm64-1.30.0.tgz",
+      "sha256": "6ebb5062a934537c352937821f9fe9718e7de1a2db1122a93dd363ffd53a7012"
+    }
+  },
+  "detector": {
+    "file": "models/yunet_2023mar.onnx",
+    "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet",
+    "license": "MIT, models/LICENSE-yunet"
+  },
+  "recogniser": {
+    "file": "models/sface_2021dec_int8.onnx",
+    "sha256": "2b0e941e6f16cc048c20aee0c8e31f569118f65d702914540f7bfdc14048d78a",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface",
+    "license": "Apache 2.0, models/LICENSE-sface"
+  }
+}

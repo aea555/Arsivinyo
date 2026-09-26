@@ -127,6 +127,7 @@ struct CoreChecks {
             try runner.checkPairingVectors()
             try runner.checkPairingLoopback()
             try runner.checkMemes()
+            try runner.checkFaces()
             await runner.checkEngine()
         } catch {
             print("  FAIL  threw: \(error)")
