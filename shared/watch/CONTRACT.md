@@ -46,6 +46,25 @@ fails or is slow is shown as such, never holding up the rest.
 (a debrid key, a personal config). Add-on URLs are stored encrypted, as cookie profiles are,
 never logged, and never shown in full: the UI shows the add-on's name and host only.
 
+**The recommended add-ons.** Both apps offer one set of public community add-ons, installed
+in one tap from the empty Watch screen or the add-ons screen, so a new install plays real
+films and series at once. In this order:
+
+| Add-on | Base | Gives |
+|---|---|---|
+| Cinemeta | `https://v3-cinemeta.strem.io` | catalogs, meta |
+| Streaming Catalogs | `https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club` | catalogs of streaming services |
+| Torrentio | `https://torrentio.strem.fun` | torrent streams |
+| TorrentsDB | `https://torrentsdb.com` | torrent streams |
+| ThePirateBay+ | `https://thepiratebay-plus.strem.fun` | torrent streams |
+| OpenSubtitles v3 | `https://opensubtitles-v3.strem.io` | subtitles |
+
+Only the missing ones are installed. An installed add-on from the same host counts as there,
+so one the user configured (a Torrentio with a debrid key) is never replaced by the plain
+one. None needs configuring; add-ons that do, or that need an account, are not in the set.
+The lists are `RECOMMENDED` in `mobile/src/api/watch.ts` and `WatchService.recommended` on
+the Mac; change both.
+
 **yt-dlp as a resolver.** A `url` stream that is a web page rather than media, an
 `externalUrl` that yt-dlp can extract, and a `ytId` are all resolved through the engine the
 app already ships, so they play in the app rather than in a browser.

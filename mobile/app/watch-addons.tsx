@@ -1,17 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  CINEMETA,
   getOffers,
   installAddon,
+  installRecommended,
   listAddons,
   listOfferLists,
+  missingRecommended,
   moveAddon,
   setAddonEnabled,
   uninstallAddon,
@@ -41,6 +53,10 @@ export default function WatchAddonsScreen() {
   const [offers, setOffers] = useState<WatchOffer[] | null>(null);
   const [offersFailed, setOffersFailed] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  // The filter is far down the page: focused, it is scrolled to the top, its results under it
+  // and the keyboard below them.
+  const scroll = useRef<ScrollView>(null);
+  const filterY = useRef(0);
   // A stremio:// link opened from a browser, usually a configure page's Install button.
   const params = useLocalSearchParams<{ install?: string }>();
   const [offered, setOffered] = useState<string | null>(null);
@@ -100,7 +116,18 @@ export default function WatchAddonsScreen() {
     await reload();
   };
 
-  const hasCinemeta = addons.some((a) => a.host === 'v3-cinemeta.strem.io');
+  const missing = missingRecommended(addons);
+
+  const installMissing = async () => {
+    setBusy(true);
+    setMessage(null);
+    const result = await installRecommended().catch(() => null);
+    setBusy(false);
+    if (!result) setMessage({ text: t('watch.installFailed', { code: '' }), error: true });
+    else if (result.failed.length > 0) setMessage({ text: t('watch.recommended.failed', { names: result.failed.join(', ') }), error: true });
+    else setMessage({ text: t('watch.recommended.done', { names: result.installed.join(', ') }), error: false });
+    await reload();
+  };
 
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
@@ -110,7 +137,27 @@ export default function WatchAddonsScreen() {
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>{t('watch.addons.title')}</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView ref={scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <View style={[styles.addon, { backgroundColor: colors.surface }]}>
+          <Text style={{ color: colors.text, fontWeight: '600' }}>{t('watch.recommended.title')}</Text>
+          <Text style={[styles.small, { color: colors.textMuted }]}>{t('watch.recommended.body')}</Text>
+          <View style={styles.actions}>
+            {missing.length > 0 ? (
+              <Pressable
+                onPress={() => void installMissing()}
+                disabled={busy}
+                style={[styles.smallButton, { backgroundColor: colors.accent }]}
+              >
+                {busy ? <ActivityIndicator color={colors.primaryText} /> : (
+                  <Text style={{ color: colors.primaryText }}>{t('watch.recommended.installAll')}</Text>
+                )}
+              </Pressable>
+            ) : (
+              <Text style={[styles.small, { color: colors.success }]}>{t('watch.recommended.allInstalled')}</Text>
+            )}
+          </View>
+        </View>
         <Text style={{ color: colors.textMuted }}>{t('watch.addons.hint')}</Text>
         <View style={styles.row}>
           <TextInput
@@ -134,11 +181,6 @@ export default function WatchAddonsScreen() {
             )}
           </Pressable>
         </View>
-        {!hasCinemeta ? (
-          <Pressable onPress={() => void install(CINEMETA)} disabled={busy}>
-            <Text style={{ color: colors.accent }}>{t('watch.installCinemeta')}</Text>
-          </Pressable>
-        ) : null}
         {message ? <Text style={{ color: message.error ? colors.error : colors.success }}>{message.text}</Text> : null}
 
         <Text style={[styles.section, { color: colors.text }]}>{t('watch.addons.installedTitle')}</Text>
@@ -223,6 +265,10 @@ export default function WatchAddonsScreen() {
               value={filter}
               onChangeText={setFilter}
               placeholder={t('watch.addons.filter')}
+              onLayout={(e) => {
+                filterY.current = e.nativeEvent.layout.y;
+              }}
+              onFocus={() => scroll.current?.scrollTo({ y: Math.max(0, filterY.current - 12), animated: true })}
               placeholderTextColor={colors.textSubtle}
               autoCorrect={false}
               style={[styles.input, styles.filter, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -274,7 +320,8 @@ export default function WatchAddonsScreen() {
             ))}
           </>
         ) : null}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <ConfirmModal
         visible={offered != null}

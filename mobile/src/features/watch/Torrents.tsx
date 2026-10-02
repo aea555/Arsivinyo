@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
-import { getTorrentSettings, setTorrentSettings, vpnAppearsActive } from '@/src/api';
+import { getTorrentLive, getTorrentSettings, setTorrentSettings, vpnAppearsActive, type WatchTorrentLive } from '@/src/api';
 import { AppText as Text } from '@/src/components';
 import { useTheme } from '@/src/theme';
 
@@ -107,6 +107,7 @@ export function VpnNotice() {
 }
 
 const styles = StyleSheet.create({
+  live: { fontSize: 12 },
   overlay: { flex: 1, backgroundColor: '#000000CC', alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: { width: '100%', maxWidth: 420, borderRadius: 16, borderWidth: 1, padding: 20, gap: 12 },
   title: { fontSize: 17, fontWeight: '700' },
@@ -120,3 +121,36 @@ const styles = StyleSheet.create({
   },
   noticeText: { flex: 1, fontSize: 13 },
 });
+
+/**
+ * What a torrent being opened is doing, under a spinner: finding peers while its file list
+ * comes, then its peers and speed while the player waits for the first frame. Asked for once
+ * a second, only while shown.
+ */
+export function TorrentLive({ id, color }: { id: string | null | undefined; color: string }) {
+  const { t } = useTranslation();
+  const [live, setLive] = useState<WatchTorrentLive | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    let on = true;
+    const ask = () => void getTorrentLive(id).then((l) => on && setLive(l)).catch(() => undefined);
+    ask();
+    const timer = setInterval(ask, 1000);
+    return () => {
+      on = false;
+      clearInterval(timer);
+    };
+  }, [id]);
+
+  if (!id || !live) return null;
+  const text = live.hasMetadata
+    ? t('torrents.live.loading', { peers: live.peers, rate: rate(live.downloadRate) })
+    : t('torrents.live.finding', { peers: live.peers });
+  return <Text style={[styles.live, { color }]}>{text}</Text>;
+}
+
+function rate(bytesPerSecond: number): string {
+  if (bytesPerSecond >= 1 << 20) return `${(bytesPerSecond / (1 << 20)).toFixed(1)} MB/s`;
+  return `${Math.round(bytesPerSecond / (1 << 10))} KB/s`;
+}

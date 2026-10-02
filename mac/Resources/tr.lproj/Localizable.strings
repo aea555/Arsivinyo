@@ -8,6 +8,7 @@
 "%lld could not be restored: %@" = "%lld geri yüklenemedi: %@";
 "%lld items, %@" = "%lld öğe, %@";
 "%lld memes" = "%lld mim";
+"%lld peers · %@/s" = "%lld eş · %@/sn";
 "%lld settings and profiles applied" = "%lld ayar ve profil uygulandı";
 "%lld songs" = "%lld şarkı";
 "%lld untagged" = "%lld etiketsiz";
@@ -29,6 +30,7 @@
 "Add to Vault" = "Kasaya Ekle";
 "Added" = "Eklenme";
 "Added to the library" = "Kitaplığa eklendi";
+"All installed" = "Hepsi kurulu";
 "Already in use." = "Zaten kullanımda.";
 "Amount" = "Miktar";
 "And again" = "Tekrar yaz";
@@ -73,6 +75,7 @@
 "Clear" = "Temizle";
 "Click the heart beside a song to keep it here." = "Bir şarkıyı burada tutmak için yanındaki kalbe tıklayın.";
 "Click to remove" = "Kaldırmak için tıklayın";
+"Community add-ons that cover most films and series: Cinemeta and Streaming Catalogs for what to watch, Torrentio, TorrentsDB and ThePirateBay+ for streams over torrents, OpenSubtitles for subtitles. An add-on you already have is kept as it is." = "Film ve dizilerin çoğunu kapsayan topluluk eklentileri: ne izleneceği için Cinemeta ve Streaming Catalogs, torrent üzerinden yayınlar için Torrentio, TorrentsDB ve ThePirateBay+, altyazılar için OpenSubtitles. Zaten kurulu olan bir eklenti olduğu gibi kalır.";
 "Connected" = "Bağlı";
 "Connecting…" = "Bağlanıyor…";
 "Context" = "Bağlam";
@@ -93,6 +96,7 @@
 "Delete…" = "Sil…";
 "Devices" = "Cihazlar";
 "Devices are unavailable" = "Cihazlar kullanılamıyor";
+"Did not install: %@. Try again in a little while." = "Kurulamadı: %@. Biraz sonra yeniden dene.";
 "Domain" = "Alan adı";
 "Done" = "Tamam";
 "Download" = "İndir";
@@ -119,6 +123,7 @@
 "Facets for a new tag:" = "Yeni etiketin yönleri:";
 "Favorites" = "Favoriler";
 "Fetched with the app" = "Uygulamayla gelen";
+"Finding peers… %lld connected" = "Eşler aranıyor… %lld bağlı";
 "Folders" = "Klasörler";
 "For a device that pairs from its own side. The window closes by itself after two minutes." = "Eşleştirmeyi kendi tarafından başlatan bir cihaz için. Pencere iki dakika sonra kendiliğinden kapanır.";
 "Forget" = "Unut";
@@ -137,6 +142,8 @@
 "Import videos and images" = "Video ve görsel içe aktar";
 "Import…" = "İçe aktar…";
 "In use" = "Kullanımda";
+"Install the Missing Ones" = "Eksik Olanları Kur";
+"Installed: %@." = "Kuruldu: %@.";
 "Installing" = "Kuruluyor";
 "It comes off every meme that has it. The memes stay." = "Bu etiket onu taşıyan her mimden kalkar. Mimler kalır.";
 "It will have to pair again to reach this Mac. It is not told." = "Bu Mac'e ulaşmak için yeniden eşleşmesi gerekecek. Ona haber verilmez.";
@@ -171,6 +178,7 @@
 "New Preset" = "Yeni Ön Ayar";
 "New Tag “%@”" = "Yeni Etiket “%@”";
 "New passphrase" = "Yeni parola cümlesi";
+"Next" = "Sonraki";
 "Nightcore" = "Nightcore";
 "No cookie profiles. A site that refuses signed-out downloads works with a cookies.txt exported from a browser where you are signed in." = "Cookie profili yok. Oturum açılmadan indirmeyi reddeden bir site, oturum açık bir tarayıcıdan dışa aktarılan cookies.txt ile çalışır.";
 "No favourites yet" = "Henüz favori yok";
@@ -213,6 +221,7 @@
 "Pre-delay" = "Ön gecikme";
 "Presets" = "Ön Ayarlar";
 "Presets need ffmpeg. Install it with: brew install ffmpeg" = "Ön ayarlar için ffmpeg gerekir. Şununla kurun: brew install ffmpeg";
+"Previous" = "Önceki";
 "Private" = "Gizli";
 "Profile name" = "Profil adı";
 "Profiles" = "Profiller";
@@ -220,6 +229,7 @@
 "Rate" = "Hız";
 "Reaction" = "Tepki";
 "Recent" = "Son";
+"Recommended" = "Önerilenler";
 "Recovery key" = "Kurtarma anahtarı";
 "Remember on this Mac" = "Bu Mac'te hatırla";
 "Remove from Favorites" = "Favorilerden çıkar";
@@ -256,6 +266,7 @@
 "Set a Passphrase" = "Parola Cümlesi Belirleyin";
 "Set a Passphrase…" = "Parola Cümlesi Belirle…";
 "Set a passphrase to start a vault. Files you add are encrypted with it." = "Kasayı başlatmak için bir parola cümlesi belirleyin. Eklediğiniz dosyalar onunla şifrelenir.";
+"Set Up Recommended Add-ons" = "Önerilen Eklentileri Kur";
 "Show in Finder" = "Finder'da Göster";
 "Shuffle is off" = "Karıştırma kapalı";
 "Shuffle is on" = "Karıştırma açık";
@@ -353,6 +364,7 @@
 "Wait for the downloads to finish first." = "Önce indirmelerin bitmesini bekleyin.";
 "Wait for the transfer in progress to finish." = "Süren aktarımın bitmesini bekleyin.";
 "Waiting" = "Bekleniyor";
+"Watch shows catalogs and streams from Stremio add-ons. Set up the recommended ones to start watching in one click, or add the add-ons you use." = "İzle, Stremio eklentilerinden kataloglar ve yayınlar gösterir. Tek tıklamayla izlemeye başlamak için önerilen eklentileri kur ya da kullandığın eklentileri ekle.";
 "With presets applied to every download, whether the unchanged download stays too." = "Her indirmeye ön ayar uygulanırken değiştirilmemiş indirmenin de kalıp kalmayacağı.";
 "Your files are still here and still encrypted. Nothing has been deleted, and nothing will be written until the listing can be read again." = "Dosyalarınız hâlâ burada ve hâlâ şifreli. Hiçbir şey silinmedi ve liste yeniden okunana kadar hiçbir şey yazılmayacak.";
 "Your own presets and changes to the built-in ones." = "Kendi ön ayarlarınız ve yerleşik olanlarda yaptığınız değişiklikler.";
@@ -406,7 +418,6 @@
 "Could not play it: %@" = "Oynatılamadı: %@";
 "Films" = "Filmler";
 "Install" = "Kur";
-"Install Cinemeta" = "Cinemeta'yı Kur";
 "Install, order and remove add-ons" = "Eklentileri kur, sırala ve kaldır";
 "Installed %@." = "%@ kuruldu.";
 "Mark as Not Watched" = "İzlenmedi Olarak İşaretle";
@@ -428,7 +439,6 @@
 "Streams" = "Yayınlar";
 "TV" = "TV";
 "Watch" = "İzle";
-"Watch shows catalogs and streams from Stremio add-ons. Start with Cinemeta, Stremio's own catalog, then add the add-ons you use." = "İzle, Stremio eklentilerinden kataloglar ve yayınlar gösterir. Stremio'nun kendi kataloğu Cinemeta ile başla, sonra kullandığın eklentileri ekle.";
 "https://…/manifest.json" = "https://…/manifest.json";
 "· %@ · %@" = "· %@ · %@";
 "Trailer" = "Fragman";

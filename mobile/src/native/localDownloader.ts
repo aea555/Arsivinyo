@@ -16,6 +16,7 @@ export type {
   WatchMeta,
   WatchOffer,
   WatchPrepared,
+  WatchTorrentLive,
   WatchPreview,
   WatchProgress,
   WatchResult,

@@ -1079,6 +1079,14 @@ export interface WatchFailure {
 
 export type WatchResult<T> = ({ success: true } & T) | WatchFailure;
 
+/** A streamed torrent as the engine has it now, for a player waiting on it. */
+export interface WatchTorrentLive {
+  hasMetadata: boolean;
+  peers: number;
+  /** Bytes per second. */
+  downloadRate: number;
+}
+
 export interface WatchPrepared {
   url: string;
   /** The audio as a separate file, played with the video. */

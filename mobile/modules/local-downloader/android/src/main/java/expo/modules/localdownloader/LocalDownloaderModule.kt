@@ -1629,6 +1629,14 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("watchVpnActive") { torrents.vpnAppearsActive() }
 
+    /** A streamed torrent's peers and speed, shown while the player waits on it; null if not here. */
+    AsyncFunction("watchTorrentLive") { id: String ->
+      runCatching { torrents.live(id) }.getOrNull()?.let {
+        mapOf("hasMetadata" to it.optBoolean("hasMetadata"), "peers" to it.optInt("peers"),
+          "downloadRate" to it.optDouble("downloadRate"))
+      }
+    }
+
     // ---- torrent downloads (shared/watch/CONTRACT.md, "Downloading") ------------------------
 
     /** A magnet link, or a content:// URI of a .torrent file; the new download's info hash. */

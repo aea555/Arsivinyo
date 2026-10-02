@@ -6,6 +6,7 @@ import LocalDownloaderModule, {
   type WatchMeta,
   type WatchOffer,
   type WatchPrepared,
+  type WatchTorrentLive,
   type WatchPreview,
   type WatchProgress,
   type WatchResult,
@@ -25,6 +26,7 @@ export type {
   WatchMeta,
   WatchOffer,
   WatchPrepared,
+  WatchTorrentLive,
   WatchPreview,
   WatchProgress,
   WatchResult,
@@ -50,6 +52,40 @@ export function isWatchSupported(): boolean {
 /** Cinemeta, Stremio's own catalog and metadata add-on: the one to start with. */
 export const CINEMETA = 'https://v3-cinemeta.strem.io/manifest.json';
 
+/**
+ * The recommended add-ons (`shared/watch/CONTRACT.md`, "The recommended add-ons"): enough to
+ * watch real films and series with one tap. The Mac has the same list; change both.
+ */
+export const RECOMMENDED: { name: string; url: string }[] = [
+  { name: 'Cinemeta', url: CINEMETA },
+  { name: 'Streaming Catalogs', url: 'https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/manifest.json' },
+  { name: 'Torrentio', url: 'https://torrentio.strem.fun/manifest.json' },
+  { name: 'TorrentsDB', url: 'https://torrentsdb.com/manifest.json' },
+  { name: 'ThePirateBay+', url: 'https://thepiratebay-plus.strem.fun/manifest.json' },
+  { name: 'OpenSubtitles v3', url: 'https://opensubtitles-v3.strem.io/manifest.json' },
+];
+
+const hostOf = (url: string) => /^[a-z]+:\/\/([^/?#]+)/i.exec(url)?.[1] ?? url;
+
+/** The recommended add-ons not installed yet. One from the same host counts as installed, so a
+ *  configured Torrentio is kept as it is. */
+export function missingRecommended(installed: WatchAddon[]) {
+  const hosts = new Set(installed.map((a) => a.host));
+  return RECOMMENDED.filter((r) => !hosts.has(hostOf(r.url)));
+}
+
+/** Installs the missing recommended add-ons, in the list's order. Gives the names of those
+ *  installed and of those that failed. */
+export async function installRecommended(): Promise<{ installed: string[]; failed: string[] }> {
+  const installed: string[] = [];
+  const failed: string[] = [];
+  for (const addon of missingRecommended(await listAddons())) {
+    const result = await installAddon(addon.url).catch(() => null);
+    (result?.success ? installed : failed).push(addon.name);
+  }
+  return { installed, failed };
+}
+
 const M = LocalDownloaderModule;
 
 export const listAddons = () => M.watchAddons();
@@ -70,6 +106,13 @@ export const prepareStream = (stream: Pick<WatchStream, 'kind' | 'target' | 'hea
 export const getTorrentSettings = () => M.watchTorrentSettings();
 export const setTorrentSettings = (values: Partial<TorrentSettings>) => M.watchSetTorrentSettings(values);
 export const vpnAppearsActive = () => M.watchVpnActive();
+export const getTorrentLive = (id: string) => M.watchTorrentLive(id);
+
+/** The engine's id for a magnet: its info hash, in lower-case hex. Null for anything else. */
+export function torrentIdOf(magnet: string): string | null {
+  const match = /xt=urn:btih:([0-9a-f]{40})/i.exec(magnet);
+  return match ? match[1].toLowerCase() : null;
+}
 /** Subtitles for a video in the preferred languages, best first: the stream's own, then add-ons'. */
 export const getSubtitles = (type: string, id: string, filename: string | null, own: WatchSubtitle[]) =>
   M.watchSubtitles(type, id, filename, own);

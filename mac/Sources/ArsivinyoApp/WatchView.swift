@@ -19,6 +19,8 @@ struct WatchPlayRequest: Hashable {
     /// The stream's own subtitles, and its file name, which subtitle add-ons match on.
     var subtitles: [Addons.Subtitle] = []
     var filename: String?
+    /// A torrent stream's info hash, for its peers and speed while the player waits.
+    var torrentId: String?
 }
 
 /// A title to open, with what is already known about it.
@@ -29,20 +31,20 @@ struct WatchRoute: Hashable {
 extension AppModel {
     /// Something a player can open: a media URL as it is; a page, a YouTube video or an
     /// external link through yt-dlp first.
-    func prepare(_ stream: Addons.Stream) async throws -> (url: URL, audioURL: URL?, headers: [String: String]) {
+    func prepare(_ stream: Addons.Stream) async throws -> (url: URL, audioURL: URL?, headers: [String: String], torrentId: String?) {
         if stream.kind == .torrent {
             // Through the engine's loopback server, fetched into the cache as it plays.
             let torrents = self.torrents
             let found = try await Task.detached {
                 try torrents.stream(magnet: stream.target, fileIdx: stream.fileIdx, filename: stream.filename)
             }.value
-            return (found.url, nil, [:])
+            return (found.url, nil, [:], found.id)
         }
         if stream.kind == .url, let url = URL(string: stream.target), await !watch.isPage(stream.target, headers: stream.headers) {
-            return (url, nil, stream.headers)
+            return (url, nil, stream.headers, nil)
         }
         let resolved = try await engine.resolveStream(stream.target)
-        return (resolved.url, resolved.audioURL, resolved.headers)
+        return (resolved.url, resolved.audioURL, resolved.headers, nil)
     }
 
     /// The next episode from the same add-on and binge group, as Stremio does.
@@ -58,7 +60,7 @@ extension AppModel {
         return WatchPlayRequest(url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: request.title, videoId: next.id,
                                 videoName: WatchTitleView.episodeName(next), source: source,
                                 bingeGroup: stream.bingeGroup, startMs: 0, nextVideo: following,
-                                subtitles: stream.subtitles, filename: stream.filename)
+                                subtitles: stream.subtitles, filename: stream.filename, torrentId: prepared.torrentId)
     }
 }
 
@@ -132,22 +134,19 @@ struct WatchView: View {
             ContentUnavailableView {
                 Label("Nothing to watch yet", systemImage: "play.tv")
             } description: {
-                Text("Watch shows catalogs and streams from Stremio add-ons. Start with Cinemeta, Stremio's own catalog, then add the add-ons you use.")
+                Text("Watch shows catalogs and streams from Stremio add-ons. Set up the recommended ones to start watching in one click, or add the add-ons you use.")
             } actions: {
                 Button {
                     installing = true
                     Task {
-                        do {
-                            try await model.watch.install("https://v3-cinemeta.strem.io/manifest.json")
-                            problem = nil
-                        } catch {
-                            problem = String(describing: error)
-                        }
+                        let result = await model.watch.installRecommended()
+                        problem = result.failed.isEmpty ? nil
+                            : String(localized: "Did not install: \(result.failed.joined(separator: ", ")). Try again in a little while.")
                         installing = false
                         reload()
                     }
                 } label: {
-                    if installing { ProgressView().controlSize(.small) } else { Text("Install Cinemeta") }
+                    if installing { ProgressView().controlSize(.small) } else { Text("Set Up Recommended Add-ons") }
                 }
                 .buttonStyle(.borderedProminent)
                 Button("Add Another Add-on…") { managingAddons = true }
@@ -209,12 +208,51 @@ private struct Shelf<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
+        PagedRow { title.font(.title3.bold()) } content: { content }
+    }
+}
+
+/// A row of posters that scrolls sideways. A trackpad swipes it; a mouse wheel cannot, so its
+/// header has buttons that page it a screenful at a time, as the TV app's rows do.
+private struct PagedRow<Header: View, Content: View>: View {
+    @ViewBuilder let header: Header
+    @ViewBuilder let content: Content
+    @State private var position = ScrollPosition()
+    @State private var geometry: ScrollGeometry?
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            title.font(.title3.bold()).padding(.horizontal, 20)
+            HStack(spacing: 6) {
+                header
+                Spacer()
+                Button { page(-1) } label: { Image(systemName: "chevron.left") }
+                    .disabled(!canPage(-1))
+                    .help("Previous")
+                Button { page(1) } label: { Image(systemName: "chevron.right") }
+                    .disabled(!canPage(1))
+                    .help("Next")
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 20)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) { content }.padding(.horizontal, 20)
             }
+            .scrollPosition($position)
+            .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { _, now in geometry = now }
         }
+    }
+
+    private func canPage(_ direction: Int) -> Bool {
+        guard let g = geometry else { return false }
+        return direction < 0 ? g.contentOffset.x > 1 : g.contentOffset.x + g.containerSize.width < g.contentSize.width - 1
+    }
+
+    /// A screenful less a poster, so the last one seen is still in sight.
+    private func page(_ direction: Int) {
+        guard let g = geometry else { return }
+        let step = max(200, g.containerSize.width - 160)
+        let end = max(0, g.contentSize.width - g.containerSize.width)
+        withAnimation { position.scrollTo(x: min(end, max(0, g.contentOffset.x + CGFloat(direction) * step))) }
     }
 }
 
@@ -251,23 +289,25 @@ private struct CatalogShelf: View {
     }
 
     private var shelf: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text(row.catalog.name).font(.title3.bold())
-                    Text("· \(typeName(row.catalog.type)) · \(row.addonName)").foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
+            Group {
                 if let items {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(items) { preview in PosterTile(name: preview.name, poster: preview.poster) { open(preview) } }
-                        }
-                        .padding(.horizontal, 20)
+                    PagedRow { heading } content: {
+                        ForEach(items) { preview in PosterTile(name: preview.name, poster: preview.poster) { open(preview) } }
                     }
                 } else {
-                    ProgressView().controlSize(.small).frame(height: 200).padding(.horizontal, 20)
+                    VStack(alignment: .leading, spacing: 8) {
+                        heading.padding(.horizontal, 20)
+                        ProgressView().controlSize(.small).frame(height: 200).padding(.horizontal, 20)
+                    }
                 }
             }
+    }
+
+    private var heading: some View {
+        HStack(spacing: 6) {
+            Text(row.catalog.name).font(.title3.bold())
+            Text("· \(typeName(row.catalog.type)) · \(row.addonName)").foregroundStyle(.secondary)
+        }
     }
 
     private func typeName(_ type: String) -> String {
@@ -568,6 +608,9 @@ private struct StreamList: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stream.label.isEmpty ? stream.kind.rawValue : stream.label).lineLimit(2)
                     if !stream.detail.isEmpty { Text(stream.detail).font(.caption).foregroundStyle(.secondary).lineLimit(3) }
+                    if preparing == stream.target, stream.kind == .torrent, let id = TorrentEngine.id(ofMagnet: stream.target) {
+                        TorrentLiveText(id: id).font(.caption).foregroundStyle(.tint)
+                    }
                 }
                 Spacer()
                 if preparing == stream.target { ProgressView().controlSize(.small) }
@@ -619,7 +662,7 @@ private struct StreamList: View {
                     url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: title, videoId: video.id,
                     videoName: isSeries ? WatchTitleView.episodeName(video) : title.name, source: source,
                     bingeGroup: stream.bingeGroup, startMs: startMs, nextVideo: nextVideo,
-                    subtitles: stream.subtitles, filename: stream.filename)
+                    subtitles: stream.subtitles, filename: stream.filename, torrentId: prepared.torrentId)
                 openWindow(id: "watch-player")
             } catch {
                 if stream.kind == .external, let url = URL(string: stream.target) {
@@ -629,6 +672,34 @@ private struct StreamList: View {
                 } else {
                     message = String(localized: "Could not play it: \(String(describing: error))")
                 }
+            }
+        }
+    }
+}
+
+/// What a torrent being opened is doing, under a spinner: finding peers while its file list
+/// comes, then its peers and speed while the player waits for the first frame. Asked for once
+/// a second, only while shown.
+struct TorrentLiveText: View {
+    @Environment(AppModel.self) private var model
+    let id: String
+    @State private var live: TorrentEngine.Live?
+
+    var body: some View {
+        Group {
+            if let live {
+                if live.hasMetadata {
+                    Text("\(live.peers) peers · \(ByteCountFormatter.string(fromByteCount: live.downloadRate, countStyle: .file))/s")
+                } else {
+                    Text("Finding peers… \(live.peers) connected")
+                }
+            }
+        }
+        .task(id: id) {
+            let torrents = model.torrents
+            while !Task.isCancelled {
+                live = await Task.detached { torrents.live(id) }.value
+                try? await Task.sleep(for: .seconds(1))
             }
         }
     }
@@ -674,6 +745,7 @@ private struct AddonsSheet: View {
     @State private var busy = false
     @State private var message: String?
     @State private var discovering = false
+    @State private var missing: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -710,6 +782,27 @@ private struct AddonsSheet: View {
     @ViewBuilder
     private var installedPane: some View {
         VStack(alignment: .leading, spacing: 14) {
+            GroupBox {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Recommended").bold()
+                        Text("Community add-ons that cover most films and series: Cinemeta and Streaming Catalogs for what to watch, Torrentio, TorrentsDB and ThePirateBay+ for streams over torrents, OpenSubtitles for subtitles. An add-on you already have is kept as it is.")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    if missing.isEmpty {
+                        Text("All installed").foregroundStyle(.green)
+                    } else {
+                        Button(action: installMissing) {
+                            if busy { ProgressView().controlSize(.small) } else { Text("Install the Missing Ones") }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(busy)
+                    }
+                }
+                .padding(4)
+            }
             Text("Paste an add-on's address: its manifest link, or a stremio:// link. Configured add-ons often keep an account key in their address, so it is stored encrypted and never shown again.")
                 .foregroundStyle(.secondary)
             HStack {
@@ -745,7 +838,23 @@ private struct AddonsSheet: View {
         }
     }
 
-    private func reload() { addons = (try? model.watch.library.addons()) ?? [] }
+    private func reload() {
+        addons = (try? model.watch.library.addons()) ?? []
+        missing = model.watch.missingRecommended().map(\.name)
+    }
+
+    private func installMissing() {
+        busy = true
+        message = nil
+        Task {
+            let result = await model.watch.installRecommended()
+            message = result.failed.isEmpty
+                ? String(localized: "Installed: \(result.installed.joined(separator: ", ")).")
+                : String(localized: "Did not install: \(result.failed.joined(separator: ", ")). Try again in a little while.")
+            busy = false
+            reload()
+        }
+    }
 
     private func move(_ addon: WatchLibrary.Addon, _ position: Int) {
         try? model.watch.library.move(base: addon.base, to: position)
@@ -892,7 +1001,7 @@ struct WatchPlayerWindow: View {
     @State private var loadingNext = false
 
     var body: some View {
-        VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles) {
+        VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles, torrentId: request?.torrentId) {
             if player.ended, request?.nextVideo != nil {
                 Button {
                     loadingNext = true

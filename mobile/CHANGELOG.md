@@ -76,6 +76,16 @@ All notable changes to this project are documented here. Format based on [Keep a
   - **The heads-up.** Before the first torrent, a note that everyone in a torrent sees this
     device's address, recommending a VPN; where torrents are, a notice when none appears to
     be on. Neither stops anything.
+- **Recommended add-ons.** One tap on the empty Watch screen, or on the add-ons screen,
+  installs a set of public community add-ons: Cinemeta and Streaming Catalogs for what to
+  watch, Torrentio, TorrentsDB and ThePirateBay+ for streams over torrents, and OpenSubtitles
+  for subtitles. Only missing ones are installed, and a configured add-on from the same host
+  is kept. Both apps; the set is in `shared/watch/CONTRACT.md`.
+- While a torrent stream opens, both apps show what it is doing under the spinner: "Finding
+  peers… 12 connected" while its file list comes, then its peers and speed until the first
+  frame. Opening takes 5 to 70 s depending on the swarm; a bare spinner looked like a hang.
+- Mac: rows of posters in Watch have buttons that page them sideways, for a mouse wheel,
+  which cannot scroll them.
 - **Mac themes.** The phone's colour themes, in Settings › General. "Mac", the default, is a
   regular Mac app. A theme colours all of it: the window, the sidebar and its icons, the
   toolbar, forms, the accent, and tables striped in the theme's two tones as Finder stripes
@@ -92,6 +102,8 @@ All notable changes to this project are documented here. Format based on [Keep a
   `shared/` can join it. npm commands run from `mobile/`.
 
 ### Fixed
+- Phone: the keyboard covered the add-on filter in Discover. The screen now makes room for it
+  and brings the filter to the top when it is focused.
 - Mac: the presets list in Settings had a hover highlight cut off at a fixed width. Presets is
   one form now, with a picker for the preset, and the system draws the highlight.
 - Torrent downloads from a magnet stalled while their files were chosen, and on the phone

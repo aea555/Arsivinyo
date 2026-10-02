@@ -111,6 +111,27 @@ public final class TorrentEngine: @unchecked Sendable {
 
     // MARK: - Streaming
 
+    /// A torrent as the engine has it now: its peers and speed, for a player waiting on it.
+    public struct Live: Sendable, Equatable {
+        public var hasMetadata: Bool
+        public var peers: Int
+        /// Bytes per second.
+        public var downloadRate: Int64
+    }
+
+    /// One torrent's peers and speed; nil when it is not here.
+    public func live(_ id: String) -> Live? {
+        guard let s = (try? status())?.first(where: { $0["id"] as? String == id }) else { return nil }
+        return Live(hasMetadata: s["hasMetadata"] as? Bool ?? false, peers: (s["peers"] as? NSNumber)?.intValue ?? 0,
+                    downloadRate: (s["downloadRate"] as? NSNumber)?.int64Value ?? 0)
+    }
+
+    /// The engine's id for a magnet: its info hash, in lower-case hex. Nil for anything else.
+    public static func id(ofMagnet magnet: String) -> String? {
+        guard let range = magnet.range(of: "xt=urn:btih:[0-9a-fA-F]{40}", options: .regularExpression) else { return nil }
+        return String(magnet[range].suffix(40)).lowercased()
+    }
+
     /// A torrent's file, ready for the player: fetched into the cache (or played from a
     /// download already here), its metadata waited for, the cache trimmed to its limit
     /// around it. Blocks while metadata comes: call it off the main actor.

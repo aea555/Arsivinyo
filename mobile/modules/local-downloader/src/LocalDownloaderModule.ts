@@ -24,6 +24,7 @@ import type {
   WatchMeta,
   WatchOffer,
   WatchPrepared,
+  WatchTorrentLive,
   WatchPreview,
   WatchResult,
   WatchRow,
@@ -193,6 +194,7 @@ type LocalDownloaderNativeModule = {
   watchTorrentSettings(): Promise<TorrentSettings>;
   watchSetTorrentSettings(values: Partial<TorrentSettings>): Promise<void>;
   watchVpnActive(): Promise<boolean>;
+  watchTorrentLive(id: string): Promise<WatchTorrentLive | null>;
   torrentAdd(input: string): Promise<WatchResult<{ id: string }>>;
   torrentPickFile(): Promise<WatchResult<{ uri: string }>>;
   torrentFiles(id: string): Promise<WatchResult<{ files: TorrentFile[] | null }>>;
@@ -374,6 +376,7 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       watchTorrentSettings: async () => unsupported(),
       watchSetTorrentSettings: async () => unsupported(),
       watchVpnActive: async () => false,
+      watchTorrentLive: async () => null,
       torrentAdd: async () => unsupported(),
       torrentPickFile: async () => unsupported(),
       torrentFiles: async () => unsupported(),

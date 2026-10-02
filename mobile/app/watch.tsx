@@ -7,10 +7,9 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, TextInp
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  CINEMETA,
   getCatalog,
   getLibrary,
-  installAddon,
+  installRecommended,
   listAddons,
   listRows,
   type WatchItem,
@@ -60,12 +59,13 @@ export default function WatchScreen() {
     }, [reload]),
   );
 
-  const startWithCinemeta = async () => {
+  const startWithRecommended = async () => {
     setInstalling(true);
     setProblem(null);
-    const result = await installAddon(CINEMETA).catch(() => null);
+    const result = await installRecommended().catch(() => null);
     setInstalling(false);
-    if (!result?.success) setProblem(t('watch.installFailed', { code: result && !result.success ? result.code : '' }));
+    if (!result) setProblem(t('watch.installFailed', { code: '' }));
+    else if (result.failed.length > 0) setProblem(t('watch.recommended.failed', { names: result.failed.join(', ') }));
     await reload();
   };
 
@@ -93,9 +93,9 @@ export default function WatchScreen() {
           <Ionicons name="film-outline" size={48} color={colors.textMuted} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>{t('watch.emptyTitle')}</Text>
           <Text style={[styles.center, { color: colors.textMuted }]}>{t('watch.emptyHint')}</Text>
-          <Pressable onPress={startWithCinemeta} disabled={installing} style={[styles.button, { backgroundColor: colors.accent }]}>
+          <Pressable onPress={startWithRecommended} disabled={installing} style={[styles.button, { backgroundColor: colors.accent }]}>
             {installing ? <ActivityIndicator color={colors.primaryText} /> : (
-              <Text style={{ color: colors.primaryText }}>{t('watch.installCinemeta')}</Text>
+              <Text style={{ color: colors.primaryText }}>{t('watch.recommended.setUp')}</Text>
             )}
           </Pressable>
           <Pressable onPress={() => router.push('/watch-addons' as Href)}>

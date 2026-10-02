@@ -791,8 +791,7 @@
     "continue": "İzlemeye devam et",
     "saved": "Listem",
     "emptyTitle": "Henüz izlenecek bir şey yok",
-    "emptyHint": "İzle, Stremio eklentilerinden kataloglar ve yayınlar gösterir. Stremio'nun kendi kataloğu Cinemeta ile başla, sonra kullandığın eklentileri ekle.",
-    "installCinemeta": "Cinemeta'yı kur",
+    "emptyHint": "İzle, Stremio eklentilerinden kataloglar ve yayınlar gösterir. Tek dokunuşla izlemeye başlamak için önerilen eklentileri kur ya da kullandığın eklentileri ekle.",
     "addOther": "Başka bir eklenti ekle",
     "installFailed": "Kurulamadı ({{code}}).",
     "noSearch": "Arama yapabilen bir eklenti yok. Cinemeta gibi arayabilen bir tane kur.",
@@ -819,6 +818,15 @@
       "WATCH_BAD_MANIFEST": "Bu adres bir eklentiyi tanımlamıyor.",
       "WATCH_TIMEOUT": "Eklenti zamanında yanıt vermedi.",
       "WATCH_NETWORK": "Eklentiye ulaşılamadı."
+    },
+    "recommended": {
+      "title": "Önerilenler",
+      "body": "Film ve dizilerin çoğunu kapsayan topluluk eklentileri: ne izleneceği için Cinemeta ve Streaming Catalogs, torrent üzerinden yayınlar için Torrentio, TorrentsDB ve ThePirateBay+, altyazılar için OpenSubtitles. Zaten kurulu olan bir eklenti olduğu gibi kalır.",
+      "setUp": "Önerilen eklentileri kur",
+      "installAll": "Eksik olanları kur",
+      "allInstalled": "Hepsi kurulu",
+      "done": "Kuruldu: {{names}}.",
+      "failed": "Kurulamadı: {{names}}. Biraz sonra yeniden dene."
     },
     "addons": {
       "title": "Eklentiler",
@@ -901,6 +909,10 @@
     }
   },
   "torrents": {
+    "live": {
+      "finding": "Eşler aranıyor… {{peers}} bağlı",
+      "loading": "{{peers}} eş · {{rate}}"
+    },
     "headsUp": {
       "title": "Torrentteki herkes adresini görür",
       "body": "Bir torrenti izlemek ya da indirmek, bu cihazın IP adresini aynı torrenti paylaşan herkese gösterir. VPN bunu gizler; Arsivinyo önerir ama zorunlu tutmaz.",

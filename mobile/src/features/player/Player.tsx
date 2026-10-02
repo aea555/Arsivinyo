@@ -36,6 +36,8 @@ export interface PlayerProps {
   onEnded?: () => void;
   /** Shown over the video: the next episode, say. */
   children?: React.ReactNode;
+  /** Shown under the spinner while it waits: a torrent's peers and speed. */
+  waiting?: React.ReactNode;
 }
 
 function clock(ms: number): string {
@@ -52,7 +54,7 @@ function clock(ms: number): string {
  * player"): mpv underneath, and Arsivinyo's controls over it — play, seek, audio track,
  * subtitle track, subtitle delay and speed.
  */
-export function Player({ source, title, languages, subtitles = [], onClose, onProgress, onEnded, children }: PlayerProps) {
+export function Player({ source, title, languages, subtitles = [], onClose, onProgress, onEnded, children, waiting }: PlayerProps) {
   const { t } = useTranslation();
   const player = useRef<MpvPlayerHandle>(null);
   const [progress, setProgress] = useState<MpvProgress>({ positionMs: 0, durationMs: 0, paused: false, buffering: true });
@@ -191,6 +193,7 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
       {progress.buffering && !failed ? (
         <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
           <ActivityIndicator size="large" color="#fff" />
+          {waiting}
         </View>
       ) : null}
 

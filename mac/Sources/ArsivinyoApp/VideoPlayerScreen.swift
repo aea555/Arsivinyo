@@ -24,6 +24,8 @@ struct VideoPlayerScreen<Overlay: View>: View {
     /// Subtitles from add-ons, best first; the best is loaded by itself when the file has
     /// nothing in a language preferred as much.
     var subtitles: [Addons.Subtitle] = []
+    /// A torrent being streamed: its peers and speed are shown while the player waits.
+    var torrentId: String? = nil
     @ViewBuilder var overlay: () -> Overlay
 
     @State private var controlsShown = true
@@ -35,7 +37,12 @@ struct VideoPlayerScreen<Overlay: View>: View {
         ZStack {
             Color.black
             MPVVideoView(player: player)
-            if player.buffering, player.failed == nil { ProgressView().controlSize(.large).tint(.white) }
+            if player.buffering, player.failed == nil {
+                VStack(spacing: 10) {
+                    ProgressView().controlSize(.large).tint(.white)
+                    if let torrentId { TorrentLiveText(id: torrentId).font(.callout).foregroundStyle(.white) }
+                }
+            }
             if controlsShown || player.paused { controls.transition(.opacity) }
             if let failed = player.failed {
                 VStack(spacing: 8) {

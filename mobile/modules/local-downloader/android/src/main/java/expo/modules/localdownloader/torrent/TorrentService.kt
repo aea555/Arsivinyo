@@ -251,6 +251,9 @@ class TorrentService private constructor(private val context: Context) {
     return (0 until all.length()).map { all.getJSONObject(it) }.firstOrNull { it.optString("id") == id }
   }
 
+  /** One torrent's state in the engine: its peers and speed, for a player waiting on it. */
+  fun live(id: String): JSONObject? = engineState(id)
+
   private fun nameOf(id: String): String? = engineState(id)?.optString("name")?.ifBlank { null }
 
   /** Downloads with their records and the engine's state, for the screens. */

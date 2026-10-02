@@ -15,6 +15,7 @@ import {
   prepareStream,
   setSaved,
   setWatched,
+  torrentIdOf,
   type WatchItem,
   type WatchMeta,
   type WatchStream,
@@ -23,7 +24,7 @@ import {
 } from '@/src/api';
 import { AppText as Text, Chip } from '@/src/components';
 import { openPlayer, streamLines } from '@/src/features/watch/open';
-import { useTorrentHeadsUp, VpnNotice } from '@/src/features/watch/Torrents';
+import { TorrentLive, useTorrentHeadsUp, VpnNotice } from '@/src/features/watch/Torrents';
 import { useTheme } from '@/src/theme';
 
 type Params = { id: string; type: string; name: string; poster?: string; play?: string; bingeGroup?: string; addonKey?: string };
@@ -183,6 +184,7 @@ export default function WatchTitleScreen() {
         record: true,
         subtitles: stream.subtitles ?? [],
         filename: stream.filename ?? null,
+        torrentId: prepared.torrentId ?? null,
       });
     },
     [askHeadsUp, isSeries, item, known, meta, router, t, video],
@@ -419,6 +421,9 @@ function StreamsList({
                   <View style={styles.fill}>
                     <Text style={{ color: colors.text }} numberOfLines={2}>{line}</Text>
                     {detail ? <Text style={[styles.small, { color: colors.textMuted }]} numberOfLines={3}>{detail}</Text> : null}
+                    {preparing === stream.target && stream.kind === 'torrent' ? (
+                      <TorrentLive id={torrentIdOf(stream.target)} color={colors.accent} />
+                    ) : null}
                   </View>
                   {preparing === stream.target ? <ActivityIndicator color={colors.accent} /> : null}
                 </Pressable>

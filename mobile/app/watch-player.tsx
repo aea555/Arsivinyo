@@ -9,6 +9,7 @@ import { getLanguages, getSubtitles, recordProgress, type WatchSubtitle } from '
 import { AppText as Text } from '@/src/components';
 import { Player } from '@/src/features/player/Player';
 import { openTitle, takePlayRequest, type PlayRequest } from '@/src/features/watch/open';
+import { TorrentLive } from '@/src/features/watch/Torrents';
 
 /** How often the position is written down while playing. */
 const SAVE_EVERY_MS = 10_000;
@@ -83,6 +84,7 @@ export default function WatchPlayerScreen() {
       languages={languages ?? []}
       subtitles={subtitles}
       onClose={() => router.back()}
+      waiting={request.torrentId ? <TorrentLive id={request.torrentId} color="#fff" /> : null}
       onProgress={(p) => {
         where.current = { positionMs: p.positionMs, durationMs: p.durationMs };
       }}

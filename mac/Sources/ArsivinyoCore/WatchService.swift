@@ -80,6 +80,39 @@ public final class WatchService: @unchecked Sendable {
         return manifest
     }
 
+    /// The recommended add-ons (`shared/watch/CONTRACT.md`, "The recommended add-ons"): enough to
+    /// watch real films and series in one click. The phone has the same list; change both.
+    public static let recommended: [(name: String, url: String)] = [
+        ("Cinemeta", "https://v3-cinemeta.strem.io/manifest.json"),
+        ("Streaming Catalogs", "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/manifest.json"),
+        ("Torrentio", "https://torrentio.strem.fun/manifest.json"),
+        ("TorrentsDB", "https://torrentsdb.com/manifest.json"),
+        ("ThePirateBay+", "https://thepiratebay-plus.strem.fun/manifest.json"),
+        ("OpenSubtitles v3", "https://opensubtitles-v3.strem.io/manifest.json"),
+    ]
+
+    /// The recommended add-ons not installed yet. One from the same host counts as installed, so
+    /// a configured Torrentio is kept as it is.
+    public func missingRecommended() -> [(name: String, url: String)] {
+        let hosts = Set(((try? library.addons()) ?? []).map { Self.host($0.base) })
+        return Self.recommended.filter { !hosts.contains(Self.host($0.url)) }
+    }
+
+    /// Installs the missing recommended add-ons, in the list's order. Gives the names of those
+    /// installed and of those that failed.
+    public func installRecommended() async -> (installed: [String], failed: [String]) {
+        var installed: [String] = [], failed: [String] = []
+        for addon in missingRecommended() {
+            do {
+                _ = try await install(addon.url)
+                installed.append(addon.name)
+            } catch {
+                failed.append(addon.name)
+            }
+        }
+        return (installed, failed)
+    }
+
     // MARK: - What the screens ask for
 
     public struct Row: Hashable, Sendable, Identifiable {

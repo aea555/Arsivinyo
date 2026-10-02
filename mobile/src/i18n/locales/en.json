@@ -791,8 +791,7 @@
     "continue": "Continue watching",
     "saved": "My list",
     "emptyTitle": "Nothing to watch yet",
-    "emptyHint": "Watch shows catalogs and streams from Stremio add-ons. Start with Cinemeta, Stremio's own catalog, then add the add-ons you use.",
-    "installCinemeta": "Install Cinemeta",
+    "emptyHint": "Watch shows catalogs and streams from Stremio add-ons. Set up the recommended ones to start watching in one tap, or add the add-ons you use.",
     "addOther": "Add another add-on",
     "installFailed": "Could not install it ({{code}}).",
     "noSearch": "No add-on can search. Install one that can, such as Cinemeta.",
@@ -819,6 +818,15 @@
       "WATCH_BAD_MANIFEST": "That address does not describe an add-on.",
       "WATCH_TIMEOUT": "The add-on did not answer in time.",
       "WATCH_NETWORK": "Could not reach the add-on."
+    },
+    "recommended": {
+      "title": "Recommended",
+      "body": "Community add-ons that cover most films and series: Cinemeta and Streaming Catalogs for what to watch, Torrentio, TorrentsDB and ThePirateBay+ for streams over torrents, OpenSubtitles for subtitles. An add-on you already have is kept as it is.",
+      "setUp": "Set up recommended add-ons",
+      "installAll": "Install the missing ones",
+      "allInstalled": "All installed",
+      "done": "Installed: {{names}}.",
+      "failed": "Did not install: {{names}}. Try again in a little while."
     },
     "addons": {
       "title": "Add-ons",
@@ -901,6 +909,10 @@
     }
   },
   "torrents": {
+    "live": {
+      "finding": "Finding peers… {{peers}} connected",
+      "loading": "{{peers}} peers · {{rate}}"
+    },
     "headsUp": {
       "title": "Everyone in a torrent sees your address",
       "body": "Streaming or downloading a torrent shows this device's IP address to everyone sharing the same torrent. A VPN hides it; Arsivinyo recommends one but does not require it.",

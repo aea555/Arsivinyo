@@ -36,6 +36,8 @@ export interface PlayRequest {
   /** The stream's own subtitles, and its file name, which subtitle add-ons match on. */
   subtitles?: WatchSubtitle[];
   filename?: string | null;
+  /** A torrent stream's info hash, for its peers and speed while the player waits. */
+  torrentId?: string | null;
 }
 
 /** Hands a request to the player screen. Kept in memory: a stream URL never goes in a route. */
