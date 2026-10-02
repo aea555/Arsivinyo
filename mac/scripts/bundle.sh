@@ -68,6 +68,15 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>NSLocalNetworkUsageDescription</key>
   <string>Arsivinyo finds your phone on this network and moves music between them.</string>
   <key>NSBonjourServices</key><array><string>_arsivinyo._tcp</string></array>
+  <!-- stremio:// links, which a Stremio add-on's configure page installs through: the Watch
+       section offers to install them. If Stremio is installed as well, it may take them. -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>Stremio add-on</string>
+      <key>CFBundleURLSchemes</key><array><string>stremio</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

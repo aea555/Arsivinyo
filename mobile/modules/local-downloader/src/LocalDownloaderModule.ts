@@ -22,6 +22,7 @@ import type {
   WatchAddon,
   WatchItem,
   WatchMeta,
+  WatchOffer,
   WatchPrepared,
   WatchPreview,
   WatchResult,
@@ -173,6 +174,8 @@ type LocalDownloaderNativeModule = {
   // ---- watch ----
   watchAddons(): Promise<WatchAddon[]>;
   watchInstallAddon(url: string): Promise<WatchResult<{ name: string }>>;
+  watchOfferLists(): Promise<WatchRow[]>;
+  watchOffers(addonKey: string, type: string, id: string): Promise<WatchResult<{ offers: WatchOffer[] }>>;
   watchUninstallAddon(key: string): Promise<void>;
   watchSetAddonEnabled(key: string, enabled: boolean): Promise<void>;
   watchMoveAddon(key: string, position: number): Promise<void>;
@@ -337,6 +340,8 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       pairingSendMeme: async () => unsupported(),
       watchAddons: async () => unsupported(),
       watchInstallAddon: async () => unsupported(),
+      watchOfferLists: async () => [],
+      watchOffers: async () => unsupported(),
       watchUninstallAddon: async () => unsupported(),
       watchSetAddonEnabled: async () => unsupported(),
       watchMoveAddon: async () => unsupported(),

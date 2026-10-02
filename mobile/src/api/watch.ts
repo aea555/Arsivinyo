@@ -4,6 +4,7 @@ import LocalDownloaderModule, {
   type WatchAddon,
   type WatchItem,
   type WatchMeta,
+  type WatchOffer,
   type WatchPrepared,
   type WatchPreview,
   type WatchProgress,
@@ -19,6 +20,7 @@ export type {
   WatchAddon,
   WatchItem,
   WatchMeta,
+  WatchOffer,
   WatchPrepared,
   WatchPreview,
   WatchProgress,
@@ -46,6 +48,8 @@ const M = LocalDownloaderModule;
 
 export const listAddons = () => M.watchAddons();
 export const installAddon = (url: string) => M.watchInstallAddon(url);
+export const listOfferLists = () => M.watchOfferLists();
+export const getOffers = (row: WatchRow) => M.watchOffers(row.addonKey, row.type, row.id);
 export const uninstallAddon = (key: string) => M.watchUninstallAddon(key);
 export const setAddonEnabled = (key: string, enabled: boolean) => M.watchSetAddonEnabled(key, enabled);
 export const moveAddon = (key: string, position: number) => M.watchMoveAddon(key, position);

@@ -19,6 +19,10 @@ export default ({ config }) => {
       },
     },
     android: {
+      // stremio:// as well: a Stremio add-on's configure page installs through such a link,
+      // and Arsivinyo can take it (shared/watch/CONTRACT.md). If Stremio is installed too,
+      // Android asks which app should open it.
+      scheme: ["stremio"],
       versionCode: 20600,
       adaptiveIcon: {
         backgroundColor: "#09090B",

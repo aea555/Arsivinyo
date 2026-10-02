@@ -1392,6 +1392,35 @@ class LocalDownloaderModule : Module() {
       watchAsync(promise) { mapOf("success" to true, "name" to watch.install(url).name) }
     }
 
+    /** Lists of add-ons to offer, from the add-ons installed. */
+    AsyncFunction("watchOfferLists") {
+      watch.offerLists().map {
+        mapOf("addonKey" to it.addonKey, "addonName" to it.addonName, "type" to it.catalog.type,
+          "id" to it.catalog.id, "name" to it.catalog.name)
+      }
+    }
+
+    AsyncFunction("watchOffers") { addonKey: String, type: String, id: String, promise: Promise ->
+      watchAsync(promise) {
+        val installed = watch.library.addons().map { it.base }.toSet()
+        mapOf("success" to true, "offers" to watch.offers(addonKey, type, id).map { offer ->
+          // An offered add-on's address is public, from the catalog; only installed ones are kept secret.
+          mapOf(
+            "url" to offer.base + "/manifest.json",
+            "configureUrl" to if (offer.manifest.configurable) offer.base + "/configure" else null,
+            "name" to offer.manifest.name,
+            "description" to offer.manifest.description,
+            "logo" to offer.manifest.logo,
+            "types" to offer.manifest.types,
+            "resources" to offer.manifest.resources.map { it.name },
+            "configurable" to offer.manifest.configurable,
+            "required" to offer.manifest.configurationRequired,
+            "installed" to (offer.base in installed),
+          )
+        })
+      }
+    }
+
     AsyncFunction("watchUninstallAddon") { key: String -> watch.library.uninstall(watch.addon(key).base) }
 
     AsyncFunction("watchSetAddonEnabled") { key: String, enabled: Boolean ->

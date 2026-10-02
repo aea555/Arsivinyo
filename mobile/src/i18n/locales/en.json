@@ -831,7 +831,23 @@
       "down": "Move down",
       "remove": "Remove",
       "removeTitle": "Remove “{{name}}”?",
-      "removeBody": "Its catalogs and streams disappear. What you watched stays in your library."
+      "removeBody": "Its catalogs and streams disappear. What you watched stays in your library.",
+      "installedTitle": "Installed",
+      "discover": "Discover",
+      "discoverHint": "Add-ons your installed add-ons recommend, from Stremio's own lists. Many stream add-ons find torrents; those streams play once torrents arrive in a later update.",
+      "filter": "Filter",
+      "alreadyInstalled": "Installed",
+      "configureFirst": "Needs configuring first",
+      "configure": "Configure",
+      "linkTitle": "Install this add-on?",
+      "linkBody": "A link asks to install an add-on from {{host}}.",
+      "resource": {
+        "catalog": "catalogs",
+        "meta": "details",
+        "stream": "streams",
+        "subtitles": "subtitles",
+        "addon_catalog": "add-on lists"
+      }
     },
     "trailer": "Trailer",
     "trailerOf": "Trailer · {{name}}"

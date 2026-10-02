@@ -25,6 +25,17 @@ extension CoreChecks {
             check(Addons.supports(manifest, resource: c["resource"] as! String, type: c["type"] as! String,
                                   id: c["id"] as! String) == c["expect"] as! Bool, "supports: \(c["why"]!)")
         }
+        let offerCase = vectors["addonCatalogs"] as! [String: Any]
+        check(manifest.addonCatalogs.map { [$0.type, $0.id, $0.name] } == offerCase["manifest_catalogs"] as! [[String]],
+              "a manifest's add-on catalogs are read")
+        let offers = Addons.offers(offerCase["response"] as! [String: Any])
+        let expectedOffers = offerCase["offers"] as! [[String: Any]]
+        check(offers.count == expectedOffers.count && zip(offers, expectedOffers).allSatisfy { offer, e in
+            offer.base == e["base"] as? String && offer.manifest.name == e["name"] as? String
+                && offer.manifest.configurable == e["configurable"] as? Bool
+                && offer.manifest.configurationRequired == e["required"] as? Bool
+        }, "add-on catalogs: \(offerCase["why"]!)")
+
         for case let c as [String: Any] in vectors["streams"] as! [Any] {
             let stream = Addons.stream(c["stream"] as! [String: Any])
             guard let kind = c["kind"] as? String else {

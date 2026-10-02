@@ -59,6 +59,24 @@ class WatchTest {
   }
 
   @Test
+  fun addonCatalogsOfferWhatCanBeInstalledHere() {
+    val v = vectors().getJSONObject("addonCatalogs")
+    val manifest = Addons.manifest(vectors().getJSONObject("supports").getJSONObject("manifest"))!!
+    val expectedCatalogs = v.getJSONArray("manifest_catalogs").let { a -> (0 until a.length()).map { a.getJSONArray(it).let { c -> listOf(c.getString(0), c.getString(1), c.getString(2)) } } }
+    assertEquals(expectedCatalogs, manifest.addonCatalogs.map { listOf(it.type, it.id, it.name) })
+    val offers = Addons.offers(v.getJSONObject("response"))
+    val expected = v.getJSONArray("offers")
+    assertEquals(v.getString("why"), expected.length(), offers.size)
+    for (i in 0 until expected.length()) {
+      val e = expected.getJSONObject(i)
+      assertEquals(e.getString("base"), offers[i].base)
+      assertEquals(e.getString("name"), offers[i].manifest.name)
+      assertEquals(e.getBoolean("configurable"), offers[i].manifest.configurable)
+      assertEquals(e.getBoolean("required"), offers[i].manifest.configurationRequired)
+    }
+  }
+
+  @Test
   fun streamsAreReadOrDropped() {
     val cases = vectors().getJSONArray("streams")
     for (i in 0 until cases.length()) {

@@ -122,6 +122,25 @@ public final class WatchService: @unchecked Sendable {
         throw last
     }
 
+    /// The lists of add-ons that installed add-ons publish, one per list: the "all" type where
+    /// there is one, so a list is not shown once per type.
+    public func offerLists() throws -> [Row] {
+        try enabled().flatMap { pair -> [Row] in
+            guard pair.manifest.resources.contains(where: { $0.name == "addon_catalog" }) else { return [] }
+            var seen: [String: Addons.Catalog] = [:], order: [String] = []
+            for catalog in pair.manifest.addonCatalogs {
+                if seen[catalog.id] == nil { order.append(catalog.id) }
+                if seen[catalog.id] == nil || catalog.type == "all" { seen[catalog.id] = catalog }
+            }
+            return order.compactMap { seen[$0] }.map { Row(addonBase: pair.addon.base, addonName: pair.manifest.name, catalog: $0) }
+        }
+    }
+
+    public func offers(_ row: Row) async throws -> [Addons.Offer] {
+        Addons.offers(try await getJSON(Addons.resourceURL(base: row.addonBase, resource: "addon_catalog",
+                                                           type: row.catalog.type, id: row.catalog.id), timeout: 20))
+    }
+
     public struct Source: Hashable, Sendable, Identifiable {
         public var base: String
         public var name: String

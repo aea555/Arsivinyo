@@ -136,6 +136,19 @@ class WatchService(val library: WatchLibrary) {
   fun streams(addonKey: String, type: String, id: String): List<Addons.Stream> =
     Addons.streams(getJson(Addons.resourceUrl(addon(addonKey).base, "stream", type, id), timeoutMs = 20_000))
 
+  /**
+   * The lists of add-ons that installed add-ons publish (Cinemeta's official and community
+   * ones), one per list: the "all" type where there is one, so a list is not shown per type.
+   */
+  fun offerLists(): List<Row> = enabled().flatMap { (addon, manifest) ->
+    if (manifest.resources.none { it.name == "addon_catalog" }) return@flatMap emptyList()
+    manifest.addonCatalogs.groupBy { it.id }.values.map { same -> same.firstOrNull { it.type == "all" } ?: same.first() }
+      .map { Row(key(addon.base), manifest.name, it) }
+  }
+
+  fun offers(addonKey: String, type: String, id: String): List<Addons.Offer> =
+    Addons.offers(getJson(Addons.resourceUrl(addon(addonKey).base, "addon_catalog", type, id), timeoutMs = 20_000))
+
   companion object {
     private const val USER_AGENT = "Arsivinyo"
     private const val MAX_RESPONSE = 16 * 1024 * 1024

@@ -14,6 +14,7 @@ export type {
   WatchFailure,
   WatchItem,
   WatchMeta,
+  WatchOffer,
   WatchPrepared,
   WatchPreview,
   WatchProgress,

@@ -915,6 +915,21 @@ export interface WatchAddon {
   enabled: boolean;
 }
 
+/** An add-on an installed add-on offers. Its address is public, from the catalog. */
+export interface WatchOffer {
+  url: string;
+  configureUrl?: string | null;
+  name: string;
+  description?: string | null;
+  logo?: string | null;
+  types: string[];
+  resources: string[];
+  configurable: boolean;
+  /** It cannot be installed without configuring it first. */
+  required: boolean;
+  installed: boolean;
+}
+
 export interface WatchRow {
   addonKey: string;
   addonName: string;

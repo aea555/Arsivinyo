@@ -144,6 +144,18 @@
           "id": "top",
           "name": "Top"
         }
+      ],
+      "addonCatalogs": [
+        {
+          "type": "all",
+          "id": "official",
+          "name": "Official"
+        },
+        {
+          "type": "movie",
+          "id": "official",
+          "name": "Official"
+        }
       ]
     },
     "cases": [
@@ -328,5 +340,108 @@
       ],
       "why": "episodes in order with specials last, named by title or name, numbered by episode or number; trailers as YouTube streams"
     }
-  ]
+  ],
+  "addonCatalogs": {
+    "manifest_catalogs": [
+      [
+        "all",
+        "official",
+        "Official"
+      ],
+      [
+        "movie",
+        "official",
+        "Official"
+      ]
+    ],
+    "response": {
+      "addons": [
+        {
+          "transportName": "http",
+          "transportUrl": "https://v3-cinemeta.strem.io/manifest.json",
+          "manifest": {
+            "id": "com.linvo.cinemeta",
+            "version": "3.0.14",
+            "name": "Cinemeta",
+            "resources": [
+              "catalog",
+              "meta"
+            ],
+            "types": [
+              "movie",
+              "series"
+            ]
+          }
+        },
+        {
+          "transportName": "http",
+          "transportUrl": "http://127.0.0.1:11470/local-addon/manifest.json",
+          "manifest": {
+            "id": "org.stremio.local",
+            "name": "Local Files",
+            "resources": [
+              "stream"
+            ],
+            "types": [
+              "movie"
+            ]
+          }
+        },
+        {
+          "transportName": "http",
+          "transportUrl": "https://opensubtitles.strem.io/stremio/v1",
+          "manifest": {
+            "id": "org.stremio.opensubtitles",
+            "name": "OpenSubtitles",
+            "resources": [
+              "subtitles"
+            ],
+            "types": [
+              "movie"
+            ]
+          }
+        },
+        {
+          "transportName": "http",
+          "transportUrl": "https://example.com/conf/manifest.json",
+          "manifest": {
+            "id": "org.example.conf",
+            "name": "Configurable",
+            "resources": [
+              "stream"
+            ],
+            "types": [
+              "movie"
+            ],
+            "behaviorHints": {
+              "configurable": true,
+              "configurationRequired": true
+            }
+          }
+        },
+        {
+          "transportName": "http",
+          "transportUrl": "https://broken.example/manifest.json",
+          "manifest": {
+            "name": "No id"
+          }
+        }
+      ]
+    },
+    "offers": [
+      {
+        "base": "https://v3-cinemeta.strem.io",
+        "name": "Cinemeta",
+        "configurable": false,
+        "required": false
+      },
+      {
+        "base": "https://example.com/conf",
+        "name": "Configurable",
+        "configurable": true,
+        "required": true
+      }
+    ],
+    "why": "an add-on that runs on this device, one whose address is not a manifest URL, and one without an id are left out"
+  }
 }

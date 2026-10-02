@@ -77,6 +77,10 @@ public enum Addons {
         public var idPrefixes: [String]?
         public var resources: [Resource]
         public var catalogs: [Catalog]
+        /// Lists of other add-ons this one publishes: Cinemeta's official and community ones.
+        public var addonCatalogs: [Catalog]
+        /// It has a page of settings at `{base}/configure`.
+        public var configurable: Bool
         public var configurationRequired: Bool
     }
 
@@ -121,6 +125,12 @@ public enum Addons {
             idPrefixes: strings(json["idPrefixes"]),
             resources: resources,
             catalogs: catalogs,
+            addonCatalogs: (json["addonCatalogs"] as? [[String: Any]] ?? []).map {
+                let id = $0["id"] as? String ?? ""
+                return Catalog(type: $0["type"] as? String ?? "", id: id,
+                               name: ($0["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id, extra: [], required: [])
+            },
+            configurable: hints?["configurable"] as? Bool ?? false,
             configurationRequired: hints?["configurationRequired"] as? Bool ?? false)
     }
 
@@ -281,6 +291,26 @@ public enum Addons {
                       notWebReady: hints?["notWebReady"] as? Bool ?? false,
                       headers: headers,
                       filename: text(hints?["filename"]))
+    }
+
+    /// An add-on another add-on offers, ready to install from `base`.
+    public struct Offer: Sendable, Identifiable {
+        public var base: String
+        public var manifest: Manifest
+        public var id: String { base }
+    }
+
+    /// An `addon_catalog` answer. Left out: add-ons that run on the device Stremio is on (its
+    /// local server), the old transport whose address is not a manifest URL, and anything
+    /// whose manifest cannot be read.
+    public static func offers(_ json: [String: Any]) -> [Offer] {
+        (json["addons"] as? [[String: Any]] ?? []).compactMap { entry in
+            guard let url = entry["transportUrl"] as? String, url.hasSuffix("/manifest.json"),
+                  let base = base(url), let host = URL(string: base)?.host?.lowercased(),
+                  !["127.0.0.1", "localhost", "::1"].contains(host),
+                  let raw = entry["manifest"] as? [String: Any], let manifest = manifest(raw) else { return nil }
+            return Offer(base: base, manifest: manifest)
+        }
     }
 
     public static func streams(_ json: [String: Any]) -> [Stream] {

@@ -71,6 +71,10 @@ object Addons {
     /** Each resource: its name, and its own types and prefixes when it gives them. */
     val resources: List<Resource>,
     val catalogs: List<Catalog>,
+    /** Lists of other add-ons this one publishes: Cinemeta's official and community ones. */
+    val addonCatalogs: List<Catalog>,
+    /** It has a page of settings at `{base}/configure`. */
+    val configurable: Boolean,
     val configurationRequired: Boolean,
     val json: JSONObject,
   )
@@ -122,6 +126,13 @@ object Addons {
       idPrefixes = json.optJSONArray("idPrefixes")?.let(::strings),
       resources = resources,
       catalogs = catalogs,
+      addonCatalogs = json.optJSONArray("addonCatalogs")?.let { a ->
+        (0 until a.length()).mapNotNull { i ->
+          val c = a.optJSONObject(i) ?: return@mapNotNull null
+          Catalog(c.optString("type"), c.optString("id"), c.optString("name").ifBlank { c.optString("id") }, emptyList(), emptyList())
+        }
+      }.orEmpty(),
+      configurable = json.optJSONObject("behaviorHints")?.optBoolean("configurable") ?: false,
       configurationRequired = json.optJSONObject("behaviorHints")?.optBoolean("configurationRequired") ?: false,
       json = json,
     )
@@ -287,6 +298,28 @@ object Addons {
   fun streams(json: JSONObject): List<Stream> {
     val list = json.optJSONArray("streams") ?: return emptyList()
     return (0 until list.length()).mapNotNull { list.optJSONObject(it)?.let(::stream) }
+  }
+
+  /** An add-on another add-on offers, ready to install from [base]. */
+  data class Offer(val base: String, val manifest: Manifest)
+
+  /**
+   * An `addon_catalog` answer. Left out: add-ons that run on the device Stremio is on (its
+   * local server), the old transport whose address is not a manifest URL, and anything whose
+   * manifest cannot be read.
+   */
+  fun offers(json: JSONObject): List<Offer> {
+    val list = json.optJSONArray("addons") ?: return emptyList()
+    return (0 until list.length()).mapNotNull { i ->
+      val entry = list.optJSONObject(i) ?: return@mapNotNull null
+      val url = entry.optString("transportUrl")
+      if (!url.endsWith("/manifest.json")) return@mapNotNull null
+      val base = base(url) ?: return@mapNotNull null
+      val host = runCatching { URI(base).host?.lowercase() }.getOrNull() ?: return@mapNotNull null
+      if (host == "127.0.0.1" || host == "localhost" || host == "::1") return@mapNotNull null
+      val manifest = entry.optJSONObject("manifest")?.let(::manifest) ?: return@mapNotNull null
+      Offer(base, manifest)
+    }
   }
 
   data class Subtitle(val id: String, val url: String, val lang: String)

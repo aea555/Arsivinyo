@@ -831,7 +831,23 @@
       "down": "Aşağı taşı",
       "remove": "Kaldır",
       "removeTitle": "“{{name}}” kaldırılsın mı?",
-      "removeBody": "Katalogları ve yayınları kaybolur. İzlediklerin kütüphanende kalır."
+      "removeBody": "Katalogları ve yayınları kaybolur. İzlediklerin kütüphanende kalır.",
+      "installedTitle": "Kurulu",
+      "discover": "Keşfet",
+      "discoverHint": "Kurulu eklentilerinin önerdiği eklentiler, Stremio'nun kendi listelerinden. Yayın eklentilerinin çoğu torrent bulur; o yayınlar torrentler sonraki bir güncellemeyle gelince oynar.",
+      "filter": "Süz",
+      "alreadyInstalled": "Kurulu",
+      "configureFirst": "Önce ayarlanması gerekiyor",
+      "configure": "Ayarla",
+      "linkTitle": "Bu eklenti kurulsun mu?",
+      "linkBody": "Bir bağlantı, {{host}} adresinden bir eklenti kurmak istiyor.",
+      "resource": {
+        "catalog": "kataloglar",
+        "meta": "ayrıntılar",
+        "stream": "yayınlar",
+        "subtitles": "altyazılar",
+        "addon_catalog": "eklenti listeleri"
+      }
     },
     "trailer": "Fragman",
     "trailerOf": "Fragman · {{name}}"

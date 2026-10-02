@@ -83,6 +83,18 @@ struct WatchView: View {
         .sheet(isPresented: $managingAddons, onDismiss: reload) { AddonsSheet() }
         .task(id: searching) { reload() }
         .onAppear(perform: reload)
+        .onChange(of: model.watchNotice) { _, _ in reload() }
+        .safeAreaInset(edge: .top) {
+            if let notice = model.watchNotice {
+                HStack {
+                    Text(notice)
+                    Spacer()
+                    Button { model.watchNotice = nil } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                }
+                .padding(10)
+                .background(.bar)
+            }
+        }
     }
 
     private func reload() {
@@ -552,17 +564,49 @@ private struct AddonsSheet: View {
     @State private var url = ""
     @State private var busy = false
     @State private var message: String?
+    @State private var discovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Add-ons").font(.title2.bold())
+            HStack {
+                Text("Add-ons").font(.title2.bold())
+                Spacer()
+                Picker("", selection: $discovering) {
+                    Text("Installed").tag(false)
+                    Text("Discover").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+            }
+            if discovering {
+                DiscoverAddons(installed: Set(addons.map(\.base))) { address in
+                    url = address
+                    install()
+                }
+            } else {
+                installedPane
+            }
+            HStack {
+                if let message { Text(message).font(.callout) }
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 680, height: 600)
+        .onAppear(perform: reload)
+    }
+
+    @ViewBuilder
+    private var installedPane: some View {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Paste an add-on's address: its manifest link, or a stremio:// link. Configured add-ons often keep an account key in their address, so it is stored encrypted and never shown again.")
                 .foregroundStyle(.secondary)
             HStack {
                 TextField("https://…/manifest.json", text: $url).onSubmit(install)
                 Button("Install", action: install).disabled(busy || url.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            if let message { Text(message).font(.callout) }
             List {
                 ForEach(Array(addons.enumerated()), id: \.element.base) { index, addon in
                     let manifest = Addons.manifest(addon.manifest)
@@ -588,14 +632,7 @@ private struct AddonsSheet: View {
                 }
             }
             .frame(minHeight: 220)
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
-            }
         }
-        .padding(20)
-        .frame(width: 620, height: 520)
-        .onAppear(perform: reload)
     }
 
     private func reload() { addons = (try? model.watch.library.addons()) ?? [] }
@@ -619,6 +656,84 @@ private struct AddonsSheet: View {
             busy = false
             reload()
         }
+    }
+}
+
+/// Add-ons that installed add-ons offer, from Stremio's own lists (Cinemeta's official and
+/// community ones). Configurable ones open their settings page in the browser; its Install
+/// button comes back to this app as a stremio:// link.
+private struct DiscoverAddons: View {
+    @Environment(AppModel.self) private var model
+    let installed: Set<String>
+    let install: (String) -> Void
+    @State private var lists: [WatchService.Row] = []
+    @State private var list: WatchService.Row?
+    @State private var offers: [Addons.Offer]?
+    @State private var failed: String?
+    @State private var filter = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Add-ons your installed add-ons recommend, from Stremio's own lists. Many stream add-ons find torrents; those streams play once torrents arrive in a later update.")
+                .foregroundStyle(.secondary)
+            HStack {
+                Picker("List", selection: $list) {
+                    ForEach(lists) { row in Text("\(row.catalog.name) · \(row.addonName)").tag(Optional(row)) }
+                }
+                .frame(maxWidth: 300)
+                TextField("Filter", text: $filter)
+            }
+            if let failed { Text("Did not answer (\(failed)).").foregroundStyle(.secondary) }
+            if offers == nil && failed == nil && list != nil { ProgressView().controlSize(.small) }
+            List(shown) { offer in
+                HStack(alignment: .top, spacing: 10) {
+                    if let logo = offer.manifest.logo, let url = URL(string: logo) {
+                        AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                            .frame(width: 32, height: 32)
+                    } else {
+                        Image(systemName: "puzzlepiece.extension").frame(width: 32, height: 32)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(offer.manifest.name).bold()
+                        if !offer.manifest.description.isEmpty {
+                            Text(offer.manifest.description).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                        }
+                        Text(offer.manifest.resources.map(\.name).joined(separator: ", ")).font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    if installed.contains(offer.base) {
+                        Text("Installed").foregroundStyle(.green)
+                    } else if offer.manifest.configurationRequired {
+                        Text("Needs configuring first").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Button("Install") { install(offer.base + "/manifest.json") }
+                    }
+                    if offer.manifest.configurable, let url = URL(string: offer.base + "/configure") {
+                        Button("Configure…") { NSWorkspace.shared.open(url) }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .onAppear {
+            lists = (try? model.watch.offerLists()) ?? []
+            if list == nil { list = lists.first }
+        }
+        .task(id: list) {
+            guard let list else { return }
+            offers = nil
+            failed = nil
+            do {
+                offers = try await model.watch.offers(list)
+            } catch {
+                failed = (error as? WatchService.Failure)?.code ?? String(describing: error)
+            }
+        }
+    }
+
+    private var shown: [Addons.Offer] {
+        let q = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        return (offers ?? []).filter { q.isEmpty || $0.manifest.name.lowercased().contains(q) || $0.manifest.description.lowercased().contains(q) }
     }
 }
 

@@ -442,3 +442,13 @@
 "Trailer" = "Fragman";
 "Trailer · %@" = "Fragman · %@";
 "Loading…" = "Yükleniyor…";
+"%@ · %@" = "%@ · %@";
+"A link asks to install an add-on from %@." = "Bir bağlantı, %@ adresinden bir eklenti kurmak istiyor.";
+"Add-ons your installed add-ons recommend, from Stremio's own lists. Many stream add-ons find torrents; those streams play once torrents arrive in a later update." = "Kurulu eklentilerinin önerdiği eklentiler, Stremio'nun kendi listelerinden. Yayın eklentilerinin çoğu torrent bulur; o yayınlar torrentler sonraki bir güncellemeyle gelince oynar.";
+"Configure…" = "Ayarla…";
+"Discover" = "Keşfet";
+"Filter" = "Süz";
+"Install this add-on?" = "Bu eklenti kurulsun mu?";
+"Installed" = "Kurulu";
+"List" = "Liste";
+"Needs configuring first" = "Önce ayarlanması gerekiyor";

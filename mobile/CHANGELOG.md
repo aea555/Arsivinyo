@@ -43,8 +43,11 @@ All notable changes to this project are documented here. Format based on [Keep a
   links play as they are; web pages, YouTube and trailers go through yt-dlp first, which
   hands the player an HLS stream when the site has one. Continue watching, a list of your
   own, watched marks, and the next episode from the same source. The library and the
-  add-on addresses, which often carry an account key, are encrypted at rest. Torrent
-  streams and the mpv player come in later phases (`shared/watch/CONTRACT.md`).
+  add-on addresses, which often carry an account key, are encrypted at rest. Add-ons can
+  be discovered from Stremio's own official and community lists, which the installed
+  add-ons publish; configurable ones open their settings page, whose Install link
+  (`stremio://`) comes back to Arsivinyo and is installed after asking. Torrent streams and
+  the mpv player come in later phases (`shared/watch/CONTRACT.md`).
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is

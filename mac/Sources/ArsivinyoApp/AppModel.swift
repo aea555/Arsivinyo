@@ -555,6 +555,10 @@ final class AppModel {
     let watch: WatchService
     /// What the player window plays; set before opening it.
     var watchPlaying: WatchPlayRequest?
+    /// A stremio:// link that was opened, waiting to be confirmed and installed.
+    var addonLink: URL?
+    /// What happened to the last add-on installed from a link, for the Watch section to say.
+    var watchNotice: String?
 
     // MARK: - Backup
 

@@ -63,6 +63,25 @@ struct RootView: View {
                 model.section = .download
             }
         }
+        // A stremio:// link: asked about, then installed. Only its host is shown, since the
+        // rest of it can carry an account key.
+        .confirmationDialog("Install this add-on?",
+                            isPresented: Binding(get: { model.addonLink != nil }, set: { if !$0 { model.addonLink = nil } })) {
+            Button("Install") {
+                guard let link = model.addonLink else { return }
+                model.addonLink = nil
+                Task {
+                    do {
+                        let manifest = try await model.watch.install(link.absoluteString)
+                        model.watchNotice = String(localized: "Installed \(manifest.name).")
+                    } catch {
+                        model.watchNotice = String(localized: "Could not install it (\(String(describing: error))).")
+                    }
+                }
+            }
+        } message: {
+            Text("A link asks to install an add-on from \(model.addonLink?.host ?? "").")
+        }
         .sheet(isPresented: $creatingPlaylist) {
             NameSheet(title: "New Playlist", initial: "") { model.createPlaylist(named: $0) }
         }

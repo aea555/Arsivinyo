@@ -18,7 +18,14 @@ struct ArsivinyoApp: App {
                 // Wide enough that the source list and a detail pane both have room; the
                 // window is otherwise free to be resized and its size is restored.
                 .frame(minWidth: 860, minHeight: 560)
+                // A Stremio add-on's configure page installs through a stremio:// link.
+                .onOpenURL { url in
+                    guard url.scheme?.lowercased() == "stremio" else { return }
+                    model.section = .watch
+                    model.addonLink = url
+                }
         }
+        .handlesExternalEvents(matching: ["stremio"])
         .windowToolbarStyle(.unified)
         .commands { AppCommands(model: model) }
 
