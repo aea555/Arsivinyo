@@ -12,6 +12,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case download
     case library
     case watch
+    case torrents
     case memes
     case vault
     case devices
@@ -23,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .download: return String(localized: "Download")
         case .library: return String(localized: "Music")
         case .watch: return String(localized: "Watch")
+        case .torrents: return String(localized: "Torrents")
         // "Mimler" in Turkish: the TDK's word for memes. The literal plural means something else.
         case .memes: return String(localized: "Memes")
         case .vault: return String(localized: "Vault")
@@ -36,6 +38,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .download: return "arrow.down.circle"
         case .library: return "music.note.list"
         case .watch: return "play.tv"
+        case .torrents: return "arrow.down.circle.dotted"
         case .memes: return "theatermasks"
         case .vault: return "lock.shield"
         case .devices: return "laptopcomputer.and.iphone"
@@ -47,9 +50,10 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .download: return "1"
         case .library: return "2"
         case .watch: return "3"
-        case .memes: return "4"
-        case .vault: return "5"
-        case .devices: return "6"
+        case .torrents: return "4"
+        case .memes: return "5"
+        case .vault: return "6"
+        case .devices: return "7"
         }
     }
 }
@@ -139,6 +143,7 @@ final class AppModel {
         memes = MemeLibrary(support: support.appendingPathComponent("memes"), vault: vault, keybox: keybox) {
             try MemeDeviceKey.load(service: keychainService + ".memes")
         }
+        torrents = TorrentEngine(root: support.appendingPathComponent("torrents", isDirectory: true))
         cookies = CookieStore(directory: support, keybox: keybox)
         presets = PresetStore(directory: support)
         renderScratch = FileManager.default.temporaryDirectory
@@ -166,6 +171,36 @@ final class AppModel {
             engine: URL(fileURLWithPath: "/nonexistent"),
             ytDlp: URL(fileURLWithPath: "/nonexistent")))
         queue = DownloadQueue(engine: engine, destination: destination)
+
+        // Torrent downloads: public files into the download folder, private ones into the vault
+        // when it is open (until then they wait in the app's own folder). Every two seconds,
+        // and from launch, so downloads carry on where they stopped.
+        let vault = self.vault
+        torrents.attach(library: watch.library, taker: .init(
+            filePublic: { file, relative in
+                let target = destination.appendingPathComponent(relative)
+                try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? FileManager.default.removeItem(at: target)
+                return (try? FileManager.default.copyItem(at: file, to: target)) != nil
+            },
+            intoVault: { file, name in (try? vault.add(file, title: (name as NSString).deletingPathExtension)) != nil }))
+        // One list of the vault's contents, kept current whoever changes them: a torrent
+        // filing a download into the vault used to leave it stale until the next unlock.
+        NotificationCenter.default.addObserver(forName: Vault.didChange, object: vault, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if self?.vaultUnlocked == true { self?.refreshVault() } }
+        }
+        let torrents = self.torrents
+        // On quit, everything's resume data is written before the app goes: the next launch
+        // carries on from there. A crash still has the engine's own save every half minute.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            torrents.stop()
+        }
+        Task.detached(priority: .utility) {
+            while true {
+                torrents.work()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
 
         if layout == nil {
             engineProblem = "The download engine is not set up. Run mac/scripts/fetch-engine.sh."
@@ -553,10 +588,14 @@ final class AppModel {
     // MARK: - Watch
 
     let watch: WatchService
+    /// Torrents: streams from add-ons now, downloads after.
+    let torrents: TorrentEngine
     /// What the player window plays; set before opening it.
     var watchPlaying: WatchPlayRequest?
     /// A stremio:// link that was opened, waiting to be confirmed and installed.
     var addonLink: URL?
+    /// A magnet link or a .torrent file that was opened, for the Torrents section to add.
+    var torrentLink: String?
     /// What happened to the last add-on installed from a link, for the Watch section to say.
     var watchNotice: String?
 

@@ -10,6 +10,8 @@
 
   <string name="ldl_sub_starting">İndirme hazırlanıyor</string>
   <string name="ldl_sub_downloading">İndirme sürüyor</string>
+  <string name="ldl_title_torrents">%1$d torrent indiriliyor</string>
+  <string name="ldl_title_torrent">Bir torrent indiriliyor</string>
   <string name="ldl_sub_processing">Medya işleniyor</string>
   <string name="ldl_sub_saving">Medya kaydediliyor</string>
   <string name="ldl_sub_completed">Tamamlandı</string>

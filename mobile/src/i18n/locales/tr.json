@@ -76,7 +76,8 @@
     "musicLibraryHint": "Müzik çaları açın ve müziğinizi yönetin.",
     "savedToMusic": "Müzik kitaplığına kaydedildi.",
     "navMemes": "Mimler",
-    "navWatch": "İzle"
+    "navWatch": "İzle",
+    "navTorrents": "Torrent"
   },
   "privateVault": {
     "title": "Gizli Kasa",
@@ -795,7 +796,6 @@
     "addOther": "Başka bir eklenti ekle",
     "installFailed": "Kurulamadı ({{code}}).",
     "noSearch": "Arama yapabilen bir eklenti yok. Cinemeta gibi arayabilen bir tane kur.",
-    "rowFailed": "Yanıt vermedi ({{code}}).",
     "type": {
       "movie": "Filmler",
       "series": "Diziler",
@@ -811,7 +811,6 @@
     "streams": "Yayınlar",
     "noSources": "Kurulu eklentilerin hiçbiri bunun için yayın sunmuyor.",
     "noStreams": "Yayın yok.",
-    "torrentsLater": "Torrent yayınları sonraki bir güncellemeyle gelecek.",
     "playFailed": "Oynatılamadı {{code}}",
     "nextEpisode": "Sonraki bölüm",
     "errors": {
@@ -834,7 +833,7 @@
       "removeBody": "Katalogları ve yayınları kaybolur. İzlediklerin kütüphanende kalır.",
       "installedTitle": "Kurulu",
       "discover": "Keşfet",
-      "discoverHint": "Kurulu eklentilerinin önerdiği eklentiler, Stremio'nun kendi listelerinden. Yayın eklentilerinin çoğu torrent bulur; o yayınlar torrentler sonraki bir güncellemeyle gelince oynar.",
+      "discoverHint": "Kurulu eklentilerinin önerdiği eklentiler, Stremio'nun kendi listelerinden. Kataloglar ve ayrıntılar bazılarından gelir; asıl oynayan yayınlar ise yalnızca yayın eklentilerinden.",
       "filter": "Süz",
       "alreadyInstalled": "Kurulu",
       "configureFirst": "Önce ayarlanması gerekiyor",
@@ -847,7 +846,8 @@
         "stream": "yayınlar",
         "subtitles": "altyazılar",
         "addon_catalog": "eklenti listeleri"
-      }
+      },
+      "listFailed": "Bu liste yüklenmedi. Biraz sonra yeniden dene."
     },
     "trailer": "Fragman",
     "trailerOf": "Fragman · {{name}}",
@@ -856,7 +856,9 @@
       "hint": "Bu dillerdeki altyazı ve ses önce seçilir, bu sırayla.",
       "add": "Dil ekle",
       "none": "Dil seçilmedi; Türkçe ve İngilizce kullanılır."
-    }
+    },
+    "nothingAnswered": "Eklentilerin hiçbiri yanıt vermedi. Biraz sonra yeniden dene.",
+    "noStreamsAnywhere": "Kurulu eklentilerin hiçbirinde bunun için yayın yok."
   },
   "player": {
     "play": "Oynat",
@@ -897,5 +899,54 @@
       "chi": "Çince",
       "aze": "Azerbaycan Türkçesi"
     }
+  },
+  "torrents": {
+    "headsUp": {
+      "title": "Torrentteki herkes adresini görür",
+      "body": "Bir torrenti izlemek ya da indirmek, bu cihazın IP adresini aynı torrenti paylaşan herkese gösterir. VPN bunu gizler; Arsivinyo önerir ama zorunlu tutmaz.",
+      "ok": "Anladım",
+      "never": "Bir daha gösterme"
+    },
+    "noVpn": "Açık bir VPN görünmüyor: bu torrentteki diğerleri adresini görebilir.",
+    "noMetadata": "Bu torrent için henüz eş yanıt vermedi.",
+    "title": "Torrentler",
+    "magnetPlaceholder": "Magnet bağlantısı yapıştır",
+    "add": "Ekle",
+    "openFile": ".torrent dosyası aç",
+    "empty": "Henüz torrent indirmesi yok.",
+    "addFailed": "Eklenemedi ({{code}}).",
+    "chooseFiles": "İndirilecek dosyaları seç",
+    "fetchingDetails": "Dosya listesi eşlerden alınıyor…",
+    "inVault": "Bitti, kasada",
+    "inDownloads": "Bitti, Download/Arsivinyo içinde",
+    "waiting": "Bekleniyor…",
+    "paused": "%{{percent}} noktasında duraklatıldı",
+    "intoVault": "Bitti: kasa kilidi açılınca içine alınacak",
+    "seeding": {
+      "title": "Geri paylaşım",
+      "hint": "Bir torrent bitince, boyutunun bu kadar katını yükleyene dek başkalarıyla paylaşılır, sonra durur. Yalnızca uygulama açıkken.",
+      "never": "Hiç",
+      "mobileData": "Mobil veride de"
+    },
+    "peers_one": "{{count}} eş",
+    "peers_other": "{{count}} eş",
+    "left": "{{time}} kaldı",
+    "unnamed": "Bir torrent",
+    "removeTitle": "Bu indirme kaldırılsın mı?",
+    "removeBody": "Download/Arsivinyo'ya ya da kasaya alınmış dosyalar yerinde kalır.",
+    "removeKeep": "Kaldır, indirileni tut",
+    "removeWithFiles": "İndirilenle birlikte kaldır",
+    "chooseTitle": "Dosyaları seç",
+    "all": "{{count}} dosyanın hepsi",
+    "intoTheVault": "Kasaya",
+    "vaultHint": "Her dosya bittikçe kasaya şifrelenir.",
+    "publicHint": "Dosyalar Download/Arsivinyo'ya iner.",
+    "start": "{{size}} indir",
+    "download": "İndir",
+    "cache": {
+      "title": "Yayın önbelleği",
+      "hint": "İzlediğin şey burada tutulur, tekrar izlemek hemen başlar; dolunca en eski izlenen önce gider."
+    },
+    "encrypting": "Kasaya şifreleniyor…"
   }
 }

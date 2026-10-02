@@ -151,7 +151,6 @@
 "Let a Device Pair" = "Bir Cihazın Eşleşmesine İzin Ver";
 "Limiter" = "Sınırlayıcı";
 "Link" = "Bağlantı";
-"Lock" = "Kilitle";
 "Lock Vault" = "Kasayı Kilitle";
 "Made" = "Oluşturulma";
 "Make Default" = "Varsayılan Yap";
@@ -408,7 +407,6 @@
 "Continue Watching" = "İzlemeye Devam Et";
 "Could not install it (%@)." = "Kurulamadı (%@).";
 "Could not play it: %@" = "Oynatılamadı: %@";
-"Did not answer (%@)." = "Yanıt vermedi (%@).";
 "Films" = "Filmler";
 "Install" = "Kur";
 "Install Cinemeta" = "Cinemeta'yı Kur";
@@ -418,10 +416,8 @@
 "Mark as Watched" = "İzlendi Olarak İşaretle";
 "My List" = "Listem";
 "Next Episode" = "Sonraki Bölüm";
-"No add-on can search. Install one that can, such as Cinemeta." = "Arama yapabilen bir eklenti yok. Cinemeta gibi arayabilen bir tane kur.";
 "No add-on describes this title (%@)." = "Hiçbir eklenti bu yapımı tanımlamıyor (%@).";
 "No installed add-on offers streams for this." = "Kurulu eklentilerin hiçbiri bunun için yayın sunmuyor.";
-"No streams." = "Yayın yok.";
 "Nothing to watch yet" = "Henüz izlenecek bir şey yok";
 "Paste an add-on's address: its manifest link, or a stremio:// link. Configured add-ons often keep an account key in their address, so it is stored encrypted and never shown again." = "Bir eklentinin adresini yapıştır: manifest bağlantısını ya da stremio:// bağlantısını. Ayarlanmış eklentiler adreslerinde çoğu zaman bir hesap anahtarı tutar; bu yüzden adres şifreli saklanır ve bir daha gösterilmez.";
 "Player" = "Oynatıcı";
@@ -434,7 +430,6 @@
 "Specials" = "Özel Bölümler";
 "Streams" = "Yayınlar";
 "TV" = "TV";
-"Torrent streams arrive in a later update." = "Torrent yayınları sonraki bir güncellemeyle gelecek.";
 "Watch" = "İzle";
 "Watch shows catalogs and streams from Stremio add-ons. Start with Cinemeta, Stremio's own catalog, then add the add-ons you use." = "İzle, Stremio eklentilerinden kataloglar ve yayınlar gösterir. Stremio'nun kendi kataloğu Cinemeta ile başla, sonra kullandığın eklentileri ekle.";
 "https://…/manifest.json" = "https://…/manifest.json";
@@ -444,7 +439,7 @@
 "Loading…" = "Yükleniyor…";
 "%@ · %@" = "%@ · %@";
 "A link asks to install an add-on from %@." = "Bir bağlantı, %@ adresinden bir eklenti kurmak istiyor.";
-"Add-ons your installed add-ons recommend, from Stremio's own lists. Many stream add-ons find torrents; those streams play once torrents arrive in a later update." = "Kurulu eklentilerinin önerdiği eklentiler, Stremio'nun kendi listelerinden. Yayın eklentilerinin çoğu torrent bulur; o yayınlar torrentler sonraki bir güncellemeyle gelince oynar.";
+"Add-ons your installed add-ons recommend, from Stremio's own lists. Catalogs and details come from some; the streams themselves, what actually plays, only from stream add-ons." = "Kurulu eklentilerinin önerdiği eklentiler, Stremio'nun kendi listelerinden. Kataloglar ve ayrıntılar bazılarından gelir; asıl oynayan yayınlar ise yalnızca yayın eklentilerinden.";
 "Configure…" = "Ayarla…";
 "Discover" = "Keşfet";
 "Filter" = "Süz";
@@ -471,3 +466,55 @@
 "This video could not be played." = "Bu video oynatılamadı.";
 "Track %lld" = "Parça %lld";
 "%@ · from an add-on %lld" = "%@ · eklentiden %lld";
+
+/* Torrents */
+"Everyone in a torrent sees your address" = "Torrentteki herkes adresini görür";
+"Got it" = "Anladım";
+"Don't show again" = "Bir daha gösterme";
+"Streaming or downloading a torrent shows this Mac's IP address to everyone sharing the same torrent. A VPN hides it; Arsivinyo recommends one but does not require it." = "Bir torrenti izlemek ya da indirmek, bu Mac'in IP adresini aynı torrenti paylaşan herkese gösterir. VPN bunu gizler; Arsivinyo önerir ama zorunlu tutmaz.";
+"No VPN appears to be on: others in this torrent can see your address." = "Açık bir VPN görünmüyor: bu torrentteki diğerleri adresini görebilir.";
+"No peers answered for this torrent yet." = "Bu torrent için henüz eş yanıt vermedi.";
+
+/* Torrent downloads */
+"%@ left" = "%@ kaldı";
+"%lld peers" = "%lld eş";
+"A torrent" = "Bir torrent";
+"Add" = "Ekle";
+"All %lld files" = "%lld dosyanın hepsi";
+"Choose Files" = "Dosyaları Seç";
+"Choose Files…" = "Dosyaları Seç…";
+"Choose which files to download" = "İndirilecek dosyaları seç";
+"Could not add it (%@)." = "Eklenemedi (%@).";
+"Done, in Downloads" = "Bitti, İndirilenler içinde";
+"Done, in the vault" = "Bitti, kasada";
+"Download %@" = "%@ indir";
+"Download…" = "İndir…";
+"Each file is encrypted into the vault as it finishes." = "Her dosya bittikçe kasaya şifrelenir.";
+"Files already in Downloads or in the vault stay where they are." = "İndirilenler'e ya da kasaya alınmış dosyalar yerinde kalır.";
+"Files land in Downloads/Arsivinyo." = "Dosyalar İndirilenler/Arsivinyo'ya iner.";
+"Finished, sharing back · ↑ %@/s" = "Bitti, geri paylaşılıyor · ↑ %@/sn";
+"Finished: into the vault when it is unlocked" = "Bitti: kasa kilidi açılınca içine alınacak";
+"Encrypting into the vault…" = "Kasaya şifreleniyor…";
+"Getting the file list from peers…" = "Dosya listesi eşlerden alınıyor…";
+"Into the vault" = "Kasaya";
+"No torrent downloads yet." = "Henüz torrent indirmesi yok.";
+"Open a .torrent File…" = ".torrent Dosyası Aç…";
+"Paste a magnet link" = "Magnet bağlantısı yapıştır";
+"Paused at %lld%%" = "%%%lld noktasında duraklatıldı";
+"Remove this download?" = "Bu indirme kaldırılsın mı?";
+"Remove with What Was Fetched" = "İndirilenle Birlikte Kaldır";
+"Remove, Keep What Was Fetched" = "Kaldır, İndirileni Tut";
+"Torrents" = "Torrentler";
+"Waiting…" = "Bekleniyor…";
+"Share back until" = "Şu orana dek geri paylaş";
+"Never" = "Hiç";
+"Stream cache" = "Yayın önbelleği";
+"After a torrent finishes, it is shared with others until it has uploaded this many times its size, while the app is open." = "Bir torrent bitince, boyutunun bu kadar katını yükleyene dek, uygulama açıkken başkalarıyla paylaşılır.";
+"What you stream is kept so watching it again starts at once; the least recently watched goes first when it is full." = "İzlediğin şey tutulur, tekrar izlemek hemen başlar; dolunca en eski izlenen önce gider.";
+"%lld GB" = "%lld GB";
+"Vault Open" = "Kasa açık";
+"Vault Locked" = "Kasa kilitli";
+"None of the add-ons answered. Try again in a little while." = "Eklentilerin hiçbiri yanıt vermedi. Biraz sonra yeniden dene.";
+"Nothing found." = "Hiçbir şey bulunamadı.";
+"No installed add-on has a stream for this." = "Kurulu eklentilerin hiçbirinde bunun için yayın yok.";
+"This list did not load. Try again in a little while." = "Bu liste yüklenmedi. Biraz sonra yeniden dene.";

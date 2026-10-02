@@ -92,3 +92,4 @@ export type {
 export * from './pairing';
 export * from './memes';
 export * from './watch';
+export * from './torrents';

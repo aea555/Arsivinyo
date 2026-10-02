@@ -210,12 +210,26 @@ class WatchTest {
   }
 
   @Test
+  fun torrentsAreKeptWithWhatWasChosenAndTaken() {
+    val lib = library()
+    lib.putTorrent(WatchLibrary.Torrent("abc", "Secret Film", listOf(0, 2), "private", 5))
+    lib.putTorrent(lib.torrent("abc")!!.copy(taken = setOf(2), state = "downloading"))
+    val back = library().torrent("abc")!!
+    assertEquals(listOf(0, 2), back.wanted)
+    assertEquals(setOf(2), back.taken)
+    assertEquals("private", back.destination)
+    lib.removeTorrent("abc")
+    assertTrue(library().torrents().isEmpty())
+  }
+
+  @Test
   fun nothingIsReadableOnDiskAndItSurvivesReopening() {
     val lib = library()
     lib.install("https://torrent.example/token=SECRET123", JSONObject().put("id", "x"))
+    lib.putTorrent(WatchLibrary.Torrent("abc", "Secret Film", listOf(0), "private", 1))
     lib.recordProgress(show, "tt0944947:1:1", 1000, 10_000, null, null)
     val bytes = String(File(folder, "library.bin").readBytes(), Charsets.ISO_8859_1)
-    for (secret in listOf("SECRET123", "Game of Thrones", "tt0944947", "torrent.example")) assertFalse(secret, bytes.contains(secret))
+    for (secret in listOf("SECRET123", "Game of Thrones", "tt0944947", "torrent.example", "Secret Film")) assertFalse(secret, bytes.contains(secret))
     val reopened = library()
     assertEquals(1000, reopened.item(show.id)!!.progress!!.positionMs)
   }

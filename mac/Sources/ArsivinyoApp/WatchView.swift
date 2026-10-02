@@ -30,7 +30,14 @@ extension AppModel {
     /// Something a player can open: a media URL as it is; a page, a YouTube video or an
     /// external link through yt-dlp first.
     func prepare(_ stream: Addons.Stream) async throws -> (url: URL, audioURL: URL?, headers: [String: String]) {
-        if stream.kind == .torrent { throw WatchService.Failure(code: "WATCH_TORRENTS_LATER") }
+        if stream.kind == .torrent {
+            // Through the engine's loopback server, fetched into the cache as it plays.
+            let torrents = self.torrents
+            let found = try await Task.detached {
+                try torrents.stream(magnet: stream.target, fileIdx: stream.fileIdx, filename: stream.filename)
+            }.value
+            return (found.url, nil, [:])
+        }
         if stream.kind == .url, let url = URL(string: stream.target), await !watch.isPage(stream.target, headers: stream.headers) {
             return (url, nil, stream.headers)
         }
@@ -69,6 +76,16 @@ struct WatchView: View {
     @State private var managingAddons = false
     @State private var problem: String?
     @State private var installing = false
+    /// How each catalog row ended, by its id: whether it found anything.
+    @State private var settled: [String: Bool] = [:]
+
+    private func rowKey(_ row: WatchService.Row) -> String { "\(row.id)|\(searching)" }
+
+    /// Every row has ended and none found anything: said once, instead of row by row.
+    private var nothingCame: Bool {
+        (!searching.isEmpty && rows.isEmpty)
+            || (!rows.isEmpty && rows.allSatisfy { settled[rowKey($0)] != nil } && rows.allSatisfy { settled[rowKey($0)] == false })
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -85,6 +102,7 @@ struct WatchView: View {
             }
         }
         .sheet(isPresented: $managingAddons, onDismiss: reload) { AddonsSheet() }
+
         .task(id: searching) { reload() }
         .onAppear(perform: reload)
         .onChange(of: model.watchNotice) { _, _ in reload() }
@@ -161,14 +179,19 @@ struct WatchView: View {
                             }
                         }
                     }
-                    if !searching.isEmpty && rows.isEmpty {
-                        Text("No add-on can search. Install one that can, such as Cinemeta.").foregroundStyle(.secondary).padding()
-                    }
                     ForEach(rows) { row in
-                        CatalogShelf(row: row, search: searching) { preview in
+                        let key = rowKey(row)
+                        CatalogShelf(row: row, search: searching, settled: { settled[key] = $0 }) { preview in
                             path.append(WatchRoute(title: .init(id: preview.id, type: preview.type, name: preview.name, poster: preview.poster)))
                         }
-                        .id("\(row.id)|\(searching)")
+                        .id(key)
+                    }
+                    // A row that failed or found nothing is left out; when that is every row,
+                    // it is said once.
+                    if nothingCame {
+                        Text(searching.isEmpty ? "None of the add-ons answered. Try again in a little while."
+                                               : "Nothing found.")
+                            .foregroundStyle(.secondary).padding(.horizontal, 20)
                     }
                 }
                 .padding(.vertical, 16)
@@ -195,26 +218,46 @@ private struct Shelf<Content: View>: View {
     }
 }
 
-/// One catalog of one add-on, fetched on its own.
+/// One catalog of one add-on, fetched on its own. One that fails or finds nothing is not
+/// shown at all: an add-on's server error is not something to read row by row. It says how it
+/// ended through `settled`, so the screen can say so once if nothing came back anywhere.
 private struct CatalogShelf: View {
     @Environment(AppModel.self) private var model
     let row: WatchService.Row
     let search: String
+    let settled: (Bool) -> Void
     let open: (Addons.Preview) -> Void
     @State private var items: [Addons.Preview]?
-    @State private var failed: String?
+    @State private var failed = false
 
     var body: some View {
-        if !(search.isEmpty == false && items?.isEmpty == true) {
+        Group {
+            if failed || items?.isEmpty == true {
+                EmptyView()
+            } else {
+                shelf
+            }
+        }
+        .task {
+            do {
+                let found = try await model.watch.catalog(row, extra: search.isEmpty ? [] : [("search", search)])
+                items = found
+                settled(!found.isEmpty)
+            } catch {
+                failed = true
+                settled(false)
+            }
+        }
+    }
+
+    private var shelf: some View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Text(row.catalog.name).font(.title3.bold())
                     Text("· \(typeName(row.catalog.type)) · \(row.addonName)").foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 20)
-                if let failed {
-                    Text("Did not answer (\(failed)).").foregroundStyle(.secondary).padding(.horizontal, 20)
-                } else if let items {
+                if let items {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .top, spacing: 14) {
                             ForEach(items) { preview in PosterTile(name: preview.name, poster: preview.poster) { open(preview) } }
@@ -225,14 +268,6 @@ private struct CatalogShelf: View {
                     ProgressView().controlSize(.small).frame(height: 200).padding(.horizontal, 20)
                 }
             }
-            .task {
-                do {
-                    items = try await model.watch.catalog(row, extra: search.isEmpty ? [] : [("search", search)])
-                } catch {
-                    failed = (error as? WatchService.Failure)?.code ?? String(describing: error)
-                }
-            }
-        }
     }
 
     private func typeName(_ type: String) -> String {
@@ -468,18 +503,23 @@ private struct StreamList: View {
     @State private var failures: [String: String] = [:]
     @State private var preparing: String?
     @State private var message: String?
+    @State private var headsUp: (source: WatchService.Source, stream: Addons.Stream)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let message { Text(message).foregroundStyle(.orange) }
+            if streams.values.contains(where: { $0.contains { $0.kind == .torrent } }) { VPNNotice() }
             if sources.isEmpty { Text("No installed add-on offers streams for this.").foregroundStyle(.secondary) }
-            ForEach(sources) { source in
+            // Said once, when every add-on has answered and none has a stream: one that failed
+            // or has nothing for this is left out rather than listed with an error.
+            if !sources.isEmpty, sources.allSatisfy({ failures[$0.base] != nil || streams[$0.base] != nil }),
+               sources.allSatisfy({ failures[$0.base] != nil || streams[$0.base]?.isEmpty == true }) {
+                Text("No installed add-on has a stream for this.").foregroundStyle(.secondary)
+            }
+            ForEach(sources.filter { failures[$0.base] == nil && streams[$0.base]?.isEmpty != true }) { source in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(source.name).font(.headline).foregroundStyle(.secondary)
-                    if let failure = failures[source.base] {
-                        Text("Did not answer (\(failure)).").foregroundStyle(.secondary)
-                    } else if let list = streams[source.base] {
-                        if list.isEmpty { Text("No streams.").foregroundStyle(.secondary) }
+                    if let list = streams[source.base] {
                         ForEach(Array(list.enumerated()), id: \.offset) { _, stream in row(source, stream) }
                     } else {
                         ProgressView().controlSize(.small)
@@ -488,6 +528,24 @@ private struct StreamList: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .alert("Everyone in a torrent sees your address", isPresented: Binding(get: { headsUp != nil }, set: { if !$0 { headsUp = nil } }),
+               presenting: headsUp) { pending in
+            Button("Got it") {
+                TorrentHeadsUp.seen = true
+                start(pending.source, pending.stream)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Don't show again") {
+                TorrentHeadsUp.seen = true
+                var settings = model.torrents.settings()
+                settings.headsUpDismissed = true
+                try? model.torrents.setSettings(settings)
+                start(pending.source, pending.stream)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Streaming or downloading a torrent shows this Mac's IP address to everyone sharing the same torrent. A VPN hides it; Arsivinyo recommends one but does not require it.")
+        }
         .task(id: video.id) {
             sources = (try? model.watch.streamSources(type: title.type, id: video.id)) ?? []
             // Each add-on on its own: the first to answer shows first, a slow one only waits itself.
@@ -516,10 +574,18 @@ private struct StreamList: View {
             }
             .padding(10)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-            .opacity(stream.kind == .torrent ? 0.5 : 1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // A torrent can be downloaded instead of streamed: its files chosen, kept.
+        .contextMenu {
+            if stream.kind == .torrent {
+                Button("Download…") {
+                    model.torrentLink = stream.target
+                    model.section = .torrents
+                }
+            }
+        }
     }
 
     private func icon(_ kind: Addons.Kind) -> String {
@@ -532,10 +598,16 @@ private struct StreamList: View {
     }
 
     private func play(_ source: WatchService.Source, _ stream: Addons.Stream) {
-        if stream.kind == .torrent {
-            message = String(localized: "Torrent streams arrive in a later update.")
+        // The heads-up before the first torrent: "Got it" until the app is next started,
+        // "Don't show again" for good.
+        if stream.kind == .torrent, !TorrentHeadsUp.seen, !model.torrents.settings().headsUpDismissed {
+            headsUp = (source, stream)
             return
         }
+        start(source, stream)
+    }
+
+    private func start(_ source: WatchService.Source, _ stream: Addons.Stream) {
         preparing = stream.target
         message = nil
         Task {
@@ -552,10 +624,42 @@ private struct StreamList: View {
             } catch {
                 if stream.kind == .external, let url = URL(string: stream.target) {
                     NSWorkspace.shared.open(url)
+                } else if (error as? TorrentEngine.Failure)?.code == "TORRENT_NO_METADATA" {
+                    message = String(localized: "No peers answered for this torrent yet.")
                 } else {
                     message = String(localized: "Could not play it: \(String(describing: error))")
                 }
             }
+        }
+    }
+}
+
+/// Whether the heads-up was answered since the app started.
+@MainActor enum TorrentHeadsUp {
+    static var seen = false
+    static var vpnNoticeDismissed = false
+}
+
+/// A small notice where torrents are, when no VPN appears to be up. A hint, not a gate:
+/// detection can be wrong either way, and it says "appears".
+struct VPNNotice: View {
+    @State private var shown = !TorrentHeadsUp.vpnNoticeDismissed && !TorrentEngine.vpnAppearsActive()
+
+    var body: some View {
+        if shown {
+            HStack(spacing: 8) {
+                Image(systemName: "shield").foregroundStyle(.orange)
+                Text("No VPN appears to be on: others in this torrent can see your address.")
+                Spacer()
+                Button {
+                    TorrentHeadsUp.vpnNoticeDismissed = true
+                    shown = false
+                } label: { Image(systemName: "xmark") }
+                .buttonStyle(.plain)
+            }
+            .font(.callout)
+            .padding(10)
+            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }
@@ -714,7 +818,7 @@ private struct DiscoverAddons: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Add-ons your installed add-ons recommend, from Stremio's own lists. Many stream add-ons find torrents; those streams play once torrents arrive in a later update.")
+            Text("Add-ons your installed add-ons recommend, from Stremio's own lists. Catalogs and details come from some; the streams themselves, what actually plays, only from stream add-ons.")
                 .foregroundStyle(.secondary)
             HStack {
                 Picker("List", selection: $list) {
@@ -723,7 +827,7 @@ private struct DiscoverAddons: View {
                 .frame(maxWidth: 300)
                 TextField("Filter", text: $filter)
             }
-            if let failed { Text("Did not answer (\(failed)).").foregroundStyle(.secondary) }
+            if failed != nil { Text("This list did not load. Try again in a little while.").foregroundStyle(.secondary) }
             if offers == nil && failed == nil && list != nil { ProgressView().controlSize(.small) }
             List(shown) { offer in
                 HStack(alignment: .top, spacing: 10) {

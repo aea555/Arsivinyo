@@ -21,8 +21,16 @@ export default ({ config }) => {
     android: {
       // stremio:// as well: a Stremio add-on's configure page installs through such a link,
       // and Arsivinyo can take it (shared/watch/CONTRACT.md). If Stremio is installed too,
-      // Android asks which app should open it.
-      scheme: ["stremio"],
+      // Android asks which app should open it. magnet: for torrents, likewise.
+      scheme: ["stremio", "magnet"],
+      // .torrent files opened from a browser or a file manager.
+      intentFilters: [
+        {
+          action: "VIEW",
+          category: ["DEFAULT", "BROWSABLE"],
+          data: [{ scheme: "content", mimeType: "application/x-bittorrent" }],
+        },
+      ],
       versionCode: 20600,
       adaptiveIcon: {
         backgroundColor: "#09090B",

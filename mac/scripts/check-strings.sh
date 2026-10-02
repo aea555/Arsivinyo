@@ -22,8 +22,8 @@ import glob, json, sys
 out, table = sys.argv[1:]
 shown = {e["key"] for f in glob.glob(f"{out}/*.stringsdata")
          for entries in json.load(open(f)).get("tables", {}).values() for e in entries}
-# Text that is the same in every language: nothing, and a keyboard shortcut.
-shown -= {"", "⇧⌘V"}
+# Text that is the same in every language: nothing, a keyboard shortcut, and the app's name.
+shown -= {"", "⇧⌘V", "Arsivinyo"}
 translated = set(json.load(open(table)))
 missing, stale = sorted(shown - translated), sorted(translated - shown)
 for k in missing: print(f"not translated: {k!r}")

@@ -129,7 +129,13 @@ public final class Vault: @unchecked Sendable {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600],
                                                ofItemAtPath: indexURL.path)
         guardLock.withLock { cache = items }
+        // Whoever changed it (a screen, a torrent filing a download, a restore), every list of
+        // the vault's contents is now out of date.
+        NotificationCenter.default.post(name: Vault.didChange, object: self)
     }
+
+    /// Posted after the vault's contents change, from whatever thread changed them.
+    public static let didChange = Notification.Name("ArsivinyoVaultDidChange")
 
     // MARK: - Changing
 

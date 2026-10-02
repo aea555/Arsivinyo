@@ -30,6 +30,9 @@ import type {
   WatchStream,
   WatchSubtitle,
   WatchLanguages,
+  TorrentSettings,
+  TorrentFile,
+  TorrentDownload,
   WatchTitle,
   LocalSoundPresetProgressEvent,
   LocalSoundPresetStartResult,
@@ -186,7 +189,18 @@ type LocalDownloaderNativeModule = {
   watchMeta(type: string, id: string): Promise<WatchResult<{ addonKey: string; meta: WatchMeta }>>;
   watchStreamSources(type: string, id: string): Promise<{ addonKey: string; name: string }[]>;
   watchStreams(addonKey: string, type: string, id: string): Promise<WatchResult<{ streams: WatchStream[] }>>;
-  watchPrepare(kind: string, target: string, headers: Record<string, string>): Promise<WatchResult<WatchPrepared>>;
+  watchPrepare(kind: string, target: string, headers: Record<string, string>, fileIdx: number | null, filename: string | null): Promise<WatchResult<WatchPrepared>>;
+  watchTorrentSettings(): Promise<TorrentSettings>;
+  watchSetTorrentSettings(values: Partial<TorrentSettings>): Promise<void>;
+  watchVpnActive(): Promise<boolean>;
+  torrentAdd(input: string): Promise<WatchResult<{ id: string }>>;
+  torrentPickFile(): Promise<WatchResult<{ uri: string }>>;
+  torrentFiles(id: string): Promise<WatchResult<{ files: TorrentFile[] | null }>>;
+  torrentChoose(id: string, wanted: number[], destination: 'public' | 'private'): Promise<WatchResult<object>>;
+  torrentList(): Promise<WatchResult<{ torrents: TorrentDownload[]; vaultOpen: boolean }>>;
+  torrentPause(id: string): Promise<WatchResult<object>>;
+  torrentResume(id: string): Promise<WatchResult<object>>;
+  torrentRemove(id: string, deleteFiles: boolean): Promise<WatchResult<object>>;
   watchSubtitles(type: string, id: string, filename: string | null, own: WatchSubtitle[]): Promise<WatchResult<{ subtitles: WatchSubtitle[] }>>;
   watchLanguages(): Promise<WatchLanguages>;
   watchSetLanguages(codes: string[]): Promise<void>;
@@ -357,6 +371,17 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       watchStreams: async () => unsupported(),
       watchPrepare: async () => unsupported(),
       watchSubtitles: async () => unsupported(),
+      watchTorrentSettings: async () => unsupported(),
+      watchSetTorrentSettings: async () => unsupported(),
+      watchVpnActive: async () => false,
+      torrentAdd: async () => unsupported(),
+      torrentPickFile: async () => unsupported(),
+      torrentFiles: async () => unsupported(),
+      torrentChoose: async () => unsupported(),
+      torrentList: async () => unsupported(),
+      torrentPause: async () => unsupported(),
+      torrentResume: async () => unsupported(),
+      torrentRemove: async () => unsupported(),
       watchLanguages: async () => unsupported(),
       watchSetLanguages: async () => unsupported(),
       watchLibrary: async () => unsupported(),

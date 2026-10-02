@@ -12,7 +12,10 @@ struct ArsivinyoApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup {
+        // One main window, not a group: everything in it shares one model, and a link opened
+        // from elsewhere (magnet:, stremio://, a .torrent) goes to this window, or reopens
+        // it. As a group, every link made a second window showing the same thing.
+        Window("Arsivinyo", id: "main") {
             RootView()
                 .environment(model)
                 // Wide enough that the source list and a detail pane both have room; the
@@ -20,12 +23,21 @@ struct ArsivinyoApp: App {
                 .frame(minWidth: 860, minHeight: 560)
                 // A Stremio add-on's configure page installs through a stremio:// link.
                 .onOpenURL { url in
-                    guard url.scheme?.lowercased() == "stremio" else { return }
-                    model.section = .watch
-                    model.addonLink = url
+                    switch url.scheme?.lowercased() {
+                    case "stremio":
+                        model.section = .watch
+                        model.addonLink = url
+                    case "magnet":
+                        model.section = .torrents
+                        model.torrentLink = url.absoluteString
+                    case "file" where url.pathExtension.lowercased() == "torrent":
+                        model.section = .torrents
+                        model.torrentLink = url.path
+                    default:
+                        break
+                    }
                 }
         }
-        .handlesExternalEvents(matching: ["stremio"])
         .windowToolbarStyle(.unified)
         .commands { AppCommands(model: model) }
 

@@ -9,3 +9,6 @@ DerivedData/
 
 # The player's frameworks, fetched by scripts/fetch-mpvkit.sh.
 /Vendor/
+
+# The local signing identity and its keychain (scripts/make-signing-identity.sh).
+/.signing/

@@ -16,6 +16,8 @@ APP="$ROOT/.build/Arsivinyo.app"
 "$ROOT/../shared/faces/fetch-runtime.sh" >/dev/null
 # The player's frameworks; a no-op when they are already there.
 "$ROOT/scripts/fetch-mpvkit.sh" >/dev/null
+# The torrent engine's libtorrent, built from pinned source; a no-op once built.
+"$ROOT/../shared/torrent/build.sh" mac
 swift build -c "$CONFIG" --product ArsivinyoApp
 
 BINARY="$ROOT/.build/$CONFIG/ArsivinyoApp"
@@ -78,14 +80,61 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
       <key>CFBundleURLName</key><string>Stremio add-on</string>
       <key>CFBundleURLSchemes</key><array><string>stremio</string></array>
     </dict>
+    <dict>
+      <key>CFBundleURLName</key><string>Magnet link</string>
+      <key>CFBundleURLSchemes</key><array><string>magnet</string></array>
+    </dict>
+  </array>
+  <!-- .torrent files, opened from Finder or a browser: the torrents sheet adds them. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>BitTorrent file</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>org.bittorrent.torrent</string></array>
+    </dict>
+  </array>
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>org.bittorrent.torrent</string>
+      <key>UTTypeDescription</key><string>BitTorrent file</string>
+      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key><array><string>torrent</string></array>
+        <key>public.mime-type</key><array><string>application/x-bittorrent</string></array>
+      </dict>
+    </dict>
   </array>
 </dict>
 </plist>
 PLIST
 
-# Ad-hoc signature. Not for distribution — it is what stops macOS treating each rebuild as
-# a brand new, unidentified binary and re-asking for every permission.
-codesign --force --sign - "$APP/Contents/Frameworks/libonnxruntime.1.dylib" >/dev/null 2>&1 || true
-codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "note: ad-hoc signing skipped"
+# Signed with "Arsivinyo Local Signing", from a keychain of its own that the script makes
+# the first time (scripts/make-signing-identity.sh says why): one identity, so the Keychain
+# sees every build as the same app and "Always Allow" holds. Not for distribution.
+"$ROOT/scripts/make-signing-identity.sh"
+SIGNING_KEYCHAIN="$ROOT/.signing/signing.keychain-db"
+security unlock-keychain -p "$(cat "$ROOT/.signing/password")" "$SIGNING_KEYCHAIN"
+# codesign builds the certificate chain from the keychains in the search list only, so this
+# one joins it (after the ones already there, which stay as they are).
+if ! security list-keychains -d user | grep -q "$SIGNING_KEYCHAIN"; then
+  # shellcheck disable=SC2046
+  security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') "$SIGNING_KEYCHAIN"
+fi
+# An Apple Development identity once scripts/use-apple-development.sh has copied one in: its
+# Team ID is what lets the Keychain's "Always Allow" hold across builds.
+IDENTITY="Arsivinyo Local Signing"
+[ -f "$ROOT/.signing/identity" ] && IDENTITY="$(cat "$ROOT/.signing/identity")"
+sign() {
+  codesign --force --keychain "$SIGNING_KEYCHAIN" --sign "$IDENTITY" "$1" >/dev/null 2>&1 && return
+  # Never left unsigned: an unsigned binary does not launch on Apple silicon at all.
+  echo "note: could not sign $(basename "$1"); signed ad hoc, so the Keychain will ask again" >&2
+  codesign --force --sign - "$1" >/dev/null 2>&1 || true
+}
+sign "$APP/Contents/Frameworks/libonnxruntime.1.dylib"
+sign "$APP"
 
 echo "$APP"

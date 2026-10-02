@@ -21,6 +21,7 @@ struct RootView: View {
                     row(.download)
                     row(.library)
                     row(.watch)
+                    row(.torrents)
                     row(.memes)
                     row(.vault)
                 }
@@ -108,6 +109,7 @@ struct RootView: View {
         case .download: DownloadView()
         case .library: MusicView()
         case .watch: WatchView()
+        case .torrents: TorrentsView()
         case .memes: MemesView()
         case .vault: VaultView()
         case .devices: DevicesView()
@@ -122,8 +124,12 @@ struct RootView: View {
             Button {
                 model.toggleVaultLock()
             } label: {
-                Label(model.vaultUnlocked ? LocalizedStringKey("Lock") : LocalizedStringKey("Unlock"),
-                      systemImage: model.vaultUnlocked ? "lock.open" : "lock")
+                // In words as well: an open padlock alone read as "locked", and the vault may
+                // already be open at launch ("Remember on this Mac").
+                Label(model.vaultUnlocked ? LocalizedStringKey("Vault Open") : LocalizedStringKey("Vault Locked"),
+                      systemImage: model.vaultUnlocked ? "lock.open.fill" : "lock.fill")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(model.vaultUnlocked ? Color.orange : Color.secondary)
             }
             .help(model.vaultUnlocked
                   ? "The vault is unlocked. Lock it now."

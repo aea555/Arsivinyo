@@ -88,6 +88,16 @@ That puts them in `Vendor/MPVKit`, each checked against the SHA-256 `scripts/mpv
 connection per file; GitHub's release servers can hold a connection to ~100 KB/s, and the
 script uses many.
 
+The torrent engine (`shared/torrent`) builds libtorrent from pinned source the first time
+`scripts/bundle.sh` runs (`shared/torrent/build.sh mac`, about half a minute), against the same
+OpenSSL. `swift run CoreChecks` holds downloads end to end, a seeder in the same process.
+
+`scripts/bundle.sh` signs the app from a keychain of its own under `.signing/`, which it makes
+the first time. Run `scripts/use-apple-development.sh` once in Terminal.app to copy in an Apple
+Development identity (Xcode → Settings → Apple Accounts → Manage Certificates; a free Personal
+Team does). The Keychain recognises an app by its Team ID, the same on every build, so it asks
+for the app's items once; without one, every build is a new app to it and it asks again.
+
 MPVKit links its own OpenSSL statically, so the security core uses that one rather than a
 second copy: two static OpenSSLs in one binary define every symbol twice. `swift run
 CoreChecks` holds the result to `shared/crypto/VECTORS.json`.

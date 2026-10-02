@@ -59,6 +59,23 @@ All notable changes to this project are documented here. Format based on [Keep a
   change them on the add-ons screen. The best one loads by itself when the file has nothing
   as good. Adds about 24 MB of native libraries to the phone app, and needs Android 8 or
   later.
+- **Torrents**, on both apps, through one engine (libtorrent, built from source for both):
+  - **Streaming.** Torrent streams from add-ons play: the file starts while it downloads, a
+    seek fetches what is under it first, and the right file is picked by itself. What was
+    streamed stays in a cache (4 GB on the phone, 10 GB on the Mac, a setting), the least
+    recently watched going first.
+  - **Downloading.** Magnet links and .torrent files, opened from elsewhere, pasted, or a
+    stream's "Download" (a long press on the phone, the context menu on the Mac). The files
+    are listed with sizes to pick from; each lands in Download/Arsivinyo (the Mac's download
+    folder), or is encrypted into the vault as it finishes, its plaintext deleted then. A
+    download carries on where it stopped after the app is closed or killed, and shows in the
+    download notification as "Downloading 2 torrents", never by name.
+  - **Sharing back.** A finished torrent is shared until it has uploaded its size once (a
+    setting: never, 0.5, 1 or 2 times), only while the app is open, and on the phone not on
+    mobile data unless allowed.
+  - **The heads-up.** Before the first torrent, a note that everyone in a torrent sees this
+    device's address, recommending a VPN; where torrents are, a notice when none appears to
+    be on. Neither stops anything.
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is
@@ -70,6 +87,14 @@ All notable changes to this project are documented here. Format based on [Keep a
   `shared/` can join it. npm commands run from `mobile/`.
 
 ### Fixed
+- Mac: denying the Keychain's prompt for the watch library's or the memes index's key made
+  the app replace that key, which left what it sealed unreadable. Only a key that is not
+  there is made anew now; a refusal is an error. A library its key cannot open is moved
+  aside, kept, and a fresh one starts, instead of failing every add-on and torrent. The app
+  is signed with an Apple Development identity (a free Personal Team), kept in a keychain of
+  the app's own that `mac/scripts/bundle.sh` signs from: the Keychain recognises the app by its
+  Team ID, so it no longer asks again after every build, whoever runs the build. Links opened from elsewhere (magnet:, stremio://)
+  go to the open window instead of opening a second one.
 - The wheel verifier no longer reports a failure of `unzip` as a corrupt wheel. One
   condition covered both, so a transient tool failure accused the wheel while its
   checksum passed.

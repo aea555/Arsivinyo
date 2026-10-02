@@ -227,7 +227,7 @@ export default function WatchAddonsScreen() {
               autoCorrect={false}
               style={[styles.input, styles.filter, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
             />
-            {offersFailed ? <Text style={{ color: colors.textMuted }}>{t('watch.rowFailed', { code: offersFailed })}</Text> : null}
+            {offersFailed ? <Text style={{ color: colors.textMuted }}>{t('watch.addons.listFailed')}</Text> : null}
             {offers === null && !offersFailed ? <ActivityIndicator color={colors.accent} /> : null}
             {shown.map((offer) => (
               <View key={offer.url} style={[styles.addon, { backgroundColor: colors.surface }]}>

@@ -54,7 +54,9 @@ app already ships, so they play in the app rather than in a browser.
 
 **libtorrent** (rasterbar, 2.0.x, BSD), in `shared/torrent/`: one C++ engine compiled into
 both apps, as the faces pipeline is. `shared/torrent/VERSIONS.json` pins libtorrent and its
-dependencies. Both apps build them from source with the same flags.
+dependencies. Both apps build them from source with the same flags (`build.sh`), and compile
+against them with the defines libtorrent was built with (`build/<platform>/defines.txt`).
+`torrent.h` is the C API both apps call; `test/` holds it to this section on loopback.
 
 ### Streaming
 
@@ -65,6 +67,10 @@ dependencies. Both apps build them from source with the same flags.
   and a random path token, with byte ranges. The vault's playback already works this way. A
   range not yet downloaded blocks until it arrives or the player gives up.
 - Only the chosen file of a torrent is wanted; the others are set to "do not download".
+  The read-ahead never goes past the file's own last piece: a deadline fetches a piece
+  whatever its file's priority, so going further would fetch the files after it.
+- Which file plays: the add-on's `fileIdx`, else the one its `filename` names, else the
+  largest video. A stream's magnet carries the trackers among its `sources`.
 - A torrent that was only streamed is **kept in a cache** with a size limit (default 10 GB
   on the Mac, 4 GB on the phone), oldest first out. Watching it again starts from the cache.
 - **Keep it**: a streamed file can be kept, finishing the download, then filed like any
@@ -74,21 +80,31 @@ dependencies. Both apps build them from source with the same flags.
 
 - From a `.torrent` file (opened, dropped, shared to the app), a magnet link (pasted, or
   opened from the browser), or a stream's "Download" action.
-- The files in it are shown with sizes; the user picks which. Defaults: all of them.
+- The files in it are shown with sizes; the user picks which. Defaults: all of them. Until
+  they are picked, the torrent is held: it fetches no pieces but keeps its peers, so it starts
+  at once when they are (pausing would drop them, and libtorrent waits a minute to reconnect).
 - It joins the app's download list and its notifications, with progress, speed, peers and
   time left. It can be paused, resumed and removed, with or without its files.
 - **Where it lands:** public (the Mac's download folder; the phone's `Download/Arsivinyo`
   through MediaStore, as the app's other files) or private (into the vault, encrypted as each
-  file completes; the plaintext lives only in app-private storage until then).
-- Resume data is saved, so a restart, or the phone killing the app, carries on where it
-  stopped.
+  file completes; the plaintext lives only in app-private storage until then). The vault's key
+  exists only while it is open, so a file that finishes while it is locked waits, in
+  app-private storage, until it is next open; the torrent stops serving a file once it is in
+  the vault, and is removed when all of them are. A public download seeds from its own copy
+  and is removed, with that copy, when it stops seeding; the filed copy stays.
+- Resume data is saved every half minute for what changed, and for everything on quit, so a
+  restart, or the phone killing the app, carries on where it stopped.
+- The records (name, files chosen, destination, what has been filed) live in the library's
+  `torrents`, encrypted with the rest.
 
 ### Seeding
 
 The default is to seed while the app is open until the ratio reaches **1.0**, then stop.
 The ratio is a setting, and so is "never seed". The phone does not seed on mobile data
 unless told to. Nothing seeds in the background on the phone once the app's download
-service has nothing else to do.
+service has nothing else to do. Rate limits apply to every peer, those on the local network
+too (libtorrent leaves them out by default). These settings are each device's own, kept
+beside the engine's state rather than in the library, which phase 4 syncs.
 
 ### The heads-up
 
@@ -96,7 +112,8 @@ Torrenting shows this device's IP address to everyone sharing the same torrent. 
 does not enforce anything about it. It **says so**:
 
 - The first time a torrent starts, streamed or downloaded, a modal explains this and
-  recommends a VPN. It has "Got it" and "Don't show again".
+  recommends a VPN. It has "Got it", which holds until the app is next started, and "Don't
+  show again", which holds for good.
 - When no VPN appears to be active (Android: no network with `TRANSPORT_VPN`; Mac: no
   `utun` interface carrying the default route), the torrent screens show a small,
   dismissable notice. It is a hint, not a gate. Detection can be wrong either way, and the
@@ -210,7 +227,10 @@ private destinations, pause and resume; the cache; seeding rules; the heads-up.
 Done when: a well-seeded torrent stream starts playing before it is complete and seeks to
 its end; a magnet download picks files, survives the app being killed, and lands in the vault
 when private, with no plaintext left behind; the cache stays under its limit; the
-modal shows once and the VPN notice appears when no VPN is up.
+modal shows once and the VPN notice appears when no VPN is up. Held by `shared/torrent/test`
+(streaming the end first, resume, file selection, seeding, magnets, the cache), its phone
+counterpart `TorrentInstrumentedTest`, and the Mac's `CoreChecks` torrents section (a magnet
+download picked, stopped halfway, carried on by a new engine, into a vault, no plaintext left).
 
 **Phase 4: between devices.** Play there, library sync, torrent hand-over, and the backup
 section.

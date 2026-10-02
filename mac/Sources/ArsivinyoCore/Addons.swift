@@ -273,7 +273,7 @@ public enum Addons {
         } else if let hash = text(s["infoHash"]) {
             kind = .torrent
             let valid = hash.count == 40 && hash.allSatisfy(\.isHexDigit)
-            target = valid ? "magnet:?xt=urn:btih:" + hash.lowercased() : nil
+            target = valid ? magnet(hash, sources: s["sources"] as? [String] ?? []) : nil
         } else if let external = text(s["externalUrl"]) {
             kind = .external
             target = isHTTP(external) ? external : nil
@@ -314,6 +314,12 @@ public enum Addons {
                   let raw = entry["manifest"] as? [String: Any], let manifest = manifest(raw) else { return nil }
             return Offer(base: base, manifest: manifest)
         }
+    }
+
+    /// A magnet for an info hash, with the trackers among a stream's `sources` ("tracker:…").
+    public static func magnet(_ hash: String, sources: [String]) -> String {
+        let trackers = sources.filter { $0.hasPrefix("tracker:") }.map { String($0.dropFirst("tracker:".count)) }
+        return "magnet:?xt=urn:btih:" + hash.lowercased() + trackers.map { "&tr=" + component($0) }.joined()
     }
 
     public static func streams(_ json: [String: Any]) -> [Stream] {

@@ -357,6 +357,10 @@ export default function HomeScreen() {
     router.push('/watch' as Href);
   }, [router]);
 
+  const openTorrents = useCallback(() => {
+    router.push('/torrents' as Href);
+  }, [router]);
+
   const openMemes = useCallback(() => {
     router.push('/memes' as Href);
   }, [router]);
@@ -455,87 +459,15 @@ export default function HomeScreen() {
               {t('common.appName')}
             </Text>
           </View>
-          <View style={styles.headerActions}>
-            {/* Labelled, not icon-only. These go to entirely different screens,
-                and an icon alone gives no way to know which before tapping it. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('home.privateVault')}
-              accessibilityHint={t('home.privateVaultHint')}
-              onPress={openPrivateVideos}
-              style={({ pressed }) => [
-                styles.headerNavButton,
-                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
-              ]}
-              hitSlop={6}
-            >
-              <Ionicons name="shield-checkmark-outline" size={19} color={colors.text} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
-                {t('home.navVault')}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('home.musicLibrary')}
-              accessibilityHint={t('home.musicLibraryHint')}
-              onPress={openSounds}
-              style={({ pressed }) => [
-                styles.headerNavButton,
-                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
-              ]}
-              hitSlop={6}
-            >
-              <Ionicons name="musical-notes-outline" size={19} color={colors.text} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
-                {t('home.navMusic')}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('home.navMemes')}
-              onPress={openMemes}
-              style={({ pressed }) => [
-                styles.headerNavButton,
-                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
-              ]}
-              hitSlop={6}
-            >
-              <Ionicons name="happy-outline" size={19} color={colors.text} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
-                {t('home.navMemes')}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('home.navWatch')}
-              onPress={openWatch}
-              style={({ pressed }) => [
-                styles.headerNavButton,
-                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
-              ]}
-              hitSlop={6}
-            >
-              <Ionicons name="film-outline" size={19} color={colors.text} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
-                {t('home.navWatch')}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('home.navSettings')}
-              onPress={openSettings}
-              style={({ pressed }) => [
-                styles.headerNavButton,
-                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
-              ]}
-              hitSlop={6}
-            >
-              <Ionicons name="settings-outline" size={19} color={colors.text} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
-                {t('home.navSettings')}
-              </Text>
-            </Pressable>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('home.navSettings')}
+            onPress={openSettings}
+            style={({ pressed }) => [styles.settingsButton, pressed && { backgroundColor: colors.surfaceHover }]}
+            hitSlop={8}
+          >
+            <Ionicons name="settings-outline" size={22} color={colors.text} />
+          </Pressable>
         </View>
 
         {/* Main Content */}
@@ -722,6 +654,35 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
+        {/* The places the app goes, as the Mac's sidebar lists them. At the bottom, where a
+            thumb already is, each a fifth of the width: in the header, six of them did not
+            fit beside the wordmark. Labelled, not icon-only: they go to entirely different
+            screens, and an icon alone gives no way to know which before tapping it. */}
+        <View style={[styles.bottomNav, { borderTopColor: colors.border, backgroundColor: colors.surface + 'E6' }]}>
+          {([
+            { label: t('home.navMusic'), icon: 'musical-notes-outline', onPress: openSounds },
+            { label: t('home.navWatch'), icon: 'film-outline', onPress: openWatch },
+            { label: t('home.navTorrents'), icon: 'magnet-outline', onPress: openTorrents },
+            { label: t('home.navMemes'), icon: 'happy-outline', onPress: openMemes },
+            { label: t('home.navVault'), icon: 'shield-checkmark-outline', onPress: openPrivateVideos,
+              hint: t('home.privateVaultHint') },
+          ] as const).map((item) => (
+            <Pressable
+              key={item.label}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+              accessibilityHint={'hint' in item ? item.hint : undefined}
+              onPress={item.onPress}
+              style={({ pressed }) => [styles.bottomNavItem, pressed && { backgroundColor: colors.surfaceHover }]}
+            >
+              <Ionicons name={item.icon} size={24} color={colors.text} />
+              <Text allowFontScaling={false} numberOfLines={1} style={[styles.bottomNavLabel, { color: colors.textMuted }]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Modal
           visible={showCancelConfirm}
           transparent
@@ -847,29 +808,23 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     letterSpacing: 2,
   },
-  headerActions: {
+  settingsButton: { padding: 8, borderRadius: 12 },
+  bottomNav: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 4,
   },
-  headerNavButton: {
-    minWidth: 52,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  // Fixed size: these labels must not grow with the system font setting or they push
-  // the wordmark out of the header.
-  headerNavLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 0.2 },
+  bottomNavItem: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 6, borderRadius: 12 },
+  // Fixed size: a label that grows with the system font would wrap or clip at a fifth of
+  // the width.
+  bottomNavLabel: { fontSize: 11, fontWeight: '600' },
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 60,
+    paddingBottom: 16,
   },
   // Content-width and centred rather than a grid of flex:1 cells. A two-across grid
   // only looks right at an even count — a third toggle would strand one on its own row

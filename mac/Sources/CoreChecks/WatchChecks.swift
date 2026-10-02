@@ -92,10 +92,29 @@ extension CoreChecks {
         try lib.setLanguages(["EN", "deu", "klingon", "en"])
         let reopened = library()
         check(try reopened.languages() == ["eng", "ger"], "preferred languages are kept by their 639-2 codes, once each")
+        try reopened.putTorrent(WatchLibrary.Torrent(infoHash: "abc", name: "Secret Film", wanted: [0, 2], destination: "private", addedAt: 5))
+        var record = try reopened.torrent("abc")!
+        record.taken = [2]
+        record.state = "downloading"
+        try reopened.putTorrent(record)
+        let back = try library().torrent("abc")
+        check(back?.wanted == [0, 2] && back?.taken == [2] && back?.destination == "private",
+              "a torrent is kept with what was chosen and what was taken")
         check(try reopened.addons().map(\.enabled) == [true, true, false] && reopened.item(show.id)?.watched.count == 1,
               "the library survives reopening")
+        // Opened with another key (its own was lost): it starts empty instead of failing every
+        // call, and the old file is kept beside it, in case its key turns up.
+        let otherKey = try Crypto.randomBytes(32)
+        let copy = scratch.appendingPathComponent("other/library.enc")
+        try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: scratch.appendingPathComponent("library.enc"), to: copy)
+        let stranger = WatchLibrary(file: copy, key: { otherKey })
+        check(try stranger.addons().isEmpty, "a library its key cannot open starts empty")
+        check((try FileManager.default.contentsOfDirectory(atPath: copy.deletingLastPathComponent().path))
+                .contains { $0.hasPrefix("library.unreadable-") },
+              "and the one it could not open is kept, not deleted")
         let bytes = String(decoding: try Data(contentsOf: scratch.appendingPathComponent("library.enc")), as: UTF8.self)
-        check(!["SECRET123", "Game of Thrones", "tt0944947", "torrent.example"].contains { bytes.contains($0) },
+        check(!["SECRET123", "Game of Thrones", "tt0944947", "torrent.example", "Secret Film"].contains { bytes.contains($0) },
               "nothing in it is readable on disk, an add-on's token included")
     }
 }

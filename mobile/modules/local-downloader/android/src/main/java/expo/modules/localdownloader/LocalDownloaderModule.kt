@@ -91,6 +91,7 @@ import expo.modules.localdownloader.memes.FaceScanner
 import expo.modules.localdownloader.memes.FacesNative
 import expo.modules.localdownloader.memes.KeystoreSealer
 import expo.modules.localdownloader.memes.MemeCollection
+import expo.modules.localdownloader.torrent.TorrentService
 import expo.modules.localdownloader.watch.Addons
 import expo.modules.localdownloader.watch.MpvPlayerView
 import expo.modules.localdownloader.watch.WatchLibrary
@@ -589,6 +590,41 @@ class LocalDownloaderModule : Module() {
     }
   }
 
+  private var torrentPickLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null
+  private var torrentPickPromise: Promise? = null
+
+  /**
+   * A .torrent file chosen with the system's file picker, from the app's own activity as the
+   * meme import is. Any type is offered: many file managers do not know .torrent's.
+   */
+  private fun pickTorrentFile(promise: Promise) {
+    val activity = appContext.currentActivity as? androidx.activity.ComponentActivity
+    if (activity == null) {
+      promise.resolve(mapOf("success" to false, "code" to "TORRENT_PICK_FAILED"))
+      return
+    }
+    activity.runOnUiThread {
+      finishTorrentPick(null)
+      torrentPickPromise = promise
+      val launcher = activity.activityResultRegistry.register(
+        "arsivinyo-torrent-pick",
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+      ) { uri -> finishTorrentPick(uri) }
+      torrentPickLauncher = launcher
+      runCatching { launcher.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) }
+        .onFailure { finishTorrentPick(null) }
+    }
+  }
+
+  private fun finishTorrentPick(uri: Uri?) {
+    val promise = torrentPickPromise ?: return
+    torrentPickPromise = null
+    torrentPickLauncher?.unregister()
+    torrentPickLauncher = null
+    promise.resolve(if (uri == null) mapOf("success" to false, "code" to "TORRENT_PICK_CANCELLED")
+                    else mapOf("success" to true, "uri" to uri.toString()))
+  }
+
   private fun finishMemeImport(uris: List<Uri>) {
     val promise = memePickPromise ?: return
     memePickPromise = null
@@ -855,6 +891,70 @@ class LocalDownloaderModule : Module() {
     WatchService(WatchLibrary(File(context.filesDir, "watch/library.bin"), KeystoreSealer("arsivinyo_watch_library_v1")))
   }
 
+  private val torrents: TorrentService by lazy { TorrentService.get(requireNotNull(appContext.reactContext)) }
+
+  /** The filing step for torrent downloads, and the notification that follows them. */
+  private fun startTorrents() {
+    torrents.attach(watch.library)
+    torrents.taker = object : TorrentService.Taker {
+      override fun filePublic(file: File, relativePath: String): Boolean = runCatching {
+        filePublicDownload(file, relativePath)
+        true
+      }.getOrDefault(false)
+
+      // A locked vault answers PRIVATE_VAULT_LOCKED; the file waits, in app-private storage,
+      // until it is next open.
+      override fun intoVault(file: File, name: String): Boolean = runCatching {
+        val mime = android.webkit.MimeTypeMap.getSingleton()
+          .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+        importFileToPrivateVault(file.path, name, "torrent", mime)
+        true
+      }.getOrDefault(false)
+
+      private var last: TorrentService.Summary? = null
+
+      override fun changed() {
+        val summary = torrents.summary()
+        if (summary != last) {
+          last = summary
+          syncForegroundNotification(notificationPhase, null)
+        }
+      }
+    }
+    torrents.startWorker()
+  }
+
+  /**
+   * A finished torrent file into the phone's Download/Arsivinyo, through MediaStore as the
+   * app's other files are; below Android 10, the app's own download folder.
+   */
+  private fun filePublicDownload(file: File, relativePath: String) {
+    val context = requireNotNull(appContext.reactContext)
+    val folder = relativePath.substringBeforeLast('/', "").trim('/')
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+      val target = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), relativePath)
+      target.parentFile?.mkdirs()
+      file.copyTo(target, overwrite = true)
+      return
+    }
+    val values = ContentValues().apply {
+      put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+      put(MediaStore.MediaColumns.RELATIVE_PATH,
+        listOf(Environment.DIRECTORY_DOWNLOADS, "Arsivinyo", folder).filter { it.isNotEmpty() }.joinToString("/"))
+      put(MediaStore.MediaColumns.IS_PENDING, 1)
+    }
+    val resolver = context.contentResolver
+    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IOException("MEDIASTORE_INSERT_FAILED")
+    try {
+      resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out, 1 shl 20) } }
+        ?: throw IOException("MEDIASTORE_OUTPUT_STREAM_FAILED")
+      resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+    } catch (error: Throwable) {
+      runCatching { resolver.delete(uri, null, null) }
+      throw error
+    }
+  }
+
   /** Add-on requests and stream resolving: network work, never on the module's own queue. */
   private val watchWork = java.util.concurrent.Executors.newFixedThreadPool(4) { runnable ->
     Thread(runnable, "watch").apply { priority = Thread.NORM_PRIORITY - 1 }
@@ -870,6 +970,19 @@ class LocalDownloaderModule : Module() {
       } catch (error: Throwable) {
         addError("WATCH_FAILED: ${error.javaClass.simpleName}")
         mapOf("success" to false, "code" to "WATCH_FAILED")
+      })
+    }
+  }
+
+  private fun torrentAsync(promise: Promise, work: () -> Any?) {
+    watchWork.execute {
+      promise.resolve(try {
+        work()
+      } catch (failure: TorrentService.Failure) {
+        mapOf("success" to false, "code" to failure.code)
+      } catch (error: Throwable) {
+        addError("TORRENT_FAILED: ${error.javaClass.simpleName}")
+        mapOf("success" to false, "code" to "TORRENT_FAILED")
       })
     }
   }
@@ -921,8 +1034,17 @@ class LocalDownloaderModule : Module() {
    * Something a player can open: a media URL plays as it is; a page, a YouTube video or an
    * external link goes through yt-dlp first, with the cookies the app keeps for that site.
    */
-  private fun prepareStream(kind: String, target: String, headers: Map<String, String>): Map<String, Any?> {
-    if (kind == "torrent") throw WatchService.Failure("WATCH_TORRENTS_LATER")
+  private fun prepareStream(kind: String, target: String, headers: Map<String, String>, fileIdx: Int?,
+                            filename: String?): Map<String, Any?> {
+    if (kind == "torrent") {
+      // Through the engine's loopback server, fetched into the cache as it plays.
+      val stream = try {
+        torrents.stream(target, fileIdx, filename)
+      } catch (failure: TorrentService.Failure) {
+        throw WatchService.Failure(failure.code)
+      }
+      return mapOf("success" to true, "url" to stream.url, "headers" to emptyMap<String, String>(), "torrentId" to stream.id)
+    }
     if (!Addons.isHttp(target)) throw WatchService.Failure("WATCH_BAD_URL")
     if (kind == "url" && !watch.isPage(target, headers)) {
       return mapOf("success" to true, "url" to target, "headers" to headers)
@@ -1074,6 +1196,8 @@ class LocalDownloaderModule : Module() {
       // would race a resumed batch and delete the audio out from under it.
       runCatching { cleanupOrphanedStaging() }
       resumePresetRenderIfAny()
+      // Torrent downloads carry on where they stopped, the app having been closed or killed.
+      runCatching { startTorrents() }
       // An export that the system killed leaves a partial document behind. It has a valid
       // header, so it opens and lists its sections and only fails once a restore is under
       // way — worse than no file at all.
@@ -1136,6 +1260,12 @@ class LocalDownloaderModule : Module() {
           }
         }
       }
+      // Out of sight, finished torrents stop seeding once nothing is left to download.
+      runCatching { torrents.inBackground = true }
+    }
+
+    OnActivityEntersForeground {
+      runCatching { torrents.inBackground = false }
     }
 
     OnDestroy {
@@ -1476,8 +1606,98 @@ class LocalDownloaderModule : Module() {
       watchAsync(promise) { mapOf("success" to true, "streams" to watch.streams(addonKey, type, id).map(::streamMap)) }
     }
 
-    AsyncFunction("watchPrepare") { kind: String, target: String, headers: Map<String, String>, promise: Promise ->
-      watchAsync(promise) { prepareStream(kind, target, headers) }
+    AsyncFunction("watchPrepare") { kind: String, target: String, headers: Map<String, String>, fileIdx: Int?,
+                                    filename: String?, promise: Promise ->
+      watchAsync(promise) { prepareStream(kind, target, headers, fileIdx, filename) }
+    }
+
+    AsyncFunction("watchTorrentSettings") {
+      val s = torrents.settings()
+      mapOf("seedRatio" to s.seedRatio, "seedOnMobileData" to s.seedOnMobileData,
+        "cacheLimitBytes" to s.cacheLimitBytes.toDouble(), "headsUpDismissed" to s.headsUpDismissed)
+    }
+
+    AsyncFunction("watchSetTorrentSettings") { values: Map<String, Any?> ->
+      val s = torrents.settings()
+      torrents.setSettings(s.copy(
+        seedRatio = (values["seedRatio"] as? Number)?.toDouble() ?: s.seedRatio,
+        seedOnMobileData = values["seedOnMobileData"] as? Boolean ?: s.seedOnMobileData,
+        cacheLimitBytes = (values["cacheLimitBytes"] as? Number)?.toLong() ?: s.cacheLimitBytes,
+        headsUpDismissed = values["headsUpDismissed"] as? Boolean ?: s.headsUpDismissed,
+      ))
+    }
+
+    AsyncFunction("watchVpnActive") { torrents.vpnAppearsActive() }
+
+    // ---- torrent downloads (shared/watch/CONTRACT.md, "Downloading") ------------------------
+
+    /** A magnet link, or a content:// URI of a .torrent file; the new download's info hash. */
+    AsyncFunction("torrentAdd") { input: String, promise: Promise ->
+      torrentAsync(promise) {
+        startTorrents()
+        val text = input.trim()
+        val id = if (text.startsWith("magnet:", ignoreCase = true)) {
+          torrents.add(text, null)
+        } else {
+          val bytes = requireNotNull(appContext.reactContext).contentResolver.openInputStream(Uri.parse(text))
+            ?.use { it.readBytes() } ?: throw TorrentService.Failure("TORRENT_BAD_INPUT")
+          torrents.add(null, bytes)
+        }
+        mapOf("success" to true, "id" to id)
+      }
+    }
+
+    AsyncFunction("torrentPickFile") { promise: Promise -> pickTorrentFile(promise) }
+
+    AsyncFunction("torrentFiles") { id: String, promise: Promise ->
+      torrentAsync(promise) {
+        val files = torrents.files(id)
+        mapOf("success" to true, "files" to files?.let { list ->
+          (0 until list.length()).map { list.getJSONObject(it) }.map {
+            mapOf("index" to it.getInt("index"), "path" to it.getString("path"), "size" to it.getLong("size").toDouble())
+          }
+        })
+      }
+    }
+
+    AsyncFunction("torrentChoose") { id: String, wanted: List<Int>, destination: String, promise: Promise ->
+      torrentAsync(promise) {
+        torrents.choose(id, wanted, if (destination == "private") "private" else "public")
+        mapOf("success" to true)
+      }
+    }
+
+    AsyncFunction("torrentList") { promise: Promise ->
+      torrentAsync(promise) {
+        // Whether a finished private file is being encrypted now, or waits for the vault.
+        mapOf("success" to true, "vaultOpen" to vaultSession.snapshot().unlocked,
+          "torrents" to runCatching { torrents.downloads() }.getOrDefault(emptyList()).map { (record, engine) ->
+          val done = engine?.optDouble("done") ?: 0.0
+          val wanted = engine?.optDouble("wanted") ?: 0.0
+          val rate = engine?.optDouble("downloadRate") ?: 0.0
+          mapOf(
+            "id" to record.infoHash, "name" to record.name, "destination" to record.destination, "state" to record.state,
+            "wanted" to record.wanted.size, "taken" to record.taken.size, "addedAt" to record.addedAt.toDouble(),
+            "engine" to engine?.let {
+              mapOf(
+                "state" to it.optString("state"), "paused" to it.optBoolean("paused"), "finished" to it.optBoolean("finished"),
+                "progress" to it.optDouble("progress"), "done" to done, "size" to wanted,
+                "downloadRate" to rate, "uploadRate" to it.optDouble("uploadRate"),
+                "peers" to it.optInt("peers"), "seeds" to it.optInt("seeds"),
+                "etaSeconds" to if (rate > 0 && wanted > done) (wanted - done) / rate else null,
+              )
+            },
+          )
+        })
+      }
+    }
+
+    AsyncFunction("torrentPause") { id: String, promise: Promise -> torrentAsync(promise) { torrents.pause(id); mapOf("success" to true) } }
+
+    AsyncFunction("torrentResume") { id: String, promise: Promise -> torrentAsync(promise) { torrents.resume(id); mapOf("success" to true) } }
+
+    AsyncFunction("torrentRemove") { id: String, deleteFiles: Boolean, promise: Promise ->
+      torrentAsync(promise) { torrents.remove(id, deleteFiles); mapOf("success" to true) }
     }
 
     /**
@@ -5016,6 +5236,7 @@ class LocalDownloaderModule : Module() {
     // running it reports the set rather than picking one: the count, and their combined
     // progress. Showing a single task's bar would have made it jump between downloads.
     val running = activeDownloadCount()
+    val torrentSummary = runCatching { torrents.summary() }.getOrNull()
     val progress = explicitProgress ?: aggregateProgressPercent()
     val state = BackgroundNotificationState(
       activeTaskId = activeDownloads.keys.firstOrNull(),
@@ -5033,6 +5254,8 @@ class LocalDownloaderModule : Module() {
       // happened to have the sticky notification switched on, so an export or restore
       // depended on an unrelated setting to avoid being reclaimed.
       pinned = stickyNotificationEnabled || presetRenderActive != null || backupJobActive != null,
+      torrentCount = torrentSummary?.downloading ?: 0,
+      torrentPercent = torrentSummary?.percent,
     )
     if (state.shouldRunForeground) {
       DownloadNotificationController.startOrUpdate(context, state)

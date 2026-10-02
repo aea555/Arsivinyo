@@ -76,7 +76,8 @@
     "musicLibraryHint": "Open the music player and manage your music.",
     "savedToMusic": "Saved to music library.",
     "navMemes": "Memes",
-    "navWatch": "Watch"
+    "navWatch": "Watch",
+    "navTorrents": "Torrents"
   },
   "privateVault": {
     "title": "Private Vault",
@@ -795,7 +796,6 @@
     "addOther": "Add another add-on",
     "installFailed": "Could not install it ({{code}}).",
     "noSearch": "No add-on can search. Install one that can, such as Cinemeta.",
-    "rowFailed": "Did not answer ({{code}}).",
     "type": {
       "movie": "Films",
       "series": "Series",
@@ -811,7 +811,6 @@
     "streams": "Streams",
     "noSources": "No installed add-on offers streams for this.",
     "noStreams": "No streams.",
-    "torrentsLater": "Torrent streams arrive in a later update.",
     "playFailed": "Could not play it {{code}}",
     "nextEpisode": "Next episode",
     "errors": {
@@ -834,7 +833,7 @@
       "removeBody": "Its catalogs and streams disappear. What you watched stays in your library.",
       "installedTitle": "Installed",
       "discover": "Discover",
-      "discoverHint": "Add-ons your installed add-ons recommend, from Stremio's own lists. Many stream add-ons find torrents; those streams play once torrents arrive in a later update.",
+      "discoverHint": "Add-ons your installed add-ons recommend, from Stremio's own lists. Catalogs and details come from some; the streams themselves, what actually plays, only from stream add-ons.",
       "filter": "Filter",
       "alreadyInstalled": "Installed",
       "configureFirst": "Needs configuring first",
@@ -847,7 +846,8 @@
         "stream": "streams",
         "subtitles": "subtitles",
         "addon_catalog": "add-on lists"
-      }
+      },
+      "listFailed": "This list did not load. Try again in a little while."
     },
     "trailer": "Trailer",
     "trailerOf": "Trailer · {{name}}",
@@ -856,7 +856,9 @@
       "hint": "Subtitles and audio in these languages are picked first, in this order.",
       "add": "Add a language",
       "none": "No languages chosen; Turkish and English are used."
-    }
+    },
+    "nothingAnswered": "None of the add-ons answered. Try again in a little while.",
+    "noStreamsAnywhere": "No installed add-on has a stream for this."
   },
   "player": {
     "play": "Play",
@@ -897,5 +899,54 @@
       "chi": "Chinese",
       "aze": "Azerbaijani"
     }
+  },
+  "torrents": {
+    "headsUp": {
+      "title": "Everyone in a torrent sees your address",
+      "body": "Streaming or downloading a torrent shows this device's IP address to everyone sharing the same torrent. A VPN hides it; Arsivinyo recommends one but does not require it.",
+      "ok": "Got it",
+      "never": "Don't show again"
+    },
+    "noVpn": "No VPN appears to be on: others in this torrent can see your address.",
+    "noMetadata": "No peers answered for this torrent yet.",
+    "title": "Torrents",
+    "magnetPlaceholder": "Paste a magnet link",
+    "add": "Add",
+    "openFile": "Open a .torrent file",
+    "empty": "No torrent downloads yet.",
+    "addFailed": "Could not add it ({{code}}).",
+    "chooseFiles": "Choose which files to download",
+    "fetchingDetails": "Getting the file list from peers…",
+    "inVault": "Done, in the vault",
+    "inDownloads": "Done, in Download/Arsivinyo",
+    "waiting": "Waiting…",
+    "paused": "Paused at {{percent}}%",
+    "intoVault": "Finished: into the vault when it is unlocked",
+    "seeding": {
+      "title": "Sharing back",
+      "hint": "After a torrent finishes, it is shared with others until it has uploaded this many times its size, then it stops. Only while the app is open.",
+      "never": "Never",
+      "mobileData": "Also on mobile data"
+    },
+    "peers_one": "{{count}} peer",
+    "peers_other": "{{count}} peers",
+    "left": "{{time}} left",
+    "unnamed": "A torrent",
+    "removeTitle": "Remove this download?",
+    "removeBody": "Files already in Download/Arsivinyo or in the vault stay where they are.",
+    "removeKeep": "Remove, keep what was fetched",
+    "removeWithFiles": "Remove with what was fetched",
+    "chooseTitle": "Choose files",
+    "all": "All {{count}} files",
+    "intoTheVault": "Into the vault",
+    "vaultHint": "Each file is encrypted into the vault as it finishes.",
+    "publicHint": "Files land in Download/Arsivinyo.",
+    "start": "Download {{size}}",
+    "download": "Download",
+    "cache": {
+      "title": "Stream cache",
+      "hint": "What you stream is kept here so watching it again starts at once; the least recently watched goes first when it is full."
+    },
+    "encrypting": "Encrypting into the vault…"
   }
 }

@@ -675,8 +675,15 @@ public enum MemeDeviceKey {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: CFTypeRef?
-        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data, data.count == 32 {
+        let found = SecItemCopyMatching(query as CFDictionary, &result)
+        if found == errSecSuccess, let data = result as? Data, data.count == 32 {
             return data
+        }
+        // Only a key that is not there is made anew. A read that was refused (a prompt
+        // answered "Deny"), cancelled or locked out is not "no key": replacing the key then
+        // made everything sealed with it unreadable, which is how a Mac lost its watch library.
+        guard found == errSecItemNotFound else {
+            throw MemeLibrary.Failure.io(String(localized: "The Keychain refused (\(found))."))
         }
         let key = try Crypto.randomBytes(32)
         query.removeValue(forKey: kSecReturnData as String)

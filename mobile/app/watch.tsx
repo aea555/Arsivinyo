@@ -37,6 +37,15 @@ export default function WatchScreen() {
   const [submitted, setSubmitted] = useState('');
   const [installing, setInstalling] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  /** How each row ended, by its key: whether it found anything. */
+  const [settled, setSettled] = useState<Record<string, boolean>>({});
+  const settle = useCallback((key: string, found: boolean) => {
+    setSettled((prev) => (prev[key] === found ? prev : { ...prev, [key]: found }));
+  }, []);
+  const keys = rows.map((row) => `${row.addonKey}/${row.type}/${row.id}/${submitted}`);
+  const nothingCame =
+    (submitted.length > 0 && rows.length === 0) ||
+    (rows.length > 0 && keys.every((key) => key in settled) && keys.every((key) => !settled[key]));
 
   const reload = useCallback(async () => {
     const addons = await listAddons().catch(() => []);
@@ -130,12 +139,17 @@ export default function WatchScreen() {
                 ))}
               </Shelf>
             ) : null}
-            {submitted && rows.length === 0 ? (
-              <Text style={[styles.center, { color: colors.textMuted }]}>{t('watch.noSearch')}</Text>
+            {rows.map((row) => {
+              const key = `${row.addonKey}/${row.type}/${row.id}/${submitted}`;
+              return <CatalogRow key={key} row={row} search={submitted} onSettled={(found) => settle(key, found)} />;
+            })}
+            {/* Said once, and only when nothing at all came back: a row that failed or found
+                nothing is left out rather than shown as an error. */}
+            {nothingCame ? (
+              <Text style={[styles.center, { color: colors.textMuted }]}>
+                {submitted ? t('watch.noSearch') : t('watch.nothingAnswered')}
+              </Text>
             ) : null}
-            {rows.map((row) => (
-              <CatalogRow key={`${row.addonKey}/${row.type}/${row.id}/${submitted}`} row={row} search={submitted} />
-            ))}
           </ScrollView>
         </>
       )}
@@ -156,12 +170,25 @@ function Shelf({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /** One catalog of one add-on, fetched on its own. */
-const CatalogRow = memo(function CatalogRow({ row, search }: { row: WatchRow; search: string }) {
+/**
+ * One catalog of one add-on, fetched on its own. A catalog that fails or finds nothing is not
+ * shown at all: an add-on's server error is not something to read row by row. It says how it
+ * ended through `onSettled`, so the screen can say so once if nothing came back anywhere.
+ */
+const CatalogRow = memo(function CatalogRow({
+  row,
+  search,
+  onSettled,
+}: {
+  row: WatchRow;
+  search: string;
+  onSettled: (found: boolean) => void;
+}) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const router = useRouter();
   const [items, setItems] = useState<WatchPreview[] | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -169,23 +196,26 @@ const CatalogRow = memo(function CatalogRow({ row, search }: { row: WatchRow; se
       .then((result) => {
         if (!live) return;
         if (result.success) setItems(result.items);
-        else setFailed(result.code);
+        else setFailed(true);
       })
-      .catch(() => live && setFailed('WATCH_FAILED'));
+      .catch(() => live && setFailed(true));
     return () => {
       live = false;
     };
   }, [row, search]);
 
-  if (search && items && items.length === 0) return null;
+  useEffect(() => {
+    if (failed) onSettled(false);
+    else if (items) onSettled(items.length > 0);
+  }, [failed, items, onSettled]);
+
+  if (failed || (items && items.length === 0)) return null;
   return (
     <View style={styles.shelf}>
       <Text style={[styles.shelfTitle, { color: colors.text }]} numberOfLines={1}>
         {row.name} <Text style={{ color: colors.textMuted }}>· {t(`watch.type.${row.type}`, { defaultValue: row.type })} · {row.addonName}</Text>
       </Text>
-      {failed ? (
-        <Text style={{ color: colors.textMuted }}>{t('watch.rowFailed', { code: failed })}</Text>
-      ) : items === null ? (
+      {items === null ? (
         <ActivityIndicator color={colors.accent} style={styles.rowLoading} />
       ) : (
         <FlatList

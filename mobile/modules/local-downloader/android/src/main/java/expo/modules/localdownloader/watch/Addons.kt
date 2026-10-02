@@ -275,7 +275,7 @@ object Addons {
       s.optString("url").isNotBlank() -> Kind.URL to s.optString("url").takeIf(::isHttp)
       s.optString("ytId").isNotBlank() -> Kind.YOUTUBE to "https://www.youtube.com/watch?v=" + component(s.optString("ytId"))
       s.optString("infoHash").isNotBlank() -> Kind.TORRENT to s.optString("infoHash").takeIf { infoHash.matches(it) }
-        ?.let { "magnet:?xt=urn:btih:" + it.lowercase() }
+        ?.let { magnet(it, s.optJSONArray("sources")) }
       s.optString("externalUrl").isNotBlank() -> Kind.EXTERNAL to s.optString("externalUrl").takeIf(::isHttp)
       else -> return null
     }
@@ -296,6 +296,12 @@ object Addons {
       filename = hints?.optString("filename")?.ifBlank { null },
       subtitles = subtitles(s),
     )
+  }
+
+  /** A magnet for an info hash, with the trackers among a stream's `sources` ("tracker:…"). */
+  fun magnet(hash: String, sources: JSONArray?): String {
+    val trackers = strings(sources).filter { it.startsWith("tracker:") }.map { it.removePrefix("tracker:") }
+    return "magnet:?xt=urn:btih:" + hash.lowercase() + trackers.joinToString("") { "&tr=" + component(it) }
   }
 
   fun streams(json: JSONObject): List<Stream> {

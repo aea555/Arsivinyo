@@ -13,7 +13,8 @@ shared/     Anything the apps must agree on: the device-pairing protocol, the se
             memes contract (memes/CONTRACT.md), which both apps build to, and the faces
             pipeline (faces/): C++ over pinned ONNX models, held to faces/VECTORS.json.
             The watch contract (watch/CONTRACT.md) covers Stremio add-ons, the player and
-            torrents.
+            torrents; the torrent engine (torrent/) is libtorrent behind one C API, built
+            from pinned source for both apps by torrent/build.sh.
 ```
 
 `mac/` does not reimplement the security core. It compiles the same C++ through a symlink,

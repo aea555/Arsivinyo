@@ -258,13 +258,20 @@
         "infoHash": "C9A337562CC2B6A1E7FCB1A7BA3F33A5E2F8B1D7",
         "fileIdx": 2,
         "name": "Tor",
-        "description": "1.4 GB\nseeds 120"
+        "description": "1.4 GB\nseeds 120",
+        "sources": [
+          "tracker:udp://tracker.example:1337/announce",
+          "dht:c9a337562cc2b6a1e7fcb1a7ba3f33a5e2f8b1d7",
+          "tracker:http://t2.example/announce?x=1&y=2",
+          "not a source"
+        ]
       },
       "kind": "torrent",
-      "target": "magnet:?xt=urn:btih:c9a337562cc2b6a1e7fcb1a7ba3f33a5e2f8b1d7",
+      "target": "magnet:?xt=urn:btih:c9a337562cc2b6a1e7fcb1a7ba3f33a5e2f8b1d7&tr=udp%3A%2F%2Ftracker.example%3A1337%2Fannounce&tr=http%3A%2F%2Ft2.example%2Fannounce%3Fx%3D1%26y%3D2",
       "fileIdx": 2,
       "label": "Tor",
-      "detail": "1.4 GB seeds 120"
+      "detail": "1.4 GB seeds 120",
+      "why": "a torrent's trackers from its sources go into the magnet, encoded; dht: and anything else adds nothing"
     },
     {
       "stream": {

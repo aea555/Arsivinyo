@@ -62,7 +62,35 @@ public final class WatchLibrary: @unchecked Sendable {
     private let url: URL
     private let key: () throws -> Data
     private let lock = NSLock()
-    private typealias State = (addons: [Addon], items: [Item], languages: [String])
+    /// A torrent being downloaded (CONTRACT.md, "Downloading"). Its name and files are as
+    /// private as anything else here, so they live in this encrypted file, never in a log.
+    public struct Torrent: Hashable, Sendable, Identifiable {
+        public var infoHash: String
+        public var name: String
+        /// The files chosen; empty until the user has chosen.
+        public var wanted: [Int]
+        /// "public" or "private".
+        public var destination: String
+        public var addedAt: Int64
+        /// Files already filed (public) or encrypted into the vault (private).
+        public var taken: Set<Int> = []
+        /// "choosing", "downloading" or "done".
+        public var state = "choosing"
+        public var id: String { infoHash }
+
+        public init(infoHash: String, name: String, wanted: [Int], destination: String, addedAt: Int64,
+                    taken: Set<Int> = [], state: String = "choosing") {
+            self.infoHash = infoHash
+            self.name = name
+            self.wanted = wanted
+            self.destination = destination
+            self.addedAt = addedAt
+            self.taken = taken
+            self.state = state
+        }
+    }
+
+    private typealias State = (addons: [Addon], items: [Item], languages: [String], torrents: [Torrent])
     private var cache: State?
     private static let associatedData = "watch/library/v1"
 
@@ -185,6 +213,25 @@ public final class WatchLibrary: @unchecked Sendable {
 
     public func remove(_ id: String) throws { try write { $0.items.removeAll { $0.id == id } } }
 
+    // MARK: - Torrents
+
+    public func torrents() throws -> [Torrent] { try lock.withLock { try read().torrents } }
+
+    public func torrent(_ infoHash: String) throws -> Torrent? { try torrents().first { $0.infoHash == infoHash } }
+
+    /// Adds or replaces a torrent's record.
+    public func putTorrent(_ torrent: Torrent) throws {
+        try write { state in
+            if let at = state.torrents.firstIndex(where: { $0.infoHash == torrent.infoHash }) {
+                state.torrents[at] = torrent
+            } else {
+                state.torrents.append(torrent)
+            }
+        }
+    }
+
+    public func removeTorrent(_ infoHash: String) throws { try write { $0.torrents.removeAll { $0.infoHash == infoHash } } }
+
     private static func put(_ item: Item, into items: inout [Item]) {
         if let at = items.firstIndex(where: { $0.id == item.id }) { items[at] = item } else { items.append(item) }
     }
@@ -207,10 +254,23 @@ public final class WatchLibrary: @unchecked Sendable {
     private func read() throws -> State {
         if let cache { return cache }
         guard FileManager.default.fileExists(atPath: url.path) else {
-            cache = ([], [], Self.defaultLanguages)
-            return ([], [], Self.defaultLanguages)
+            cache = ([], [], Self.defaultLanguages, [])
+            return ([], [], Self.defaultLanguages, [])
         }
-        let json = try Crypto.unpad(Crypto.open(Data(contentsOf: url), key: key(), associatedData: Self.associatedData))
+        let key = try key()
+        let json: Data
+        do {
+            json = try Crypto.unpad(Crypto.open(Data(contentsOf: url), key: key, associatedData: Self.associatedData))
+        } catch {
+            // Sealed with a key that is not this one any more. Moved aside, not deleted (the
+            // key may yet turn up), and a fresh library starts: one that can never be opened
+            // would fail every add-on and torrent from now on.
+            let aside = url.deletingPathExtension()
+                .appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970)).enc")
+            try FileManager.default.moveItem(at: url, to: aside)
+            cache = ([], [], Self.defaultLanguages, [])
+            return cache!
+        }
         let state = Self.decode(try JSONSerialization.jsonObject(with: json) as? [String: Any] ?? [:])
         cache = state
         return state
@@ -232,6 +292,10 @@ public final class WatchLibrary: @unchecked Sendable {
                 return out
             },
             "languages": state.languages,
+            "torrents": state.torrents.map { t -> [String: Any] in
+                ["infoHash": t.infoHash, "name": t.name, "wanted": t.wanted, "destination": t.destination,
+                 "addedAt": t.addedAt, "taken": t.taken.sorted(), "state": t.state]
+            },
         ]
     }
 
@@ -257,6 +321,13 @@ public final class WatchLibrary: @unchecked Sendable {
             return item
         }
         let languages = (json["languages"] as? [String] ?? []).filter { !$0.isEmpty }
-        return (addons, items, languages.isEmpty ? defaultLanguages : languages)
+        let torrents = (json["torrents"] as? [[String: Any]] ?? []).compactMap { o -> Torrent? in
+            guard let hash = o["infoHash"] as? String, !hash.isEmpty else { return nil }
+            return Torrent(infoHash: hash, name: o["name"] as? String ?? "", wanted: o["wanted"] as? [Int] ?? [],
+                           destination: o["destination"] as? String ?? "public",
+                           addedAt: (o["addedAt"] as? NSNumber)?.int64Value ?? 0,
+                           taken: Set(o["taken"] as? [Int] ?? []), state: o["state"] as? String ?? "downloading")
+        }
+        return (addons, items, languages.isEmpty ? defaultLanguages : languages, torrents)
     }
 }

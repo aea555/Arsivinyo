@@ -37,10 +37,29 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
     val saved: Boolean = false,
   )
 
+  /**
+   * A torrent being downloaded (CONTRACT.md, "Downloading"). Its name and files are as private
+   * as anything else here, so they live in this encrypted file, never in a log.
+   */
+  data class Torrent(
+    val infoHash: String,
+    val name: String,
+    /** The files chosen; empty until the user has chosen. */
+    val wanted: List<Int>,
+    /** "public" or "private". */
+    val destination: String,
+    val addedAt: Long,
+    /** Files already filed (public) or encrypted into the vault (private). */
+    val taken: Set<Int> = emptySet(),
+    /** "choosing", "downloading" or "done". */
+    val state: String = "choosing",
+  )
+
   private data class State(
     val addons: MutableList<Addon>,
     val items: MutableList<Item>,
     var languages: List<String> = DEFAULT_LANGUAGES,
+    val torrents: MutableList<Torrent> = mutableListOf(),
   )
 
   private val lock = Any()
@@ -63,6 +82,20 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
   fun setLanguages(codes: List<String>) = write { state ->
     state.languages = codes.mapNotNull { Addons.language(it) }.distinct().ifEmpty { DEFAULT_LANGUAGES }
   }
+
+  // ---- torrents ---------------------------------------------------------------------------
+
+  fun torrents(): List<Torrent> = synchronized(lock) { read().torrents.toList() }
+
+  fun torrent(infoHash: String): Torrent? = synchronized(lock) { read().torrents.firstOrNull { it.infoHash == infoHash } }
+
+  /** Adds or replaces a torrent's record. */
+  fun putTorrent(torrent: Torrent) = write { state ->
+    val at = state.torrents.indexOfFirst { it.infoHash == torrent.infoHash }
+    if (at >= 0) state.torrents[at] = torrent else state.torrents.add(torrent)
+  }
+
+  fun removeTorrent(infoHash: String) = write { state -> state.torrents.removeAll { it.infoHash == infoHash } }
 
   // ---- add-ons -----------------------------------------------------------------------------
 
@@ -202,6 +235,13 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
         }
       })
       .put("languages", JSONArray(state.languages))
+      .put("torrents", JSONArray().apply {
+        state.torrents.forEach { t ->
+          put(JSONObject().put("infoHash", t.infoHash).put("name", t.name).put("wanted", JSONArray(t.wanted))
+            .put("destination", t.destination).put("addedAt", t.addedAt).put("taken", JSONArray(t.taken.sorted()))
+            .put("state", t.state))
+        }
+      })
 
     private fun decode(json: JSONObject): State {
       val addons = mutableListOf<Addon>()
@@ -228,7 +268,21 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
         ))
       }
       val languages = json.optJSONArray("languages")?.let { l -> (0 until l.length()).mapNotNull { l.optString(it).ifBlank { null } } }
-      return State(addons, items, languages?.ifEmpty { null } ?: DEFAULT_LANGUAGES)
+      val torrents = mutableListOf<Torrent>()
+      val t = json.optJSONArray("torrents") ?: JSONArray()
+      for (i in 0 until t.length()) {
+        val o = t.optJSONObject(i) ?: continue
+        val hash = o.optString("infoHash")
+        if (hash.isBlank()) continue
+        fun ints(key: String) = o.optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optInt(it) } }.orEmpty()
+        torrents.add(Torrent(
+          infoHash = hash,
+          name = o.optString("name"), wanted = ints("wanted"),
+          destination = o.optString("destination", "public"), addedAt = o.optLong("addedAt"),
+          taken = ints("taken").toSet(), state = o.optString("state", "downloading"),
+        ))
+      }
+      return State(addons, items, languages?.ifEmpty { null } ?: DEFAULT_LANGUAGES, torrents)
     }
 
     /** Padded before sealing, so the file's size does not count what was watched. */

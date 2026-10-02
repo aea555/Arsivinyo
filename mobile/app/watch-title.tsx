@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -23,6 +23,7 @@ import {
 } from '@/src/api';
 import { AppText as Text, Chip } from '@/src/components';
 import { openPlayer, streamLines } from '@/src/features/watch/open';
+import { useTorrentHeadsUp, VpnNotice } from '@/src/features/watch/Torrents';
 import { useTheme } from '@/src/theme';
 
 type Params = { id: string; type: string; name: string; poster?: string; play?: string; bingeGroup?: string; addonKey?: string };
@@ -147,13 +148,12 @@ export default function WatchTitleScreen() {
     };
   }, [title.type, video]);
 
+  const [askHeadsUp, headsUpModal] = useTorrentHeadsUp();
+
   const play = useCallback(
     async (source: Source, stream: WatchStream) => {
       if (!video) return;
-      if (stream.kind === 'torrent') {
-        setMessage(t('watch.torrentsLater'));
-        return;
-      }
+      if (stream.kind === 'torrent' && !(await askHeadsUp())) return;
       setPreparing(stream.target);
       setMessage(null);
       const prepared = await prepareStream(stream).catch(() => null);
@@ -163,7 +163,8 @@ export default function WatchTitleScreen() {
           void Linking.openURL(stream.target);
           return;
         }
-        setMessage(t('watch.playFailed', { code: prepared && !prepared.success ? prepared.code : '' }));
+        const code = prepared && !prepared.success ? prepared.code : '';
+        setMessage(code === 'TORRENT_NO_METADATA' ? t('torrents.noMetadata') : t('watch.playFailed', { code }));
         return;
       }
       const startMs = item?.progress?.videoId === video.id ? item.progress.positionMs : 0;
@@ -184,7 +185,7 @@ export default function WatchTitleScreen() {
         filename: stream.filename ?? null,
       });
     },
-    [isSeries, item, known, meta, router, t, video],
+    [askHeadsUp, isSeries, item, known, meta, router, t, video],
   );
 
   const playTrailer = useCallback(
@@ -219,8 +220,8 @@ export default function WatchTitleScreen() {
     const source = sources.find((s) => s.addonKey === params.addonKey) ?? sources.find((s) => s.streams?.length);
     if (!source?.streams) return;
     const stream =
-      source.streams.find((s) => params.bingeGroup && s.bingeGroup === params.bingeGroup && s.kind !== 'torrent') ??
-      (source.addonKey === params.addonKey ? source.streams.find((s) => s.kind !== 'torrent') : undefined);
+      source.streams.find((s) => params.bingeGroup && s.bingeGroup === params.bingeGroup) ??
+      (source.addonKey === params.addonKey ? source.streams[0] : undefined);
     if (!stream) return;
     autoplayed.current = true;
     void play(source, stream);
@@ -358,6 +359,7 @@ export default function WatchTitleScreen() {
           </SafeAreaView>
         </Modal>
       ) : null}
+      {headsUpModal}
     </SafeAreaView>
   );
 }
@@ -378,21 +380,25 @@ function StreamsList({
   message: string | null;
   onPlay: (source: Source, stream: WatchStream) => void;
 }) {
+  const router = useRouter();
   const { t } = useTranslation();
   const { colors } = useTheme();
   return (
     <View>
       {message ? <Text style={[styles.pad, { color: colors.warning }]}>{message}</Text> : null}
+      {sources.some((s) => s.streams?.some((stream) => stream.kind === 'torrent')) ? <VpnNotice /> : null}
       {sources.length === 0 ? <Text style={[styles.pad, { color: colors.textMuted }]}>{t('watch.noSources')}</Text> : null}
-      {sources.map((source) => (
+      {/* Said once, when every add-on has answered and none has a stream: an add-on that
+          failed or has nothing for this is left out rather than listed with an error. */}
+      {sources.length > 0 && sources.every((s) => s.streams !== null || s.failed) &&
+      sources.every((s) => s.failed || (s.streams?.length ?? 0) === 0) ? (
+        <Text style={[styles.pad, { color: colors.textMuted }]}>{t('watch.noStreamsAnywhere')}</Text>
+      ) : null}
+      {sources.filter((source) => !source.failed && source.streams?.length !== 0).map((source) => (
         <View key={source.addonKey} style={styles.source}>
           <Text style={[styles.sourceName, { color: colors.textMuted }]}>{source.name}</Text>
           {source.streams === null ? (
             <ActivityIndicator color={colors.accent} style={styles.sourceLoading} />
-          ) : source.failed ? (
-            <Text style={[styles.small, { color: colors.textMuted }]}>{t('watch.rowFailed', { code: source.failed })}</Text>
-          ) : source.streams.length === 0 ? (
-            <Text style={[styles.small, { color: colors.textMuted }]}>{t('watch.noStreams')}</Text>
           ) : (
             source.streams.map((stream, index) => {
               const [line, detail] = streamLines(stream);
@@ -401,7 +407,9 @@ function StreamsList({
                 <Pressable
                   key={`${stream.target}#${index}`}
                   onPress={() => onPlay(source, stream)}
-                  style={[styles.stream, { backgroundColor: colors.surface, opacity: torrent ? 0.55 : 1 }]}
+                  // A torrent can be downloaded instead of streamed: its files chosen, kept.
+                  onLongPress={torrent ? () => router.push({ pathname: '/torrents', params: { add: stream.target } } as unknown as Href) : undefined}
+                  style={[styles.stream, { backgroundColor: colors.surface }]}
                 >
                   <Ionicons
                     name={torrent ? 'magnet-outline' : stream.kind === 'youtube' ? 'logo-youtube' : stream.kind === 'external' ? 'open-outline' : 'play-circle-outline'}

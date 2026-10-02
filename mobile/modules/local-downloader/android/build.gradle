@@ -109,10 +109,20 @@ def copyFaceModels = tasks.register("copyFaceModels", CopyFaceModels) {
   assets.set(layout.buildDirectory.dir("generated/faces-assets"))
 }
 
-// CMake reads the headers and links the library straight from where they were unpacked.
+// The torrent engine's libtorrent and OpenSSL, built from pinned source (shared/torrent);
+// shared/torrent/build.sh is a no-op once they are built.
+def sharedTorrent = file("${projectDir}/../../../../shared/torrent")
+def buildTorrent = tasks.register("buildTorrent", Exec) {
+  commandLine "${sharedTorrent}/build.sh", "android"
+  inputs.file("${sharedTorrent}/VERSIONS.json")
+  inputs.file("${sharedTorrent}/build.sh")
+  outputs.file("${sharedTorrent}/build/android/defines.txt")
+}
+
+// CMake reads the headers and links the libraries straight from where they were unpacked.
 tasks.configureEach { task ->
   if (task.name.startsWith("configureCMake") || task.name.startsWith("buildCMake")) {
-    task.dependsOn(extractOnnxRuntime)
+    task.dependsOn(extractOnnxRuntime, buildTorrent)
   }
 }
 
@@ -123,10 +133,11 @@ def copyFaceFixtures = tasks.register("copyFaceFixtures", CopyFaceModels) {
   target.set("faces-test")
 }
 
-// The player's sample: an MKV with HEVC, AC3, DTS and styled ASS, which the instrumented
-// test plays as the watch contract's phase 2 asks.
+// The player's sample (an MKV with HEVC, AC3, DTS and styled ASS) and the torrent engine's
+// fixture, for the instrumented tests that hold the phone to the watch contract.
 def copyWatchFixtures = tasks.register("copyWatchFixtures", CopyFaceModels) {
   models.from(fileTree(file("${projectDir}/../../../../shared/watch/fixtures")) { include "*.mkv" })
+  models.from(fileTree(file("${projectDir}/../../../../shared/torrent/fixtures")) { include "*.torrent" })
   assets.set(layout.buildDirectory.dir("generated/watch-test-assets"))
   target.set("watch-test")
 }
@@ -181,7 +192,8 @@ android {
   defaultConfig {
     externalNativeBuild {
       cmake {
-        arguments "-DONNXRUNTIME_DIR=${layout.buildDirectory.dir("onnxruntime").get().asFile.absolutePath}"
+        arguments "-DONNXRUNTIME_DIR=${layout.buildDirectory.dir("onnxruntime").get().asFile.absolutePath}",
+          "-DTORRENT_DIR=${file("${projectDir}/../../../../shared/torrent/build/android").absolutePath}"
       }
     }
   }

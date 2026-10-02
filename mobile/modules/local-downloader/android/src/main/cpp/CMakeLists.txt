@@ -73,3 +73,26 @@ set_target_properties(faces PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 target_link_libraries(faces onnxruntime ${log-lib})
+
+# Torrents: shared/torrent, the same C++ the Mac compiles, over libtorrent and OpenSSL built
+# from pinned source by shared/torrent/build.sh into TORRENT_DIR (build.gradle runs it). Its
+# defines are libtorrent's own, as it was built: a mismatch changes the size of its classes.
+set(ARSIVINYO_TORRENT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../../shared/torrent)
+file(STRINGS ${TORRENT_DIR}/defines.txt TORRENT_DEFINES)
+
+add_library(torrent SHARED
+    torrent_jni.cpp
+    ${ARSIVINYO_TORRENT}/torrent.cpp
+)
+target_include_directories(torrent PRIVATE ${ARSIVINYO_TORRENT} ${TORRENT_DIR}/include)
+target_compile_definitions(torrent PRIVATE ${TORRENT_DEFINES})
+target_compile_options(torrent PRIVATE -Wall -Wextra -Wno-unused-parameter)
+set_target_properties(torrent PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+target_link_libraries(torrent
+    ${TORRENT_DIR}/lib/libtorrent-rasterbar.a
+    ${TORRENT_DIR}/openssl/lib/libssl.a
+    ${TORRENT_DIR}/openssl/lib/libcrypto.a
+    ${log-lib})

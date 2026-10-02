@@ -14,6 +14,7 @@ import LocalDownloaderModule, {
   type WatchStreamKind,
   type WatchSubtitle,
   type WatchLanguages,
+  type TorrentSettings,
   type WatchTitle,
   type WatchVideo,
 } from '../native/localDownloader';
@@ -32,6 +33,7 @@ export type {
   WatchStreamKind,
   WatchSubtitle,
   WatchLanguages,
+  TorrentSettings,
   WatchTitle,
   WatchVideo,
 };
@@ -63,8 +65,11 @@ export const getCatalog = (row: WatchRow, extra: Record<string, string> = {}) =>
 export const getMeta = (type: string, id: string) => M.watchMeta(type, id);
 export const getStreamSources = (type: string, id: string) => M.watchStreamSources(type, id);
 export const getStreams = (addonKey: string, type: string, id: string) => M.watchStreams(addonKey, type, id);
-export const prepareStream = (stream: Pick<WatchStream, 'kind' | 'target' | 'headers'>) =>
-  M.watchPrepare(stream.kind, stream.target, stream.headers ?? {});
+export const prepareStream = (stream: Pick<WatchStream, 'kind' | 'target' | 'headers' | 'fileIdx' | 'filename'>) =>
+  M.watchPrepare(stream.kind, stream.target, stream.headers ?? {}, stream.fileIdx ?? null, stream.filename ?? null);
+export const getTorrentSettings = () => M.watchTorrentSettings();
+export const setTorrentSettings = (values: Partial<TorrentSettings>) => M.watchSetTorrentSettings(values);
+export const vpnAppearsActive = () => M.watchVpnActive();
 /** Subtitles for a video in the preferred languages, best first: the stream's own, then add-ons'. */
 export const getSubtitles = (type: string, id: string, filename: string | null, own: WatchSubtitle[]) =>
   M.watchSubtitles(type, id, filename, own);

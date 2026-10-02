@@ -27,9 +27,12 @@ internal data class BackgroundNotificationState(
    * and their combined progress — rather than picking one download to represent them all.
    */
   val activeCount: Int = if (activeTaskId.isNullOrBlank()) 0 else 1,
+  /** Torrents downloading, and how far along they are together. Never their names. */
+  val torrentCount: Int = 0,
+  val torrentPercent: Double? = null,
 ) {
   val hasWork: Boolean
-    get() = activeCount > 0 || queueSize > 0
+    get() = activeCount > 0 || queueSize > 0 || torrentCount > 0
 
   val shouldRunForeground: Boolean
     get() = hasWork || pinned
@@ -54,6 +57,8 @@ internal object DownloadNotificationController {
   private const val EXTRA_AUDIO_MODE_ENABLED = "extra_audio_mode_enabled"
   private const val EXTRA_PINNED = "extra_pinned"
   private const val EXTRA_ACTIVE_COUNT = "extra_active_count"
+  private const val EXTRA_TORRENT_COUNT = "extra_torrent_count"
+  private const val EXTRA_TORRENT_PERCENT = "extra_torrent_percent"
 
   fun startOrUpdate(context: Context, state: BackgroundNotificationState) {
     ensureChannel(context)
@@ -68,6 +73,8 @@ internal object DownloadNotificationController {
       putExtra(EXTRA_AUDIO_MODE_ENABLED, state.audioModeEnabled)
       putExtra(EXTRA_PINNED, state.pinned)
       putExtra(EXTRA_ACTIVE_COUNT, state.activeCount)
+      putExtra(EXTRA_TORRENT_COUNT, state.torrentCount)
+      state.torrentPercent?.let { putExtra(EXTRA_TORRENT_PERCENT, it) }
     }
     ContextCompat.startForegroundService(context, intent)
   }
@@ -90,14 +97,21 @@ internal object DownloadNotificationController {
       audioModeEnabled = intent?.getBooleanExtra(EXTRA_AUDIO_MODE_ENABLED, false) ?: false,
       pinned = intent?.getBooleanExtra(EXTRA_PINNED, false) ?: false,
       activeCount = intent?.getIntExtra(EXTRA_ACTIVE_COUNT, 0) ?: 0,
+      torrentCount = intent?.getIntExtra(EXTRA_TORRENT_COUNT, 0) ?: 0,
+      torrentPercent = intent?.getDoubleExtra(EXTRA_TORRENT_PERCENT, Double.NaN)?.takeIf { !it.isNaN() },
     )
   }
 
   fun buildNotification(context: Context, state: BackgroundNotificationState): Notification {
     ensureChannel(context)
 
-    val hasActiveTask = state.activeCount > 0
+    // Torrents alone: "Downloading 2 torrents" and their progress, never a name (CONTRACT.md).
+    // With other downloads running, those lead and torrents go on underneath.
+    val torrentsOnly = state.activeCount == 0 && state.queueSize == 0 && state.torrentCount > 0
+    val hasActiveTask = state.activeCount > 0 || torrentsOnly
     val title = when {
+      torrentsOnly -> if (state.torrentCount == 1) context.getString(R.string.ldl_title_torrent)
+        else context.getString(R.string.ldl_title_torrents, state.torrentCount)
       // Several at once gets its own title: "Downloading" beside a bar that is the mean
       // of three unrelated downloads would read as one download stalling and jumping.
       state.activeCount > 1 -> context.getString(R.string.ldl_title_downloading_many, state.activeCount)
@@ -108,7 +122,7 @@ internal object DownloadNotificationController {
     // Prefer the localized phase-based subtitle for known phases so the line stays
     // localized even when callers pass an English progress message; fall back to the
     // passed message for custom/idle states.
-    val phaseSubtitle = when (state.phase) {
+    val phaseSubtitle = if (torrentsOnly) context.getString(R.string.ldl_sub_downloading) else when (state.phase) {
       "starting" -> context.getString(R.string.ldl_sub_starting)
       "downloading" -> context.getString(R.string.ldl_sub_downloading)
       "processing" -> context.getString(R.string.ldl_sub_processing)
@@ -132,7 +146,7 @@ internal object DownloadNotificationController {
     val privateLabel = if (state.privateModeEnabled) context.getString(R.string.ldl_private_on) else context.getString(R.string.ldl_private_off)
     val audioLabel = if (state.audioModeEnabled) context.getString(R.string.ldl_audio_on) else context.getString(R.string.ldl_audio_off)
 
-    val progress = state.progressPercent?.toInt()?.coerceIn(0, 100)
+    val progress = (if (torrentsOnly) state.torrentPercent else state.progressPercent)?.toInt()?.coerceIn(0, 100)
     val showIndeterminate = hasActiveTask && (state.phase == "starting" || state.phase == "processing" || progress == null)
     val progressText = when {
       showIndeterminate -> "..."
@@ -172,7 +186,8 @@ internal object DownloadNotificationController {
         setProgressBar(R.id.notification_progress, 100, progress ?: 0, false)
         setTextViewText(R.id.notification_progress_text, progressText)
       }
-      if (hasActiveTask) {
+      // Cancel is the downloader's; torrents are paused and removed from their own screen.
+      if (state.activeCount > 0) {
         setViewVisibility(R.id.notification_action_cancel, android.view.View.VISIBLE)
         setOnClickPendingIntent(R.id.notification_action_cancel, buildActionPendingIntent(context, DownloadActionReceiver.ACTION_CANCEL_ACTIVE, 41))
       } else {

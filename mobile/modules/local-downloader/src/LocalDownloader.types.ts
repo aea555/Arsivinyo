@@ -997,6 +997,46 @@ export interface WatchSubtitle {
   lang: string;
 }
 
+export interface TorrentFile {
+  index: number;
+  path: string;
+  size: number;
+}
+
+/** A torrent download and what the engine says about it now. Its name is private. */
+export interface TorrentDownload {
+  id: string;
+  name: string;
+  destination: 'public' | 'private';
+  /** choosing: waiting for the files to be picked; done: every chosen file filed. */
+  state: 'choosing' | 'downloading' | 'done';
+  wanted: number;
+  taken: number;
+  addedAt: number;
+  engine: {
+    state: string;
+    paused: boolean;
+    finished: boolean;
+    progress: number;
+    done: number;
+    size: number;
+    downloadRate: number;
+    uploadRate: number;
+    peers: number;
+    seeds: number;
+    etaSeconds: number | null;
+  } | null;
+}
+
+/** This device's torrent rules (shared/watch/CONTRACT.md, "Seeding"). */
+export interface TorrentSettings {
+  /** Stop seeding at this ratio; 0 never seeds. */
+  seedRatio: number;
+  seedOnMobileData: boolean;
+  cacheLimitBytes: number;
+  headsUpDismissed: boolean;
+}
+
 export interface WatchLanguages {
   /** Most preferred first, as ISO 639-2 codes. */
   chosen: string[];
@@ -1043,6 +1083,8 @@ export interface WatchPrepared {
   url: string;
   /** The audio as a separate file, played with the video. */
   audioUrl?: string | null;
+  /** A torrent stream's info hash, played from the engine's loopback server. */
+  torrentId?: string | null;
   headers: Record<string, string>;
   title?: string | null;
   isLive?: boolean;

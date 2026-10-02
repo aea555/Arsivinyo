@@ -12,6 +12,8 @@
 
   <string name="ldl_sub_starting">Preparing download</string>
   <string name="ldl_sub_downloading">Download in progress</string>
+  <string name="ldl_title_torrents">Downloading %1$d torrents</string>
+  <string name="ldl_title_torrent">Downloading a torrent</string>
   <string name="ldl_sub_processing">Processing media</string>
   <string name="ldl_sub_saving">Saving media</string>
   <string name="ldl_sub_completed">Completed</string>

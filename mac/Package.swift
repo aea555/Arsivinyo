@@ -30,6 +30,16 @@ let openSSLHeaders = ["Libcrypto", "Libssl"].map {
 }
 let mpvKit = Target.Dependency.target(name: "MPVKit")
 
+// The torrent engine, shared/torrent: libtorrent built from pinned source by
+// shared/torrent/build.sh, and compiled against with the defines it was built with, which
+// build.sh writes out (a mismatch changes the size of libtorrent's classes).
+let torrentBuild = "\(packageRoot)/../shared/torrent/build/mac"
+let torrentDefines: [CXXSetting] = ((try? String(contentsOfFile: "\(torrentBuild)/defines.txt", encoding: .utf8)) ?? "")
+    .split(separator: "\n").map { line in
+        let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
+        return .define(parts[0], to: parts.count > 1 ? parts[1] : nil)
+    }
+
 let onnxRuntime = "\(packageRoot)/../shared/faces/runtime/onnxruntime-osx-arm64-1.30.0"
 
 let package = Package(
@@ -115,8 +125,25 @@ let package = Package(
                               "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
             ]
         ),
+        // Torrents: shared/torrent by symlink, the same C++ and libtorrent the phone runs.
+        .target(
+            name: "ArsivinyoTorrentC",
+            dependencies: [mpvKit],
+            path: "Sources/ArsivinyoTorrentC",
+            exclude: ["shared/VERSIONS.json", "shared/fetch.sh", "shared/build.sh", "shared/test", "shared/.gitignore",
+                      "shared/sources", "shared/build"],
+            sources: ["shared/torrent.cpp"],
+            cxxSettings: torrentDefines + [
+                .unsafeFlags(["-I\(torrentBuild)/include", "-std=c++17"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["\(torrentBuild)/lib/libtorrent-rasterbar.a"]),
+                .linkedFramework("SystemConfiguration"),
+            ]
+        ),
         .target(name: "ArsivinyoCore",
-                dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC", "ArsivinyoPairingC", "ArsivinyoFacesC", mpvKit]),
+                dependencies: ["ArsivinyoCryptoC", "ArsivinyoDSPC", "ArsivinyoPairingC", "ArsivinyoFacesC",
+                               "ArsivinyoTorrentC", mpvKit]),
 
         // The app. SwiftPM rather than an .xcodeproj: Xcode opens Package.swift directly,
         // and a command-line build means the app can be launched and looked at from a
@@ -130,6 +157,6 @@ let package = Package(
         // An executable rather than a .testTarget: XCTest ships with Xcode, and the core
         // has to be verifiable without it. This is also the harness the C++ tests already
         // use — print a line per check, exit non-zero if any failed.
-        .executableTarget(name: "CoreChecks", dependencies: ["ArsivinyoCore", mpvKit]),
+        .executableTarget(name: "CoreChecks", dependencies: ["ArsivinyoCore", "ArsivinyoTorrentC", mpvKit]),
     ]
 )
