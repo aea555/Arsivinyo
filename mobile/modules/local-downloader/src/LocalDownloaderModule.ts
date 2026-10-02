@@ -19,6 +19,15 @@ import type {
   LocalMemePerson,
   LocalMemeResult,
   LocalMemeTag,
+  WatchAddon,
+  WatchItem,
+  WatchMeta,
+  WatchPrepared,
+  WatchPreview,
+  WatchResult,
+  WatchRow,
+  WatchStream,
+  WatchTitle,
   LocalSoundPresetProgressEvent,
   LocalSoundPresetStartResult,
   LocalCookieProfile,
@@ -160,6 +169,26 @@ type LocalDownloaderNativeModule = {
   pairingSetAutoDownloadLinks(enabled: boolean): Promise<boolean>;
   pairingHasPeers(): Promise<boolean>;
   pairingSendMeme(fingerprint: string, id: string): Promise<boolean>;
+
+  // ---- watch ----
+  watchAddons(): Promise<WatchAddon[]>;
+  watchInstallAddon(url: string): Promise<WatchResult<{ name: string }>>;
+  watchUninstallAddon(key: string): Promise<void>;
+  watchSetAddonEnabled(key: string, enabled: boolean): Promise<void>;
+  watchMoveAddon(key: string, position: number): Promise<void>;
+  watchRows(search: boolean): Promise<WatchRow[]>;
+  watchCatalog(addonKey: string, type: string, id: string, extra: Record<string, string>): Promise<WatchResult<{ items: WatchPreview[] }>>;
+  watchMeta(type: string, id: string): Promise<WatchResult<{ addonKey: string; meta: WatchMeta }>>;
+  watchStreamSources(type: string, id: string): Promise<{ addonKey: string; name: string }[]>;
+  watchStreams(addonKey: string, type: string, id: string): Promise<WatchResult<{ streams: WatchStream[] }>>;
+  watchPrepare(kind: string, target: string, headers: Record<string, string>): Promise<WatchResult<WatchPrepared>>;
+  watchLibrary(): Promise<{ continue: WatchItem[]; saved: WatchItem[] }>;
+  watchItem(id: string): Promise<WatchItem | null>;
+  watchRecordProgress(title: WatchTitle, videoId: string, positionMs: number, durationMs: number, addonKey: string | null, bingeGroup: string | null): Promise<void>;
+  watchSetWatched(title: WatchTitle, videoId: string, watched: boolean): Promise<void>;
+  watchSetSaved(title: WatchTitle, saved: boolean): Promise<void>;
+  watchDismiss(id: string): Promise<void>;
+  watchRemove(id: string): Promise<void>;
 
   // ---- memes ----
   listMemes(): Promise<LocalMemeLibrary>;
@@ -306,6 +335,24 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       pairingSetAutoDownloadLinks: async () => unsupported(),
       pairingHasPeers: async () => false,
       pairingSendMeme: async () => unsupported(),
+      watchAddons: async () => unsupported(),
+      watchInstallAddon: async () => unsupported(),
+      watchUninstallAddon: async () => unsupported(),
+      watchSetAddonEnabled: async () => unsupported(),
+      watchMoveAddon: async () => unsupported(),
+      watchRows: async () => unsupported(),
+      watchCatalog: async () => unsupported(),
+      watchMeta: async () => unsupported(),
+      watchStreamSources: async () => unsupported(),
+      watchStreams: async () => unsupported(),
+      watchPrepare: async () => unsupported(),
+      watchLibrary: async () => unsupported(),
+      watchItem: async () => unsupported(),
+      watchRecordProgress: async () => unsupported(),
+      watchSetWatched: async () => unsupported(),
+      watchSetSaved: async () => unsupported(),
+      watchDismiss: async () => unsupported(),
+      watchRemove: async () => unsupported(),
       listMemes: async () => unsupported(),
       memeThumbnail: async () => unsupported(),
       memeSuggestions: async () => unsupported(),

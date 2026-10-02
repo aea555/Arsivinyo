@@ -20,6 +20,7 @@ struct RootView: View {
                 Section {
                     row(.download)
                     row(.library)
+                    row(.watch)
                     row(.memes)
                     row(.vault)
                 }
@@ -87,6 +88,7 @@ struct RootView: View {
         switch model.section {
         case .download: DownloadView()
         case .library: MusicView()
+        case .watch: WatchView()
         case .memes: MemesView()
         case .vault: VaultView()
         case .devices: DevicesView()

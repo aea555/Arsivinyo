@@ -196,6 +196,19 @@ def _run_ytdlp_versions(request_id: str, req: Dict[str, Any]) -> None:
               "error": f"{type(exc).__name__}: {exc}"})
 
 
+def _run_resolve(request_id: str, req: Dict[str, Any]) -> None:
+    """A page to a playable stream, for the watch section; nothing is downloaded."""
+    try:
+        result = json.loads(_engine().resolve_stream(
+            req["url"],
+            cookie_file=req.get("cookieFile"),
+        ))
+        # ok with success false, as a refused download is: the client reads the code from it.
+        emit({"id": request_id, "type": "result", "ok": True, "result": result})
+    except Exception as exc:
+        emit({"id": request_id, "type": "result", "ok": False, "error": str(exc)})
+
+
 def _bundle_root() -> str:
     """Where yt-dlp lives: beside the executable when frozen, beside this file otherwise."""
     if getattr(sys, "frozen", False):
@@ -211,6 +224,8 @@ def _handle(req: Dict[str, Any]) -> None:
         _spawn(_run_download, request_id, req)
     elif op == "preflight":
         _spawn(_run_preflight, request_id, req)
+    elif op == "resolve":
+        _spawn(_run_resolve, request_id, req)
     elif op == "cancel":
         with _cancel_lock:
             path = _cancel_flags.get(request_id)

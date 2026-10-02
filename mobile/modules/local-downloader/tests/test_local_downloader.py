@@ -817,6 +817,73 @@ class LocalDownloaderUnitTests(unittest.TestCase):
             self.assertEqual(header, "session=abc")
 
 
+class ResolveStreamTests(unittest.TestCase):
+    """resolve_stream: a page to something a player opens, for the watch section."""
+
+    def _resolve(self, info=None, error=None):
+        seen = {}
+
+        class Fake:
+            def __init__(self, opts=None):
+                seen["opts"] = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def extract_info(self, url, download=False):
+                seen["download"] = download
+                if error:
+                    raise error
+                return info
+
+        with unittest.mock.patch.object(ld.yt_dlp, "YoutubeDL", Fake):
+            return json.loads(ld.resolve_stream("https://example.com/watch")), seen
+
+    def test_a_chosen_format_gives_its_url_and_headers_without_downloading(self):
+        result, seen = self._resolve({"title": "T", "duration": 61.5, "url": "https://cdn/x.mp4",
+                                      "protocol": "https", "http_headers": {"Referer": "https://example.com"}})
+        self.assertTrue(result["success"])
+        self.assertEqual(result["url"], "https://cdn/x.mp4")
+        self.assertEqual(result["headers"], {"Referer": "https://example.com"})
+        self.assertEqual(result["durationMs"], 61500)
+        self.assertFalse(seen["download"])
+        self.assertTrue(seen["opts"]["skip_download"])
+        self.assertEqual(seen["opts"]["format"], ld.STREAM_FORMAT)
+
+    def test_a_playlist_gives_its_first_entry(self):
+        result, _ = self._resolve({"_type": "playlist", "entries": [None, {"url": "https://cdn/1.mp4", "title": "one"}]})
+        self.assertEqual(result["url"], "https://cdn/1.mp4")
+        self.assertEqual(result["title"], "one")
+
+    def test_an_hls_master_wins_because_it_carries_the_audio(self):
+        # YouTube's shape: video-only and audio-only files, and HLS formats sharing one master.
+        result, _ = self._resolve({"formats": [
+            {"url": "https://v/137", "vcodec": "avc1", "acodec": "none", "height": 1080},
+            {"url": "https://a/140", "vcodec": "none", "acodec": "mp4a"},
+            {"url": "https://h/270.m3u8", "protocol": "m3u8_native", "vcodec": "avc1", "acodec": "none",
+             "manifest_url": "https://h/master.m3u8"},
+        ]})
+        self.assertEqual(result["url"], "https://h/master.m3u8")
+
+    def test_without_hls_the_best_file_with_both_wins(self):
+        result, _ = self._resolve({"formats": [
+            {"url": "https://f/360", "vcodec": "avc1", "acodec": "mp4a", "height": 360},
+            {"url": "https://f/720", "vcodec": "avc1", "acodec": "mp4a", "height": 720},
+            {"url": "https://f/1080v", "vcodec": "avc1", "acodec": "none", "height": 1080},
+        ]})
+        self.assertEqual(result["url"], "https://f/720")
+
+    def test_nothing_to_play_and_errors_are_codes(self):
+        result, _ = self._resolve({"title": "x"})
+        self.assertEqual(result["code"], "RESOLVE_NO_MEDIA")
+        result, _ = self._resolve(error=RuntimeError("blocked"))
+        self.assertFalse(result["success"])
+        self.assertEqual(result["code"], "RESOLVE_FAILED")
+
+
 class RuntimeDiagnosticsIsolationTests(unittest.TestCase):
     """Two downloads must not see each other's diagnostics.
 

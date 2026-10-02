@@ -353,6 +353,10 @@ export default function HomeScreen() {
     router.push('/sounds' as Href);
   }, [router]);
 
+  const openWatch = useCallback(() => {
+    router.push('/watch' as Href);
+  }, [router]);
+
   const openMemes = useCallback(() => {
     router.push('/memes' as Href);
   }, [router]);
@@ -499,6 +503,21 @@ export default function HomeScreen() {
               <Ionicons name="happy-outline" size={19} color={colors.text} />
               <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
                 {t('home.navMemes')}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('home.navWatch')}
+              onPress={openWatch}
+              style={({ pressed }) => [
+                styles.headerNavButton,
+                { backgroundColor: pressed ? colors.surfaceHover : colors.surface },
+              ]}
+              hitSlop={6}
+            >
+              <Ionicons name="film-outline" size={19} color={colors.text} />
+              <Text allowFontScaling={false} numberOfLines={1} style={[styles.headerNavLabel, { color: colors.textMuted }]}>
+                {t('home.navWatch')}
               </Text>
             </Pressable>
             <Pressable

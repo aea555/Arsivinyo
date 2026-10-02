@@ -405,3 +405,37 @@ extension EngineClient {
         return arguments
     }
 }
+
+// MARK: - Streams for the watch section
+
+extension EngineClient {
+    /// What a player can open for a page: yt-dlp's choice, with the headers it needs.
+    public struct ResolvedStream: Sendable {
+        public var url: URL
+        public var headers: [String: String]
+        public var title: String?
+    }
+
+    /// A page, a YouTube video or an external link to something a player opens, without
+    /// downloading it (`shared/watch/CONTRACT.md`).
+    public func resolveStream(_ address: String) async throws -> ResolvedStream {
+        let (_, events) = perform("resolve", ["url": address])
+        for await event in events {
+            guard case .finished(let result) = event else { continue }
+            switch result {
+            case .failure(let error):
+                throw error
+            case .success(let payload):
+                guard let url = payload["url"]?.string.flatMap(URL.init(string:)) else {
+                    throw Event.EngineError(description: "RESOLVE_NO_MEDIA", code: "RESOLVE_NO_MEDIA")
+                }
+                var headers: [String: String] = [:]
+                if case .object(let object)? = payload["headers"] {
+                    for (key, value) in object { if let text = value.string { headers[key] = text } }
+                }
+                return ResolvedStream(url: url, headers: headers, title: payload["title"]?.string)
+            }
+        }
+        throw Event.EngineError(description: "the engine did not answer", code: "RESOLVE_FAILED")
+    }
+}

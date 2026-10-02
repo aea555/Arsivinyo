@@ -666,11 +666,11 @@ public final class MemeLibrary: @unchecked Sendable {
 /// The device key for memes that are not private: 32 random bytes in the login Keychain,
 /// made on first use. Readable without a prompt, which is the point: search never asks.
 public enum MemeDeviceKey {
-    public static func load(service: String) throws -> Data {
+    public static func load(service: String, account: String = "memes-index") throws -> Data {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "memes-index",
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -690,9 +690,9 @@ public enum MemeDeviceKey {
         return key
     }
 
-    public static func delete(service: String) {
+    public static func delete(service: String, account: String = "memes-index") {
         SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                       kSecAttrAccount as String: "memes-index"] as CFDictionary)
+                       kSecAttrAccount as String: account] as CFDictionary)
     }
 }
 

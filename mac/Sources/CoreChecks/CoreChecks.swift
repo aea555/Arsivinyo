@@ -115,24 +115,30 @@ struct CoreChecks {
         }
 
         var runner = CoreChecks()
-        do {
-            try runner.run()
-            try runner.checkKeyboxAndVault()
-            try await runner.checkPlayback()
-            try await runner.checkMusic()
-            try runner.checkCookies()
-            try await runner.checkPresets()
-            try await runner.checkBackup()
-            try await runner.checkPhoneBackup()
-            try runner.checkPairingVectors()
-            try runner.checkPairingLoopback()
-            try runner.checkMemes()
-            try runner.checkFaces()
-            await runner.checkEngine()
-        } catch {
-            print("  FAIL  threw: \(error)")
-            runner.failures += 1
+        // Each section on its own: one that throws, as the Keychain does when it will not
+        // be reached from this shell, is a failure of that section, not of the ones after it.
+        func section(_ name: String, _ body: (inout CoreChecks) async throws -> Void) async {
+            do {
+                try await body(&runner)
+            } catch {
+                print("  FAIL  \(name) threw: \(error)")
+                runner.failures += 1
+            }
         }
+        await section("crypto") { try $0.run() }
+        await section("vault") { try $0.checkKeyboxAndVault() }
+        await section("playback") { try await $0.checkPlayback() }
+        await section("music") { try await $0.checkMusic() }
+        await section("cookies") { try $0.checkCookies() }
+        await section("presets") { try await $0.checkPresets() }
+        await section("backup") { try await $0.checkBackup() }
+        await section("phone backup") { try await $0.checkPhoneBackup() }
+        await section("pairing vectors") { try $0.checkPairingVectors() }
+        await section("pairing loopback") { try $0.checkPairingLoopback() }
+        await section("memes") { try $0.checkMemes() }
+        await section("faces") { try $0.checkFaces() }
+        await section("watch") { try await $0.checkWatch() }
+        await section("engine") { await $0.checkEngine() }
         print("\n\(runner.failures == 0 ? "the pinned vectors hold on this Mac" : "FAILURES")")
         exit(runner.failures == 0 ? 0 : 1)
     }

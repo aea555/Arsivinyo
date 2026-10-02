@@ -75,7 +75,8 @@
     "musicLibrary": "Müzik kitaplığı",
     "musicLibraryHint": "Müzik çaları açın ve müziğinizi yönetin.",
     "savedToMusic": "Müzik kitaplığına kaydedildi.",
-    "navMemes": "Mimler"
+    "navMemes": "Mimler",
+    "navWatch": "İzle"
   },
   "privateVault": {
     "title": "Gizli Kasa",
@@ -782,5 +783,57 @@
       "deleteTitle": "“{{name}}” silinsin mi?",
       "deleteBody": "Adı her mimden kaldırılır; yüzleri yeniden adsız olur, böylece yeniden ad verilebilir."
     }
+  },
+  "watch": {
+    "title": "İzle",
+    "searchPlaceholder": "Film ve dizi ara",
+    "continue": "İzlemeye devam et",
+    "saved": "Listem",
+    "emptyTitle": "Henüz izlenecek bir şey yok",
+    "emptyHint": "İzle, Stremio eklentilerinden kataloglar ve yayınlar gösterir. Stremio'nun kendi kataloğu Cinemeta ile başla, sonra kullandığın eklentileri ekle.",
+    "installCinemeta": "Cinemeta'yı kur",
+    "addOther": "Başka bir eklenti ekle",
+    "installFailed": "Kurulamadı ({{code}}).",
+    "noSearch": "Arama yapabilen bir eklenti yok. Cinemeta gibi arayabilen bir tane kur.",
+    "rowFailed": "Yanıt vermedi ({{code}}).",
+    "type": {
+      "movie": "Filmler",
+      "series": "Diziler",
+      "channel": "Kanallar",
+      "tv": "TV"
+    },
+    "save": "Listeme ekle",
+    "unsave": "Listemden çıkar",
+    "metaFailed": "Hiçbir eklenti bu yapımı tanımlamıyor ({{code}}).",
+    "season": "{{n}}. sezon",
+    "specials": "Özel bölümler",
+    "longPressWatched": "Bir bölümü izlendi ya da izlenmedi diye işaretlemek için basılı tut.",
+    "streams": "Yayınlar",
+    "noSources": "Kurulu eklentilerin hiçbiri bunun için yayın sunmuyor.",
+    "noStreams": "Yayın yok.",
+    "torrentsLater": "Torrent yayınları sonraki bir güncellemeyle gelecek.",
+    "playFailed": "Oynatılamadı {{code}}",
+    "nextEpisode": "Sonraki bölüm",
+    "errors": {
+      "WATCH_BAD_URL": "Bu bir eklenti adresi değil.",
+      "WATCH_NEEDS_CONFIGURATION": "Bu eklentinin önce ayarlanması gerekiyor: sayfasını tarayıcıda aç, ayarla ve verdiği adresi yapıştır.",
+      "WATCH_BAD_MANIFEST": "Bu adres bir eklentiyi tanımlamıyor.",
+      "WATCH_TIMEOUT": "Eklenti zamanında yanıt vermedi.",
+      "WATCH_NETWORK": "Eklentiye ulaşılamadı."
+    },
+    "addons": {
+      "title": "Eklentiler",
+      "hint": "Bir eklentinin adresini yapıştır: manifest bağlantısını ya da stremio:// bağlantısını. Ayarlanmış eklentiler adreslerinde çoğu zaman bir hesap anahtarı tutar; bu yüzden adres şifreli saklanır ve bir daha gösterilmez.",
+      "placeholder": "https://…/manifest.json",
+      "install": "Kur",
+      "installed": "{{name}} kuruldu.",
+      "up": "Yukarı taşı",
+      "down": "Aşağı taşı",
+      "remove": "Kaldır",
+      "removeTitle": "“{{name}}” kaldırılsın mı?",
+      "removeBody": "Katalogları ve yayınları kaybolur. İzlediklerin kütüphanende kalır."
+    },
+    "trailer": "Fragman",
+    "trailerOf": "Fragman · {{name}}"
   }
 }

@@ -89,7 +89,11 @@ import expo.modules.kotlin.Promise
 import expo.modules.localdownloader.memes.Face
 import expo.modules.localdownloader.memes.FaceScanner
 import expo.modules.localdownloader.memes.FacesNative
+import expo.modules.localdownloader.memes.KeystoreSealer
 import expo.modules.localdownloader.memes.MemeCollection
+import expo.modules.localdownloader.watch.Addons
+import expo.modules.localdownloader.watch.WatchLibrary
+import expo.modules.localdownloader.watch.WatchService
 import expo.modules.localdownloader.memes.ScannedFace
 import expo.modules.localdownloader.pairing.ItemSource
 import expo.modules.localdownloader.memes.MemeStore
@@ -843,6 +847,102 @@ class LocalDownloaderModule : Module() {
 
   private fun faceMap(face: Face) = mapOf("id" to face.id, "person" to face.person, "state" to face.state.wire)
 
+  // ---- watch (shared/watch/CONTRACT.md) ----------------------------------------------------
+
+  private val watch: WatchService by lazy {
+    val context = requireNotNull(appContext.reactContext).applicationContext
+    WatchService(WatchLibrary(File(context.filesDir, "watch/library.bin"), KeystoreSealer("arsivinyo_watch_library_v1")))
+  }
+
+  /** Add-on requests and stream resolving: network work, never on the module's own queue. */
+  private val watchWork = java.util.concurrent.Executors.newFixedThreadPool(4) { runnable ->
+    Thread(runnable, "watch").apply { priority = Thread.NORM_PRIORITY - 1 }
+  }
+
+  /** Runs [work] off the module's queue and answers [promise] with its map, or a failure code. */
+  private fun watchAsync(promise: Promise, work: () -> Any?) {
+    watchWork.execute {
+      promise.resolve(try {
+        work()
+      } catch (failure: WatchService.Failure) {
+        mapOf("success" to false, "code" to failure.code)
+      } catch (error: Throwable) {
+        addError("WATCH_FAILED: ${error.javaClass.simpleName}")
+        mapOf("success" to false, "code" to "WATCH_FAILED")
+      })
+    }
+  }
+
+  private fun watchAddonMap(addon: WatchLibrary.Addon): Map<String, Any?> {
+    val manifest = Addons.manifest(addon.manifest)
+    return mapOf(
+      "key" to watch.key(addon.base),
+      "name" to (manifest?.name ?: watch.host(addon.base)),
+      "host" to watch.host(addon.base),
+      "version" to manifest?.version,
+      "description" to manifest?.description,
+      "logo" to manifest?.logo,
+      "types" to manifest?.types.orEmpty(),
+      "resources" to manifest?.resources.orEmpty().map { it.name },
+      "enabled" to addon.enabled,
+    )
+  }
+
+  private fun previewMap(p: Addons.Preview) = mapOf(
+    "id" to p.id, "type" to p.type, "name" to p.name, "poster" to p.poster, "posterShape" to p.posterShape,
+    "releaseInfo" to p.releaseInfo, "description" to p.description,
+  )
+
+  private fun streamMap(s: Addons.Stream) = mapOf(
+    "kind" to s.kind.wire, "target" to s.target, "fileIdx" to s.fileIdx, "label" to s.label, "detail" to s.detail,
+    "bingeGroup" to s.bingeGroup, "headers" to s.headers, "filename" to s.filename,
+  )
+
+  private fun watchItemMap(item: WatchLibrary.Item) = mapOf(
+    "id" to item.id, "type" to item.type, "name" to item.name, "poster" to item.poster, "addedAt" to item.addedAt,
+    "watched" to item.watched.toList(), "saved" to item.saved, "addonKey" to item.addon, "bingeGroup" to item.bingeGroup,
+    "progress" to item.progress?.let {
+      mapOf("videoId" to it.videoId, "positionMs" to it.positionMs, "durationMs" to it.durationMs, "at" to it.at)
+    },
+  )
+
+  private fun watchTitle(map: Map<String, Any?>) = WatchLibrary.Title(
+    id = map["id"] as? String ?: throw WatchService.Failure("WATCH_BAD_TITLE"),
+    type = map["type"] as? String ?: "movie",
+    name = map["name"] as? String ?: "",
+    poster = map["poster"] as? String,
+  )
+
+  /**
+   * Something a player can open: a media URL plays as it is; a page, a YouTube video or an
+   * external link goes through yt-dlp first, with the cookies the app keeps for that site.
+   */
+  private fun prepareStream(kind: String, target: String, headers: Map<String, String>): Map<String, Any?> {
+    if (kind == "torrent") throw WatchService.Failure("WATCH_TORRENTS_LATER")
+    if (!Addons.isHttp(target)) throw WatchService.Failure("WATCH_BAD_URL")
+    if (kind == "url" && !watch.isPage(target, headers)) {
+      return mapOf("success" to true, "url" to target, "headers" to headers)
+    }
+    ensurePythonReady()
+    val taskId = "watch-${UUID.randomUUID()}"
+    try {
+      val cookieFile = runCatching { prepareRuntimeCookiePath(taskId, target, null, detectCookiePlatform(target)) }.getOrNull()
+      val result = JSONObject(Python.getInstance().getModule("local_downloader")
+        .callAttr("resolve_stream", target, cookieFile, DEFAULT_HTTP_USER_AGENT, debugLoggingEnabled).toString())
+      if (!result.optBoolean("success")) throw WatchService.Failure(result.optString("code", "RESOLVE_FAILED"))
+      val resolvedHeaders = result.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty()
+      return mapOf(
+        "success" to true,
+        "url" to result.getString("url"),
+        "headers" to resolvedHeaders,
+        "title" to result.optString("title").ifBlank { null },
+        "isLive" to result.optBoolean("isLive"),
+      )
+    } finally {
+      cleanupRuntimeCookieTemp(taskId)
+    }
+  }
+
   /** The most recent URL a peer asked this phone to fetch, for the screen to offer. */
   @Volatile private var lastPeerUrl: String = ""
   @Volatile private var lastPeerMediaKind: String = ""
@@ -1283,6 +1383,92 @@ class LocalDownloaderModule : Module() {
     AsyncFunction("pickAndImportVideoToPrivateVault") {
       pickAndImportVideoToPrivateVaultInternal()
     }
+
+    // ---- watch: add-ons, catalogs, streams, the library ---------------------------------
+
+    AsyncFunction("watchAddons") { watch.library.addons().map(::watchAddonMap) }
+
+    AsyncFunction("watchInstallAddon") { url: String, promise: Promise ->
+      watchAsync(promise) { mapOf("success" to true, "name" to watch.install(url).name) }
+    }
+
+    AsyncFunction("watchUninstallAddon") { key: String -> watch.library.uninstall(watch.addon(key).base) }
+
+    AsyncFunction("watchSetAddonEnabled") { key: String, enabled: Boolean ->
+      watch.library.setEnabled(watch.addon(key).base, enabled)
+    }
+
+    AsyncFunction("watchMoveAddon") { key: String, position: Int -> watch.library.move(watch.addon(key).base, position) }
+
+    /** The board's rows, from the manifests alone; each row is then filled on its own. */
+    AsyncFunction("watchRows") { search: Boolean ->
+      (if (search) watch.searchable() else watch.rows()).map {
+        mapOf("addonKey" to it.addonKey, "addonName" to it.addonName, "type" to it.catalog.type,
+          "id" to it.catalog.id, "name" to it.catalog.name)
+      }
+    }
+
+    AsyncFunction("watchCatalog") { addonKey: String, type: String, id: String, extra: Map<String, String>, promise: Promise ->
+      watchAsync(promise) {
+        mapOf("success" to true, "items" to watch.catalog(addonKey, type, id, extra.toList()).map(::previewMap))
+      }
+    }
+
+    AsyncFunction("watchMeta") { type: String, id: String, promise: Promise ->
+      watchAsync(promise) {
+        val (addonKey, meta) = watch.meta(type, id)
+        mapOf(
+          "success" to true, "addonKey" to addonKey,
+          "meta" to mapOf(
+            "id" to meta.id, "type" to meta.type, "name" to meta.name, "poster" to meta.poster,
+            "background" to meta.background, "logo" to meta.logo, "description" to meta.description,
+            "releaseInfo" to meta.releaseInfo, "runtime" to meta.runtime, "genres" to meta.genres,
+            "imdbRating" to meta.imdbRating,
+            "trailers" to meta.trailers.map(::streamMap),
+            "videos" to meta.videos.map {
+              mapOf("id" to it.id, "title" to it.title, "season" to it.season, "episode" to it.episode,
+                "released" to it.released, "thumbnail" to it.thumbnail, "overview" to it.overview)
+            },
+          ),
+        )
+      }
+    }
+
+    AsyncFunction("watchStreamSources") { type: String, id: String ->
+      watch.streamSources(type, id).map { (key, name) -> mapOf("addonKey" to key, "name" to name) }
+    }
+
+    AsyncFunction("watchStreams") { addonKey: String, type: String, id: String, promise: Promise ->
+      watchAsync(promise) { mapOf("success" to true, "streams" to watch.streams(addonKey, type, id).map(::streamMap)) }
+    }
+
+    AsyncFunction("watchPrepare") { kind: String, target: String, headers: Map<String, String>, promise: Promise ->
+      watchAsync(promise) { prepareStream(kind, target, headers) }
+    }
+
+    AsyncFunction("watchLibrary") {
+      mapOf(
+        "continue" to watch.library.continueWatching().map(::watchItemMap),
+        "saved" to watch.library.items().filter { it.saved }.sortedByDescending { it.addedAt }.map(::watchItemMap),
+      )
+    }
+
+    AsyncFunction("watchItem") { id: String -> watch.library.item(id)?.let(::watchItemMap) }
+
+    AsyncFunction("watchRecordProgress") { title: Map<String, Any?>, videoId: String, positionMs: Double, durationMs: Double,
+                                          addonKey: String?, bingeGroup: String? ->
+      watch.library.recordProgress(watchTitle(title), videoId, positionMs.toLong(), durationMs.toLong(), addonKey, bingeGroup)
+    }
+
+    AsyncFunction("watchSetWatched") { title: Map<String, Any?>, videoId: String, watched: Boolean ->
+      watch.library.setWatched(watchTitle(title), videoId, watched)
+    }
+
+    AsyncFunction("watchSetSaved") { title: Map<String, Any?>, saved: Boolean -> watch.library.setSaved(watchTitle(title), saved) }
+
+    AsyncFunction("watchDismiss") { id: String -> watch.library.dismissProgress(id) }
+
+    AsyncFunction("watchRemove") { id: String -> watch.library.remove(id) }
 
     // ---- memes ----------------------------------------------------------------
 

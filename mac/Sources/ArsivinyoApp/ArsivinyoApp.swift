@@ -22,6 +22,14 @@ struct ArsivinyoApp: App {
         .windowToolbarStyle(.unified)
         .commands { AppCommands(model: model) }
 
+        // Films and episodes play in a window of their own, which full screen takes over.
+        Window("Player", id: "watch-player") {
+            WatchPlayerWindow()
+                .environment(model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1100, height: 640)
+
         // ⌘, opens a separate window, which is where a Mac keeps its preferences. The
         // phone puts settings in a tab; doing that here is the tell that an app was ported
         // rather than written for the platform.

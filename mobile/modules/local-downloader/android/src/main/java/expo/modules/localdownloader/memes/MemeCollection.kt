@@ -34,47 +34,9 @@ import javax.crypto.spec.GCMParameterSpec
  */
 class MemeCollection(private val context: Context, privateHalf: MemeStore.PrivateHalf) {
 
-  val store: MemeStore by lazy { MemeStore(File(context.filesDir, "memes/index.bin"), KeystoreSealer, privateHalf, FacesNative.orNull()) }
+  val store: MemeStore by lazy { MemeStore(File(context.filesDir, "memes/index.bin"), KeystoreSealer(MEMES_KEY), privateHalf, FacesNative.orNull()) }
 
   private val thumbs: File get() = File(context.cacheDir, "meme-thumbs")
-
-  /**
-   * AES-GCM under a Keystore key that needs no authentication: search never prompts, and a
-   * copy of the app's files cannot be read anywhere else.
-   */
-  private object KeystoreSealer : MemeStore.Sealer {
-    private const val ALIAS = "arsivinyo_memes_index_v1"
-
-    private fun key(): SecretKey {
-      val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-      (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
-      val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-      generator.init(
-        KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-          .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-          .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-          .setKeySize(256)
-          .build()
-      )
-      return generator.generateKey()
-    }
-
-    override fun seal(plaintext: ByteArray, associatedData: ByteArray): ByteArray {
-      val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-      cipher.init(Cipher.ENCRYPT_MODE, key())
-      cipher.updateAAD(associatedData)
-      val sealed = cipher.doFinal(plaintext)
-      return byteArrayOf(cipher.iv.size.toByte()) + cipher.iv + sealed
-    }
-
-    override fun open(sealed: ByteArray, associatedData: ByteArray): ByteArray {
-      val ivLength = sealed[0].toInt()
-      val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-      cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed, 1, ivLength))
-      cipher.updateAAD(associatedData)
-      return cipher.doFinal(sealed, 1 + ivLength, sealed.size - 1 - ivLength)
-    }
-  }
 
   /**
    * A file just saved to MediaStore joins the collection. Null for anything that is not a
@@ -268,6 +230,7 @@ class MemeCollection(private val context: Context, privateHalf: MemeStore.Privat
   }
 
   companion object {
+    private const val MEMES_KEY = "arsivinyo_memes_index_v1"
     private const val CHANNEL_ID = "arsivinyo_memes"
     private const val PROMPT_TAG = "meme-prompt"
 
@@ -289,5 +252,42 @@ class MemeCollection(private val context: Context, privateHalf: MemeStore.Privat
       } ?: return null
       digest.digest().joinToString("") { "%02x".format(it) }
     }.getOrNull()
+  }
+}
+
+/**
+ * AES-GCM under a Keystore key that needs no authentication, one key per [alias]: reading
+ * never prompts, and a copy of the app's files cannot be read anywhere else.
+ */
+class KeystoreSealer(private val alias: String) : MemeStore.Sealer {
+
+  private fun key(): SecretKey {
+    val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
+    val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+    generator.init(
+      KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setKeySize(256)
+        .build()
+    )
+    return generator.generateKey()
+  }
+
+  override fun seal(plaintext: ByteArray, associatedData: ByteArray): ByteArray {
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(Cipher.ENCRYPT_MODE, key())
+    cipher.updateAAD(associatedData)
+    val sealed = cipher.doFinal(plaintext)
+    return byteArrayOf(cipher.iv.size.toByte()) + cipher.iv + sealed
+  }
+
+  override fun open(sealed: ByteArray, associatedData: ByteArray): ByteArray {
+    val ivLength = sealed[0].toInt()
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed, 1, ivLength))
+    cipher.updateAAD(associatedData)
+    return cipher.doFinal(sealed, 1 + ivLength, sealed.size - 1 - ivLength)
   }
 }

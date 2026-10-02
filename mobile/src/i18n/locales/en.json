@@ -75,7 +75,8 @@
     "musicLibrary": "Music library",
     "musicLibraryHint": "Open the music player and manage your music.",
     "savedToMusic": "Saved to music library.",
-    "navMemes": "Memes"
+    "navMemes": "Memes",
+    "navWatch": "Watch"
   },
   "privateVault": {
     "title": "Private Vault",
@@ -782,5 +783,57 @@
       "deleteTitle": "Delete “{{name}}”?",
       "deleteBody": "Their name comes off every meme, and their faces go back to unnamed so they can be named again."
     }
+  },
+  "watch": {
+    "title": "Watch",
+    "searchPlaceholder": "Search films and series",
+    "continue": "Continue watching",
+    "saved": "My list",
+    "emptyTitle": "Nothing to watch yet",
+    "emptyHint": "Watch shows catalogs and streams from Stremio add-ons. Start with Cinemeta, Stremio's own catalog, then add the add-ons you use.",
+    "installCinemeta": "Install Cinemeta",
+    "addOther": "Add another add-on",
+    "installFailed": "Could not install it ({{code}}).",
+    "noSearch": "No add-on can search. Install one that can, such as Cinemeta.",
+    "rowFailed": "Did not answer ({{code}}).",
+    "type": {
+      "movie": "Films",
+      "series": "Series",
+      "channel": "Channels",
+      "tv": "TV"
+    },
+    "save": "Add to my list",
+    "unsave": "Remove from my list",
+    "metaFailed": "No add-on describes this title ({{code}}).",
+    "season": "Season {{n}}",
+    "specials": "Specials",
+    "longPressWatched": "Long-press an episode to mark it watched or not.",
+    "streams": "Streams",
+    "noSources": "No installed add-on offers streams for this.",
+    "noStreams": "No streams.",
+    "torrentsLater": "Torrent streams arrive in a later update.",
+    "playFailed": "Could not play it {{code}}",
+    "nextEpisode": "Next episode",
+    "errors": {
+      "WATCH_BAD_URL": "That is not an add-on address.",
+      "WATCH_NEEDS_CONFIGURATION": "This add-on needs configuring first: open its page in a browser, configure it, and paste the address it gives you.",
+      "WATCH_BAD_MANIFEST": "That address does not describe an add-on.",
+      "WATCH_TIMEOUT": "The add-on did not answer in time.",
+      "WATCH_NETWORK": "Could not reach the add-on."
+    },
+    "addons": {
+      "title": "Add-ons",
+      "hint": "Paste an add-on's address: its manifest link, or a stremio:// link. Configured add-ons often keep an account key in their address, so it is stored encrypted and never shown again.",
+      "placeholder": "https://…/manifest.json",
+      "install": "Install",
+      "installed": "Installed {{name}}.",
+      "up": "Move up",
+      "down": "Move down",
+      "remove": "Remove",
+      "removeTitle": "Remove “{{name}}”?",
+      "removeBody": "Its catalogs and streams disappear. What you watched stays in your library."
+    },
+    "trailer": "Trailer",
+    "trailerOf": "Trailer · {{name}}"
   }
 }

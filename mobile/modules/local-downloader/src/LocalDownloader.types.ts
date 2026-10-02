@@ -899,3 +899,119 @@ export interface LocalMemeResult {
   failed?: number;
   imported?: number;
 }
+
+// ---- watch: shared/watch/CONTRACT.md -------------------------------------------------------
+
+/** An installed add-on as the screens see it: its URL stays native, behind [key]. */
+export interface WatchAddon {
+  key: string;
+  name: string;
+  host: string;
+  version?: string | null;
+  description?: string | null;
+  logo?: string | null;
+  types: string[];
+  resources: string[];
+  enabled: boolean;
+}
+
+export interface WatchRow {
+  addonKey: string;
+  addonName: string;
+  type: string;
+  id: string;
+  name: string;
+}
+
+export interface WatchPreview {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string | null;
+  posterShape: string;
+  releaseInfo?: string | null;
+  description?: string | null;
+}
+
+export interface WatchVideo {
+  id: string;
+  title: string;
+  season?: number | null;
+  episode?: number | null;
+  released?: string | null;
+  thumbnail?: string | null;
+  overview?: string | null;
+}
+
+export interface WatchMeta {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string | null;
+  background?: string | null;
+  logo?: string | null;
+  description?: string | null;
+  releaseInfo?: string | null;
+  runtime?: string | null;
+  genres: string[];
+  imdbRating?: string | null;
+  videos: WatchVideo[];
+  /** Trailers, as YouTube streams. */
+  trailers?: WatchStream[];
+}
+
+export type WatchStreamKind = 'url' | 'youtube' | 'torrent' | 'external';
+
+export interface WatchStream {
+  kind: WatchStreamKind;
+  target: string;
+  fileIdx?: number | null;
+  label: string;
+  detail: string;
+  bingeGroup?: string | null;
+  headers: Record<string, string>;
+  filename?: string | null;
+}
+
+export interface WatchProgress {
+  videoId: string;
+  positionMs: number;
+  durationMs: number;
+  at: number;
+}
+
+export interface WatchItem {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string | null;
+  addedAt: number;
+  watched: string[];
+  saved: boolean;
+  addonKey?: string | null;
+  bingeGroup?: string | null;
+  progress?: WatchProgress | null;
+}
+
+/** A title as the library remembers it. */
+export interface WatchTitle {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string | null;
+}
+
+/** A failure: one of the WATCH_* or RESOLVE_* codes. */
+export interface WatchFailure {
+  success: false;
+  code: string;
+}
+
+export type WatchResult<T> = ({ success: true } & T) | WatchFailure;
+
+export interface WatchPrepared {
+  url: string;
+  headers: Record<string, string>;
+  title?: string | null;
+  isLive?: boolean;
+}

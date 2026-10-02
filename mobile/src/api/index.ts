@@ -91,3 +91,4 @@ export type {
 } from '../native/localDownloader';
 export * from './pairing';
 export * from './memes';
+export * from './watch';

@@ -1,0 +1,332 @@
+{
+  "comment": "The Stremio add-on protocol as both apps must read it (shared/watch/CONTRACT.md). Each app's tests run every case here.",
+  "bases": [
+    {
+      "input": "https://v3-cinemeta.strem.io/manifest.json",
+      "base": "https://v3-cinemeta.strem.io",
+      "why": "a manifest URL is the add-on's base plus manifest.json"
+    },
+    {
+      "input": "https://v3-cinemeta.strem.io/",
+      "base": "https://v3-cinemeta.strem.io",
+      "why": "a trailing slash is not part of the base"
+    },
+    {
+      "input": "stremio://example.com/abc/manifest.json",
+      "base": "https://example.com/abc",
+      "why": "the stremio:// scheme is https"
+    },
+    {
+      "input": "  https://example.com/a%7Cb/manifest.json  ",
+      "base": "https://example.com/a%7Cb",
+      "why": "whitespace is trimmed, and an encoded path is kept as it was given"
+    },
+    {
+      "input": "http://192.168.1.5:7000/manifest.json",
+      "base": "http://192.168.1.5:7000",
+      "why": "plain http stays plain http"
+    },
+    {
+      "input": "ftp://example.com/manifest.json",
+      "base": null,
+      "why": "only http(s) and stremio://"
+    },
+    {
+      "input": "not a url",
+      "base": null,
+      "why": "not a URL at all"
+    }
+  ],
+  "resources": [
+    {
+      "base": "https://v3-cinemeta.strem.io",
+      "resource": "catalog",
+      "type": "movie",
+      "id": "top",
+      "extra": [],
+      "url": "https://v3-cinemeta.strem.io/catalog/movie/top.json"
+    },
+    {
+      "base": "https://v3-cinemeta.strem.io",
+      "resource": "catalog",
+      "type": "series",
+      "id": "top",
+      "extra": [
+        [
+          "search",
+          "game of thrones"
+        ]
+      ],
+      "url": "https://v3-cinemeta.strem.io/catalog/series/top/search=game%20of%20thrones.json"
+    },
+    {
+      "base": "https://v3-cinemeta.strem.io",
+      "resource": "catalog",
+      "type": "movie",
+      "id": "top",
+      "extra": [
+        [
+          "genre",
+          "Sci-Fi"
+        ],
+        [
+          "skip",
+          "100"
+        ]
+      ],
+      "url": "https://v3-cinemeta.strem.io/catalog/movie/top/genre=Sci-Fi&skip=100.json"
+    },
+    {
+      "base": "https://v3-cinemeta.strem.io",
+      "resource": "meta",
+      "type": "series",
+      "id": "tt0944947",
+      "extra": [],
+      "url": "https://v3-cinemeta.strem.io/meta/series/tt0944947.json"
+    },
+    {
+      "base": "https://addon.example/cfg=abc",
+      "resource": "stream",
+      "type": "series",
+      "id": "tt0944947:1:2",
+      "extra": [],
+      "url": "https://addon.example/cfg=abc/stream/series/tt0944947%3A1%3A2.json"
+    },
+    {
+      "base": "https://addon.example",
+      "resource": "catalog",
+      "type": "movie",
+      "id": "türk filmleri",
+      "extra": [
+        [
+          "search",
+          "çağan & ışık/2"
+        ]
+      ],
+      "url": "https://addon.example/catalog/movie/t%C3%BCrk%20filmleri/search=%C3%A7a%C4%9Fan%20%26%20%C4%B1%C5%9F%C4%B1k%2F2.json"
+    }
+  ],
+  "supports": {
+    "manifest": {
+      "id": "org.example.mixed",
+      "version": "1.0.0",
+      "name": "Mixed",
+      "types": [
+        "movie",
+        "series"
+      ],
+      "idPrefixes": [
+        "tt"
+      ],
+      "resources": [
+        "catalog",
+        {
+          "name": "stream",
+          "types": [
+            "movie",
+            "series"
+          ],
+          "idPrefixes": [
+            "tt",
+            "kitsu:"
+          ]
+        },
+        {
+          "name": "meta",
+          "types": [
+            "series"
+          ]
+        }
+      ],
+      "catalogs": [
+        {
+          "type": "movie",
+          "id": "top",
+          "name": "Top"
+        }
+      ]
+    },
+    "cases": [
+      {
+        "resource": "stream",
+        "type": "movie",
+        "id": "tt0111161",
+        "expect": true,
+        "why": "a resource object's own types and prefixes"
+      },
+      {
+        "resource": "stream",
+        "type": "series",
+        "id": "kitsu:1:2",
+        "expect": true,
+        "why": "a prefix only the resource lists"
+      },
+      {
+        "resource": "stream",
+        "type": "channel",
+        "id": "tt1",
+        "expect": false,
+        "why": "a type the resource does not list"
+      },
+      {
+        "resource": "meta",
+        "type": "series",
+        "id": "tt0944947",
+        "expect": true,
+        "why": "no prefixes on the resource: the manifest's apply"
+      },
+      {
+        "resource": "meta",
+        "type": "series",
+        "id": "yt_id:abc",
+        "expect": false,
+        "why": "the manifest's prefixes rule it out"
+      },
+      {
+        "resource": "meta",
+        "type": "movie",
+        "id": "tt1",
+        "expect": false,
+        "why": "the resource's types rule it out"
+      },
+      {
+        "resource": "catalog",
+        "type": "movie",
+        "id": "top",
+        "expect": true,
+        "why": "a resource named by string takes the manifest's types, and catalogs are not checked for prefixes"
+      },
+      {
+        "resource": "subtitles",
+        "type": "movie",
+        "id": "tt1",
+        "expect": false,
+        "why": "a resource it does not have"
+      }
+    ]
+  },
+  "streams": [
+    {
+      "stream": {
+        "url": "https://cdn.example/movie.mp4",
+        "name": "Example\n1080p",
+        "title": "Movie.2009.1080p.mp4"
+      },
+      "kind": "url",
+      "target": "https://cdn.example/movie.mp4",
+      "label": "Example 1080p",
+      "detail": "Movie.2009.1080p.mp4"
+    },
+    {
+      "stream": {
+        "ytId": "dQw4w9WgXcQ",
+        "name": "YouTube"
+      },
+      "kind": "youtube",
+      "target": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "label": "YouTube",
+      "detail": ""
+    },
+    {
+      "stream": {
+        "infoHash": "C9A337562CC2B6A1E7FCB1A7BA3F33A5E2F8B1D7",
+        "fileIdx": 2,
+        "name": "Tor",
+        "description": "1.4 GB\nseeds 120"
+      },
+      "kind": "torrent",
+      "target": "magnet:?xt=urn:btih:c9a337562cc2b6a1e7fcb1a7ba3f33a5e2f8b1d7",
+      "fileIdx": 2,
+      "label": "Tor",
+      "detail": "1.4 GB seeds 120"
+    },
+    {
+      "stream": {
+        "externalUrl": "https://www.netflix.com/title/1",
+        "name": "Netflix"
+      },
+      "kind": "external",
+      "target": "https://www.netflix.com/title/1",
+      "label": "Netflix",
+      "detail": ""
+    },
+    {
+      "stream": {
+        "title": "nothing to play"
+      },
+      "kind": null,
+      "why": "a stream with nothing to play is dropped"
+    },
+    {
+      "stream": {
+        "infoHash": "not-a-hash"
+      },
+      "kind": null,
+      "why": "an info hash must be 40 hex characters"
+    },
+    {
+      "stream": {
+        "url": "javascript:alert(1)"
+      },
+      "kind": null,
+      "why": "only http(s) urls play"
+    }
+  ],
+  "metas": [
+    {
+      "meta": {
+        "id": "tt1",
+        "type": "series",
+        "name": "Show",
+        "videos": [
+          {
+            "id": "tt1:2:1",
+            "name": "b",
+            "season": 2,
+            "episode": 1
+          },
+          {
+            "id": "tt1:0:1",
+            "name": "special",
+            "season": 0,
+            "number": 1
+          },
+          {
+            "id": "tt1:1:2",
+            "title": "a2",
+            "season": 1,
+            "number": 2
+          },
+          {
+            "id": "tt1:1:1",
+            "title": "a1",
+            "season": 1,
+            "episode": 1
+          }
+        ],
+        "trailerStreams": [
+          {
+            "title": "Show",
+            "ytId": "KPLWWIOCOOQ"
+          }
+        ]
+      },
+      "order": [
+        "tt1:1:1",
+        "tt1:1:2",
+        "tt1:2:1",
+        "tt1:0:1"
+      ],
+      "titles": [
+        "a1",
+        "a2",
+        "b",
+        "special"
+      ],
+      "trailers": [
+        "https://www.youtube.com/watch?v=KPLWWIOCOOQ"
+      ],
+      "why": "episodes in order with specials last, named by title or name, numbered by episode or number; trailers as YouTube streams"
+    }
+  ]
+}

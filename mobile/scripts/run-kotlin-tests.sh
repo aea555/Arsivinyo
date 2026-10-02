@@ -85,6 +85,7 @@ SUITES=(
   "expo.modules.localdownloader.memes.MemeStoreTest|$SRC_MAIN/memes/MemeStore.kt $SRC_MAIN/memes/MemeFaces.kt $SRC_TEST/memes/MemeStoreTest.kt"
   "expo.modules.localdownloader.memes.MemeFacesTest|$SRC_MAIN/memes/MemeStore.kt $SRC_MAIN/memes/MemeFaces.kt $SRC_TEST/memes/MemeFacesTest.kt"
   "expo.modules.localdownloader.memes.MemePrivacyTest|$SRC_TEST/memes/MemePrivacyTest.kt"
+  "expo.modules.localdownloader.watch.WatchTest|$SRC_MAIN/watch/Addons.kt $SRC_MAIN/watch/WatchLibrary.kt $SRC_MAIN/memes/MemeStore.kt $SRC_MAIN/memes/MemeFaces.kt $SRC_TEST/watch/WatchTest.kt"
   "expo.modules.localdownloader.crypto.CryptoVectorsTest|$BACKUP_SOURCES $VAULT_SOURCES $SRC_TEST/crypto/CryptoVectorsTest.kt"
 )
 

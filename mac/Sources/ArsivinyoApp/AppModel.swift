@@ -11,6 +11,7 @@ import UserNotifications
 enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case download
     case library
+    case watch
     case memes
     case vault
     case devices
@@ -21,6 +22,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .download: return String(localized: "Download")
         case .library: return String(localized: "Music")
+        case .watch: return String(localized: "Watch")
         // "Mimler" in Turkish: the TDK's word for memes. The literal plural means something else.
         case .memes: return String(localized: "Memes")
         case .vault: return String(localized: "Vault")
@@ -33,6 +35,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .download: return "arrow.down.circle"
         case .library: return "music.note.list"
+        case .watch: return "play.tv"
         case .memes: return "theatermasks"
         case .vault: return "lock.shield"
         case .devices: return "laptopcomputer.and.iphone"
@@ -43,9 +46,10 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .download: return "1"
         case .library: return "2"
-        case .memes: return "3"
-        case .vault: return "4"
-        case .devices: return "5"
+        case .watch: return "3"
+        case .memes: return "4"
+        case .vault: return "5"
+        case .devices: return "6"
         }
     }
 }
@@ -128,6 +132,10 @@ final class AppModel {
         supportFolder = support
         keybox = Keybox(directory: support, keychainService: keychainService)
         vault = Vault(root: support.appendingPathComponent("vault"), keybox: keybox)
+        // Its own Keychain key, as the memes index has: an add-on's URL can hold an account token.
+        watch = WatchService(library: WatchLibrary(file: support.appendingPathComponent("watch/library.enc")) {
+            try MemeDeviceKey.load(service: keychainService + ".watch", account: "watch-library")
+        })
         memes = MemeLibrary(support: support.appendingPathComponent("memes"), vault: vault, keybox: keybox) {
             try MemeDeviceKey.load(service: keychainService + ".memes")
         }
@@ -541,6 +549,12 @@ final class AppModel {
     var askForMemeTags: Bool = UserDefaults.standard.object(forKey: "askForMemeTags") as? Bool ?? true {
         didSet { UserDefaults.standard.set(askForMemeTags, forKey: "askForMemeTags") }
     }
+
+    // MARK: - Watch
+
+    let watch: WatchService
+    /// What the player window plays; set before opening it.
+    var watchPlaying: WatchPlayRequest?
 
     // MARK: - Backup
 

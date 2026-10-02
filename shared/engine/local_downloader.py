@@ -2730,6 +2730,79 @@ def _verify_video_creation_time(file_path: str, ffmpeg_location: Optional[str], 
     return False
 
 
+# Streams for the watch section (shared/watch/CONTRACT.md): a page to something a player can
+# open, without downloading it. Extraction asks for yt-dlp's usual choice, which always
+# exists; what is returned is picked from the formats afterwards (see _playable_format).
+STREAM_FORMAT = "bestvideo*+bestaudio/best"
+
+
+def _playable_format(info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The one URL a player should open for these formats.
+
+    An HLS master playlist first: one URL carrying every quality with its audio, which the
+    system players switch between themselves. YouTube no longer offers a single file with
+    both video and audio, but every one of its HLS formats points at that master. Then the
+    best single file that has both; then whatever yt-dlp chose, if it is one file.
+    """
+    formats = [f for f in (info.get("formats") or []) if f.get("url")]
+    for f in formats:
+        if str(f.get("protocol") or "").startswith("m3u8") and f.get("manifest_url"):
+            return {**f, "url": f["manifest_url"], "protocol": "m3u8_native"}
+    combined = [f for f in formats
+                if f.get("vcodec") not in (None, "none") and f.get("acodec") not in (None, "none")]
+    if combined:
+        return max(combined, key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+    if info.get("url"):
+        return info
+    return None
+
+
+def resolve_stream(
+    url: str,
+    cookie_file: Optional[str] = None,
+    user_agent: str = DEFAULT_HTTP_USER_AGENT,
+    debug_logging: bool = False,
+) -> str:
+    """A playable media URL for a page, with the headers it needs, without downloading.
+
+    The URL and the title are returned to the app and never logged: an add-on's stream can
+    point at something the user would rather nobody saw in a log.
+    """
+    opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "format": STREAM_FORMAT,
+        "http_headers": {"User-Agent": user_agent},
+    }
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+    except Exception as exc:  # yt-dlp raises its own types; the code is what the app reads
+        _debug_log(debug_logging, f"resolve failed: {type(exc).__name__}")
+        return json.dumps({"success": False, "code": "RESOLVE_FAILED", "message": str(exc)[:500]})
+    # A playlist or a channel: its first entry.
+    if info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
+        info = next((entry for entry in info["entries"] if entry), None) or {}
+    chosen = _playable_format(info)
+    if not chosen:
+        return json.dumps({"success": False, "code": "RESOLVE_NO_MEDIA"})
+    headers = dict(chosen.get("http_headers") or info.get("http_headers") or {})
+    return json.dumps({
+        "success": True,
+        "code": "OK",
+        "url": chosen["url"],
+        "headers": headers,
+        "title": info.get("title"),
+        "durationMs": int(info["duration"] * 1000) if info.get("duration") else None,
+        "isLive": bool(info.get("is_live")),
+        "protocol": chosen.get("protocol"),
+    })
+
+
 def preflight(
     url: str,
     cookies_dir: str,

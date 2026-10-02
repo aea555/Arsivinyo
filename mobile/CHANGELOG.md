@@ -36,6 +36,16 @@ All notable changes to this project are documented here. Format based on [Keep a
   20 MB to the app. A person can be renamed (to someone else's name, and the two become one)
   or deleted, which takes their name off every meme and leaves their faces unnamed again.
 
+- **Watch.** Catalogs and streams from Stremio add-ons, which work unchanged: install one
+  from its address, and its catalogs appear as rows on a board, searchable across add-ons.
+  A title's page shows its details, its seasons and episodes, and every add-on's streams for
+  the one picked, each add-on answering on its own so a slow one holds nothing up. Direct
+  links play as they are; web pages, YouTube and trailers go through yt-dlp first, which
+  hands the player an HLS stream when the site has one. Continue watching, a list of your
+  own, watched marks, and the next episode from the same source. The library and the
+  add-on addresses, which often carry an account key, are encrypted at rest. Torrent
+  streams and the mpv player come in later phases (`shared/watch/CONTRACT.md`).
+
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is
   `arsivinyo://`. "Local" described a downloader with no backend, which stops being the
