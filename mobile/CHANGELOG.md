@@ -41,7 +41,8 @@ All notable changes to this project are documented here. Format based on [Keep a
   A title's page shows its details, its seasons and episodes, and every add-on's streams for
   the one picked, each add-on answering on its own so a slow one holds nothing up. Direct
   links play as they are; web pages, YouTube and trailers go through yt-dlp first, which
-  hands the player an HLS stream when the site has one. Continue watching, a list of your
+  hands the player the best video up to 1080p and the best audio as two files, so playback
+  starts within half a second of the player opening. Continue watching, a list of your
   own, watched marks, and the next episode from the same source. The library and the
   add-on addresses, which often carry an account key, are encrypted at rest. Add-ons can
   be discovered from Stremio's own official and community lists, which the installed

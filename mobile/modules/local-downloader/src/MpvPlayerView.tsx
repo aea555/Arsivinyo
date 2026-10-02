@@ -23,6 +23,8 @@ export interface MpvTrack {
 
 export interface MpvSource {
   url: string;
+  /** The audio as a separate file, played with the video. */
+  audioUrl?: string | null;
   headers?: Record<string, string>;
   startMs?: number;
 }

@@ -412,6 +412,8 @@ extension EngineClient {
     /// What a player can open for a page: yt-dlp's choice, with the headers it needs.
     public struct ResolvedStream: Sendable {
         public var url: URL
+        /// The audio as a separate file, played with the video.
+        public var audioURL: URL?
         public var headers: [String: String]
         public var title: String?
     }
@@ -433,7 +435,8 @@ extension EngineClient {
                 if case .object(let object)? = payload["headers"] {
                     for (key, value) in object { if let text = value.string { headers[key] = text } }
                 }
-                return ResolvedStream(url: url, headers: headers, title: payload["title"]?.string)
+                return ResolvedStream(url: url, audioURL: payload["audioUrl"]?.string.flatMap(URL.init(string:)),
+                                      headers: headers, title: payload["title"]?.string)
             }
         }
         throw Event.EngineError(description: "the engine did not answer", code: "RESOLVE_FAILED")

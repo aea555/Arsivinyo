@@ -78,7 +78,7 @@ export default function WatchPlayerScreen() {
 
   return (
     <Player
-      source={languages ? { url: request.url, headers: request.headers, startMs: request.startMs } : null}
+      source={languages ? { url: request.url, audioUrl: request.audioUrl, headers: request.headers, startMs: request.startMs } : null}
       title={request.videoName}
       languages={languages ?? []}
       subtitles={subtitles}

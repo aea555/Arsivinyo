@@ -1041,6 +1041,8 @@ export type WatchResult<T> = ({ success: true } & T) | WatchFailure;
 
 export interface WatchPrepared {
   url: string;
+  /** The audio as a separate file, played with the video. */
+  audioUrl?: string | null;
   headers: Record<string, string>;
   title?: string | null;
   isLive?: boolean;

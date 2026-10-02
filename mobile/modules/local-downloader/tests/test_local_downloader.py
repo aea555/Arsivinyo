@@ -858,23 +858,37 @@ class ResolveStreamTests(unittest.TestCase):
         self.assertEqual(result["url"], "https://cdn/1.mp4")
         self.assertEqual(result["title"], "one")
 
-    def test_an_hls_master_wins_because_it_carries_the_audio(self):
-        # YouTube's shape: video-only and audio-only files, and HLS formats sharing one master.
-        result, _ = self._resolve({"formats": [
-            {"url": "https://v/137", "vcodec": "avc1", "acodec": "none", "height": 1080},
-            {"url": "https://a/140", "vcodec": "none", "acodec": "mp4a"},
-            {"url": "https://h/270.m3u8", "protocol": "m3u8_native", "vcodec": "avc1", "acodec": "none",
-             "manifest_url": "https://h/master.m3u8"},
-        ]})
+    # YouTube's shape: video-only and audio-only files, and HLS formats sharing one master.
+    YOUTUBE = [
+        {"url": "https://v/137", "protocol": "https", "vcodec": "avc1", "acodec": "none", "height": 1080},
+        {"url": "https://a/140", "protocol": "https", "vcodec": "none", "acodec": "mp4a"},
+        {"url": "https://h/270.m3u8", "protocol": "m3u8_native", "vcodec": "avc1", "acodec": "none",
+         "manifest_url": "https://h/master.m3u8"},
+    ]
+
+    def test_separate_video_and_audio_files_are_both_returned_rather_than_the_hls_master(self):
+        result, _ = self._resolve({"formats": self.YOUTUBE, "requested_formats": [self.YOUTUBE[0], self.YOUTUBE[1]]})
+        self.assertEqual(result["url"], "https://v/137")
+        self.assertEqual(result["audioUrl"], "https://a/140")
+
+    def test_a_live_stream_gets_the_hls_master(self):
+        result, _ = self._resolve({"is_live": True, "formats": self.YOUTUBE,
+                                   "requested_formats": [self.YOUTUBE[0], self.YOUTUBE[1]]})
+        self.assertEqual(result["url"], "https://h/master.m3u8")
+        self.assertIsNone(result["audioUrl"])
+
+    def test_only_hls_gives_the_master(self):
+        result, _ = self._resolve({"formats": [self.YOUTUBE[2]]})
         self.assertEqual(result["url"], "https://h/master.m3u8")
 
-    def test_without_hls_the_best_file_with_both_wins(self):
+    def test_without_a_chosen_pair_the_best_file_with_both_wins(self):
         result, _ = self._resolve({"formats": [
-            {"url": "https://f/360", "vcodec": "avc1", "acodec": "mp4a", "height": 360},
-            {"url": "https://f/720", "vcodec": "avc1", "acodec": "mp4a", "height": 720},
-            {"url": "https://f/1080v", "vcodec": "avc1", "acodec": "none", "height": 1080},
+            {"url": "https://f/360", "protocol": "https", "vcodec": "avc1", "acodec": "mp4a", "height": 360},
+            {"url": "https://f/720", "protocol": "https", "vcodec": "avc1", "acodec": "mp4a", "height": 720},
+            {"url": "https://f/1080v", "protocol": "https", "vcodec": "avc1", "acodec": "none", "height": 1080},
         ]})
         self.assertEqual(result["url"], "https://f/720")
+        self.assertIsNone(result["audioUrl"])
 
     def test_nothing_to_play_and_errors_are_codes(self):
         result, _ = self._resolve({"title": "x"})

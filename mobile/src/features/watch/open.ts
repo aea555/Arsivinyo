@@ -21,6 +21,7 @@ export function openTitle(router: Router, title: WatchTitle, play?: { videoId: s
 /** What the player needs: where to play from, and what to remember it as. */
 export interface PlayRequest {
   url: string;
+  audioUrl?: string | null;
   headers: Record<string, string>;
   title: WatchTitle;
   videoId: string;

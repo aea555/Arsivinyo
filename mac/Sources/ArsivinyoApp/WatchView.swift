@@ -4,6 +4,7 @@ import SwiftUI
 /// What the player window plays, and what to remember it as.
 struct WatchPlayRequest: Hashable {
     var url: URL
+    var audioURL: URL? = nil
     var headers: [String: String]
     var title: WatchLibrary.Title
     var videoId: String
@@ -28,13 +29,13 @@ struct WatchRoute: Hashable {
 extension AppModel {
     /// Something a player can open: a media URL as it is; a page, a YouTube video or an
     /// external link through yt-dlp first.
-    func prepare(_ stream: Addons.Stream) async throws -> (url: URL, headers: [String: String]) {
+    func prepare(_ stream: Addons.Stream) async throws -> (url: URL, audioURL: URL?, headers: [String: String]) {
         if stream.kind == .torrent { throw WatchService.Failure(code: "WATCH_TORRENTS_LATER") }
         if stream.kind == .url, let url = URL(string: stream.target), await !watch.isPage(stream.target, headers: stream.headers) {
-            return (url, stream.headers)
+            return (url, nil, stream.headers)
         }
         let resolved = try await engine.resolveStream(stream.target)
-        return (resolved.url, resolved.headers)
+        return (resolved.url, resolved.audioURL, resolved.headers)
     }
 
     /// The next episode from the same add-on and binge group, as Stremio does.
@@ -47,7 +48,7 @@ extension AppModel {
               let meta = try? await watch.meta(type: request.title.type, id: request.title.id) else { return nil }
         let regular = meta.videos.filter { ($0.season ?? 1) != 0 }
         let following = regular.firstIndex(where: { $0.id == next.id }).flatMap { $0 + 1 < regular.count ? regular[$0 + 1] : nil }
-        return WatchPlayRequest(url: prepared.url, headers: prepared.headers, title: request.title, videoId: next.id,
+        return WatchPlayRequest(url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: request.title, videoId: next.id,
                                 videoName: WatchTitleView.episodeName(next), source: source,
                                 bingeGroup: stream.bingeGroup, startMs: 0, nextVideo: following,
                                 subtitles: stream.subtitles, filename: stream.filename)
@@ -300,7 +301,7 @@ struct WatchTitleView: View {
             do {
                 let prepared = try await model.prepare(stream)
                 model.watchPlaying = WatchPlayRequest(
-                    url: prepared.url, headers: prepared.headers, title: known, videoId: known.id,
+                    url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: known, videoId: known.id,
                     videoName: String(localized: "Trailer · \(known.name)"), source: nil, bingeGroup: nil,
                     startMs: 0, nextVideo: nil, record: false)
                 openWindow(id: "watch-player")
@@ -543,7 +544,7 @@ private struct StreamList: View {
                 let prepared = try await model.prepare(stream)
                 let startMs = item?.progress?.videoId == video.id ? item?.progress?.positionMs ?? 0 : 0
                 model.watchPlaying = WatchPlayRequest(
-                    url: prepared.url, headers: prepared.headers, title: title, videoId: video.id,
+                    url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: title, videoId: video.id,
                     videoName: isSeries ? WatchTitleView.episodeName(video) : title.name, source: source,
                     bingeGroup: stream.bingeGroup, startMs: startMs, nextVideo: nextVideo,
                     subtitles: stream.subtitles, filename: stream.filename)
@@ -824,7 +825,8 @@ struct WatchPlayerWindow: View {
         subtitles = []
         player.languages = (try? model.watch.library.languages()) ?? WatchLibrary.defaultLanguages
         player.onEnded = { save(atEnd: true) }
-        player.load(.init(url: next.url.absoluteString, headers: next.headers, startMs: next.startMs))
+        player.load(.init(url: next.url.absoluteString, audioURL: next.audioURL?.absoluteString,
+                          headers: next.headers, startMs: next.startMs))
         // A trailer is not the title: add-ons have nothing for it.
         guard next.record else { return }
         Task {

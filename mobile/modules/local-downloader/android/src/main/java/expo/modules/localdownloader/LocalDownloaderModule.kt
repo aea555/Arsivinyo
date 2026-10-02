@@ -938,6 +938,7 @@ class LocalDownloaderModule : Module() {
       return mapOf(
         "success" to true,
         "url" to result.getString("url"),
+        "audioUrl" to result.optString("audioUrl").ifBlank { null }?.takeIf { it != "null" },
         "headers" to resolvedHeaders,
         "title" to result.optString("title").ifBlank { null },
         "isLive" to result.optBoolean("isLive"),
@@ -1510,7 +1511,8 @@ class LocalDownloaderModule : Module() {
         val url = source?.get("url") as? String
         @Suppress("UNCHECKED_CAST")
         view.setSource(url?.let {
-          MpvPlayerView.Source(it, (source["headers"] as? Map<String, String>).orEmpty(), (source["startMs"] as? Number)?.toLong() ?: 0L)
+          MpvPlayerView.Source(it, (source["headers"] as? Map<String, String>).orEmpty(), (source["startMs"] as? Number)?.toLong() ?: 0L,
+            source["audioUrl"] as? String)
         })
       }
 

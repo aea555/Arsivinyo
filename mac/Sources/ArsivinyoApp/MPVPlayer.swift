@@ -27,6 +27,8 @@ final class MPVPlayer {
 
     struct Source: Equatable {
         var url: String
+        /// The audio as a separate file, played with the video.
+        var audioURL: String? = nil
         var headers: [String: String] = [:]
         var startMs: Int64 = 0
     }
@@ -51,6 +53,10 @@ final class MPVPlayer {
     @ObservationIgnored private var pending: Source?
     @ObservationIgnored private var loaded: Source?
     @ObservationIgnored private var tracksKnown = false
+    /// From asking for a file until its first frame; mpv reports "not waiting" before any of it.
+    @ObservationIgnored private var starting = false
+    @ObservationIgnored private var cacheWait = false
+    @ObservationIgnored private var seeking = false
     /// What `arsivinyo-vault://` URLs read from: a vault item, decrypted as mpv asks.
     @ObservationIgnored private let vault: EncryptedReader?
 
@@ -95,6 +101,7 @@ final class MPVPlayer {
         ended = false
         tracksKnown = false
         tracks = []
+        starting = true
         buffering = true
         subtitleDelayMs = 0
         // Each preferred language by every code a file may use for it.
@@ -105,8 +112,12 @@ final class MPVPlayer {
         core.setString("alang", codes)
         core.command(["change-list", "http-header-fields", "clr", ""])
         for (name, value) in source.headers { core.command(["change-list", "http-header-fields", "append", "\(name): \(value)"]) }
+        var options: [String] = []
+        if source.startMs > 0 { options.append("start=\(Double(source.startMs) / 1000)") }
+        // Length-quoted, so a comma in the URL cannot end the option.
+        if let audio = source.audioURL { options.append("audio-file=%\(audio.utf8.count)%\(audio)") }
         var args = ["loadfile", source.url, "replace", "-1"]
-        if source.startMs > 0 { args.append("start=\(Double(source.startMs) / 1000)") }
+        if !options.isEmpty { args.append(options.joined(separator: ",")) }
         core.command(args)
     }
 
@@ -138,7 +149,7 @@ final class MPVPlayer {
     // MARK: - What mpv says
 
     fileprivate enum Event: Sendable {
-        case position(Double), duration(Double), paused(Bool), buffering(Bool), endReached(Bool)
+        case position(Double), duration(Double), paused(Bool), buffering(Bool), seeking(Bool), started, endReached(Bool)
         case tracks(String), failed(String)
     }
 
@@ -147,7 +158,15 @@ final class MPVPlayer {
         case .position(let seconds): positionMs = seconds * 1000
         case .duration(let seconds): durationMs = seconds * 1000
         case .paused(let value): paused = value
-        case .buffering(let value): buffering = value
+        case .buffering(let value):
+            cacheWait = value
+            buffering = starting || cacheWait || seeking
+        case .seeking(let value):
+            seeking = value
+            buffering = starting || cacheWait || seeking
+        case .started:
+            starting = false
+            buffering = cacheWait || seeking
         case .endReached(let value):
             if value, !ended {
                 ended = true
@@ -212,7 +231,7 @@ final class MPVPlayer {
             }
             for (name, format) in [
                 ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE), ("pause", MPV_FORMAT_FLAG),
-                ("paused-for-cache", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG), ("track-list", MPV_FORMAT_NONE),
+                ("paused-for-cache", MPV_FORMAT_FLAG), ("seeking", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG), ("track-list", MPV_FORMAT_NONE),
                 ("sid", MPV_FORMAT_STRING), ("aid", MPV_FORMAT_STRING),
             ] {
                 mpv_observe_property(handle, 0, name, format)
@@ -245,6 +264,7 @@ final class MPVPlayer {
                 case ("duration", MPV_FORMAT_DOUBLE): deliver(.duration(property.data.load(as: Double.self)))
                 case ("pause", MPV_FORMAT_FLAG): deliver(.paused(property.data.load(as: Int32.self) != 0))
                 case ("paused-for-cache", MPV_FORMAT_FLAG): deliver(.buffering(property.data.load(as: Int32.self) != 0))
+                case ("seeking", MPV_FORMAT_FLAG): deliver(.seeking(property.data.load(as: Int32.self) != 0))
                 case ("eof-reached", MPV_FORMAT_FLAG): deliver(.endReached(property.data.load(as: Int32.self) != 0))
                 case ("track-list", _), ("sid", _), ("aid", _):
                     if let raw = mpv_get_property_string(handle, "track-list") {
@@ -253,8 +273,8 @@ final class MPVPlayer {
                     }
                 default: break
                 }
-            case MPV_EVENT_FILE_LOADED:
-                deliver(.buffering(false))
+            case MPV_EVENT_PLAYBACK_RESTART:
+                deliver(.started)
             case MPV_EVENT_END_FILE:
                 guard let end = event.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee else { return }
                 if end.reason == MPV_END_FILE_REASON_ERROR {

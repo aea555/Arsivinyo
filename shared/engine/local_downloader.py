@@ -2730,28 +2730,46 @@ def _verify_video_creation_time(file_path: str, ffmpeg_location: Optional[str], 
     return False
 
 
-# Streams for the watch section (shared/watch/CONTRACT.md): a page to something a player can
-# open, without downloading it. Extraction asks for yt-dlp's usual choice, which always
-# exists; what is returned is picked from the formats afterwards (see _playable_format).
-STREAM_FORMAT = "bestvideo*+bestaudio/best"
+# Streams for the watch section (shared/watch/CONTRACT.md): a page to something mpv can open,
+# without downloading it. The best video up to 1080p (what a phone decodes in hardware) and
+# the best audio, each one plain file over HTTP; failing that, one file with both; failing
+# that, whatever yt-dlp has. What is returned is decided afterwards (see _playable_format).
+STREAM_FORMAT = (
+    "bv*[height<=1080][protocol^=http]+ba[protocol^=http]"
+    "/b[protocol^=http]/bv*+ba/b"
+)
+
+
+def _is_http(f: Dict[str, Any]) -> bool:
+    return str(f.get("protocol") or "").startswith("http") and bool(f.get("url"))
 
 
 def _playable_format(info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """The one URL a player should open for these formats.
+    """What mpv should open for these formats: a URL, and a separate audio URL if any.
 
-    An HLS master playlist first: one URL carrying every quality with its audio, which the
-    system players switch between themselves. YouTube no longer offers a single file with
-    both video and audio, but every one of its HLS formats points at that master. Then the
-    best single file that has both; then whatever yt-dlp chose, if it is one file.
+    Two plain files, video and audio, when yt-dlp chose them: two connections, and playback
+    starts at once. Not an HLS master playlist where there is a choice: FFmpeg opens every
+    variant it lists and a segment of each before it plays anything, about eight seconds
+    for YouTube's on a phone. A live stream has nothing but HLS, so it gets the master.
     """
     formats = [f for f in (info.get("formats") or []) if f.get("url")]
-    for f in formats:
-        if str(f.get("protocol") or "").startswith("m3u8") and f.get("manifest_url"):
-            return {**f, "url": f["manifest_url"], "protocol": "m3u8_native"}
-    combined = [f for f in formats
-                if f.get("vcodec") not in (None, "none") and f.get("acodec") not in (None, "none")]
+    hls = next((f for f in formats if str(f.get("protocol") or "").startswith("m3u8") and f.get("manifest_url")), None)
+    if info.get("is_live") and hls:
+        return {**hls, "url": hls["manifest_url"], "protocol": "m3u8_native"}
+    requested = info.get("requested_formats") or []
+    if len(requested) == 2 and all(_is_http(f) for f in requested):
+        video, audio = requested
+        if video.get("vcodec") in (None, "none"):
+            video, audio = audio, video
+        return {**video, "audio_url": audio["url"]}
+    if _is_http(info):
+        return info
+    combined = [f for f in formats if _is_http(f)
+                and f.get("vcodec") not in (None, "none") and f.get("acodec") not in (None, "none")]
     if combined:
         return max(combined, key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+    if hls:
+        return {**hls, "url": hls["manifest_url"], "protocol": "m3u8_native"}
     if info.get("url"):
         return info
     return None
@@ -2795,6 +2813,7 @@ def resolve_stream(
         "success": True,
         "code": "OK",
         "url": chosen["url"],
+        "audioUrl": chosen.get("audio_url"),
         "headers": headers,
         "title": info.get("title"),
         "durationMs": int(info["duration"] * 1000) if info.get("duration") else None,

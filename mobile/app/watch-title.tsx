@@ -170,6 +170,7 @@ export default function WatchTitleScreen() {
       const next = meta && isSeries ? nextVideo(meta.videos, video.id) : null;
       openPlayer(router, {
         url: prepared.url,
+        audioUrl: prepared.audioUrl ?? null,
         headers: prepared.headers,
         title: known,
         videoId: video.id,
@@ -197,6 +198,7 @@ export default function WatchTitleScreen() {
       }
       openPlayer(router, {
         url: prepared.url,
+        audioUrl: prepared.audioUrl ?? null,
         headers: prepared.headers,
         title: known,
         videoId: known.id,

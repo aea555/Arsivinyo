@@ -36,11 +36,14 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   private var loaded: Source? = null
   private var lastProgressAt = 0L
   private var orientationBefore: Int? = null
+  /** From asking for a file until its first frame: what the screen shows as loading. */
+  @Volatile private var starting = false
 
   /** Subtitle and audio languages, most preferred first, as ISO 639-2 codes. */
   var languages: List<String> = emptyList()
 
-  data class Source(val url: String, val headers: Map<String, String>, val startMs: Long)
+  /** [audioUrl]: the audio as a separate file, played with the video. */
+  data class Source(val url: String, val headers: Map<String, String>, val startMs: Long, val audioUrl: String? = null)
 
   init {
     addView(surface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -67,6 +70,8 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
       setOptionString("tls-verify", "yes")
       setOptionString("tls-ca-file", it.path)
     }
+    // yt-dlp runs in the app, not inside mpv.
+    setOptionString("ytdl", "no")
     setOptionString("sub-auto", "fuzzy")
     setOptionString("keep-open", "yes")
     setOptionString("idle", "yes")
@@ -75,6 +80,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     observeProperty("duration", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
     observeProperty("pause", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
     observeProperty("paused-for-cache", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
+    observeProperty("seeking", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
     observeProperty("eof-reached", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
     observeProperty("track-list", MPVLib.MpvFormat.MPV_FORMAT_NONE)
     observeProperty("sid", MPVLib.MpvFormat.MPV_FORMAT_STRING)
@@ -96,6 +102,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     val mpv = mpv ?: return
     pending = null
     loaded = source
+    starting = true
     // Each preferred language by every code a file may use for it.
     val codes = languages.flatMap { code -> Addons.languages.firstOrNull { it.code == code }?.codes.orEmpty().sortedBy { it != code } }
       .joinToString(",")
@@ -104,7 +111,11 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     // One header at a time, so a comma in a value cannot split it.
     mpv.command(arrayOf("change-list", "http-header-fields", "clr", ""))
     source.headers.forEach { (name, value) -> mpv.command(arrayOf("change-list", "http-header-fields", "append", "$name: $value")) }
-    val options = if (source.startMs > 0) "start=${source.startMs / 1000.0}" else ""
+    val options = listOfNotNull(
+      if (source.startMs > 0) "start=${source.startMs / 1000.0}" else null,
+      // Length-quoted, so a comma in the URL cannot end the option.
+      source.audioUrl?.let { "audio-file=%${it.toByteArray().size}%$it" },
+    ).joinToString(",")
     mpv.command(if (options.isEmpty()) arrayOf("loadfile", source.url) else arrayOf("loadfile", source.url, "replace", "-1", options))
   }
 
@@ -200,7 +211,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   override fun eventProperty(property: String, value: Boolean) {
     when (property) {
       "eof-reached" -> if (value) post { onEnded(emptyMap()) }
-      "pause", "paused-for-cache" -> post { reportProgress() }
+      "pause", "paused-for-cache", "seeking" -> post { reportProgress() }
     }
   }
 
@@ -209,6 +220,10 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   }
 
   override fun event(eventId: Int) {
+    if (eventId == MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART && starting) {
+      starting = false
+      post { reportProgress() }
+    }
     if (eventId == MPVLib.MpvEvent.MPV_EVENT_END_FILE) {
       // keep-open holds a finished video at its end, and a replaced one is followed by the
       // next: so a file that ends with mpv going idle is one that would not play.
@@ -227,7 +242,8 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
       "positionMs" to ((mpv.getPropertyDouble("time-pos") ?: 0.0) * 1000),
       "durationMs" to ((mpv.getPropertyDouble("duration") ?: 0.0) * 1000),
       "paused" to (mpv.getPropertyBoolean("pause") ?: false),
-      "buffering" to (mpv.getPropertyBoolean("paused-for-cache") ?: false),
+      // Opening, waiting for the network, or finding the place after a seek.
+      "buffering" to (starting || mpv.getPropertyBoolean("paused-for-cache") == true || mpv.getPropertyBoolean("seeking") == true),
     ))
   }
 

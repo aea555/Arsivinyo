@@ -121,6 +121,13 @@ subtitles. mpv plays all of it.
   once (`subtitleRanking`). The best is loaded by itself when the file has nothing in a
   language preferred as much; the rest wait in the subtitles menu. A trailer asks no add-on.
 - mpv picks the file's own audio and subtitle tracks by the same languages.
+- A page that goes through yt-dlp (YouTube, a trailer) is handed to mpv as two plain files,
+  the best video up to 1080p and the best audio, opened together. Not as an HLS master
+  playlist where there is a choice: FFmpeg opens every variant it lists, and a segment of
+  each, before it plays anything (about nine seconds for YouTube's on a phone, against a
+  quarter of a second for the two files). A live stream has only HLS, and gets it.
+- The player shows that it is loading from the moment it is asked to play until the first
+  frame, and while it waits for the network or a seek.
 - The vault's own videos play through the same player, so a private MKV plays too: on the
   phone over the vault's loopback server, on the Mac through mpv's stream callbacks, which
   decrypt what mpv reads as it reads it. Neither writes plaintext.
