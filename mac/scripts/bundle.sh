@@ -14,6 +14,8 @@ APP="$ROOT/.build/Arsivinyo.app"
 
 # The faces pipeline's runtime; a no-op when it is already there.
 "$ROOT/../shared/faces/fetch-runtime.sh" >/dev/null
+# The player's frameworks; a no-op when they are already there.
+"$ROOT/scripts/fetch-mpvkit.sh" >/dev/null
 swift build -c "$CONFIG" --product ArsivinyoApp
 
 BINARY="$ROOT/.build/$CONFIG/ArsivinyoApp"

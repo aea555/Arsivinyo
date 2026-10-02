@@ -22,6 +22,8 @@ export type {
   WatchRow,
   WatchStream,
   WatchStreamKind,
+  WatchSubtitle,
+  WatchLanguages,
   WatchTitle,
   WatchVideo,
   LocalMeme,
@@ -110,3 +112,5 @@ export type {
   LocalYtDlpUpdateResult,
   LocalYtDlpUpdateStatus,
 } from '../../modules/local-downloader/src';
+export { MpvPlayerView } from '../../modules/local-downloader/src';
+export type { MpvPlayerHandle, MpvProgress, MpvSource, MpvTrack } from '../../modules/local-downloader/src';

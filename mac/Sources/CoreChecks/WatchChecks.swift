@@ -44,9 +44,20 @@ extension CoreChecks {
             }
             check(stream?.kind.rawValue == kind && stream?.target == c["target"] as? String
                   && stream?.label == c["label"] as? String && stream?.detail == c["detail"] as? String
-                  && (c["fileIdx"] == nil || stream?.fileIdx == c["fileIdx"] as? Int),
+                  && (c["fileIdx"] == nil || stream?.fileIdx == c["fileIdx"] as? Int)
+                  && stream?.subtitles.map(\.url) == (c["subtitles"] as? [String] ?? []),
                   "stream read as \(kind)")
         }
+
+        let languages = vectors["languages"] as! [String: Any]
+        for case let c as [Any] in languages["cases"] as! [Any] {
+            check(Addons.language(c[0] as! String) == c[1] as? String, "language \(c[0]): \(languages["why"]!)")
+        }
+
+        let ranking = vectors["subtitleRanking"] as! [String: Any]
+        let ranked = Addons.rankSubtitles(Addons.subtitles(ranking), preferred: ranking["preferred"] as! [String],
+                                          perLanguage: ranking["perLanguage"] as! Int)
+        check(ranked.map(\.id) == ranking["order"] as! [String], "subtitles: \(ranking["why"]!)")
 
         for case let c as [String: Any] in vectors["metas"] as! [Any] {
             let meta = Addons.meta(["meta": c["meta"]!])
@@ -77,7 +88,10 @@ extension CoreChecks {
         check(try lib.addons().map(\.base) == ["https://torrent.example/token=SECRET123", "https://a", "https://b"],
               "add-ons keep the order they are put in")
         try lib.setEnabled(base: "https://b", false)
+        check(try lib.languages() == WatchLibrary.defaultLanguages, "Turkish, then English, to begin with")
+        try lib.setLanguages(["EN", "deu", "klingon", "en"])
         let reopened = library()
+        check(try reopened.languages() == ["eng", "ger"], "preferred languages are kept by their 639-2 codes, once each")
         check(try reopened.addons().map(\.enabled) == [true, true, false] && reopened.item(show.id)?.watched.count == 1,
               "the library survives reopening")
         let bytes = String(decoding: try Data(contentsOf: scratch.appendingPathComponent("library.enc")), as: UTF8.self)

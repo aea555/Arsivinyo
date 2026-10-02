@@ -222,12 +222,26 @@
       "stream": {
         "url": "https://cdn.example/movie.mp4",
         "name": "Example\n1080p",
-        "title": "Movie.2009.1080p.mp4"
+        "title": "Movie.2009.1080p.mp4",
+        "subtitles": [
+          {
+            "id": "s1",
+            "url": "https://cdn.example/movie.tr.srt",
+            "lang": "tur"
+          },
+          {
+            "url": "ftp://x/y.srt",
+            "lang": "eng"
+          }
+        ]
       },
       "kind": "url",
       "target": "https://cdn.example/movie.mp4",
       "label": "Example 1080p",
-      "detail": "Movie.2009.1080p.mp4"
+      "detail": "Movie.2009.1080p.mp4",
+      "subtitles": [
+        "https://cdn.example/movie.tr.srt"
+      ]
     },
     {
       "stream": {
@@ -443,5 +457,102 @@
       }
     ],
     "why": "an add-on that runs on this device, one whose address is not a manifest URL, and one without an id are left out"
+  },
+  "languages": {
+    "cases": [
+      [
+        "tur",
+        "tur"
+      ],
+      [
+        "TR",
+        "tur"
+      ],
+      [
+        "tr-TR",
+        "tur"
+      ],
+      [
+        "en",
+        "eng"
+      ],
+      [
+        "deu",
+        "ger"
+      ],
+      [
+        "ger",
+        "ger"
+      ],
+      [
+        "pt_BR",
+        "por"
+      ],
+      [
+        "klingon",
+        null
+      ],
+      [
+        "",
+        null
+      ]
+    ],
+    "why": "a 639-1, 639-2/B or 639-2/T code, any case, with or without a region, names the same language by its 639-2/B code"
+  },
+  "subtitleRanking": {
+    "preferred": [
+      "tur",
+      "eng"
+    ],
+    "perLanguage": 2,
+    "subtitles": [
+      {
+        "id": "own-en",
+        "url": "https://a/own.en.srt",
+        "lang": "en"
+      },
+      {
+        "id": "de",
+        "url": "https://b/1.srt",
+        "lang": "ger"
+      },
+      {
+        "id": "en1",
+        "url": "https://b/2.srt",
+        "lang": "eng"
+      },
+      {
+        "id": "tr1",
+        "url": "https://b/3.srt",
+        "lang": "tur"
+      },
+      {
+        "id": "tr-dup",
+        "url": "https://b/3.srt",
+        "lang": "tur"
+      },
+      {
+        "id": "tr2",
+        "url": "https://b/4.srt",
+        "lang": "tr"
+      },
+      {
+        "id": "tr3",
+        "url": "https://b/5.srt",
+        "lang": "tur"
+      },
+      {
+        "id": "none",
+        "url": "https://b/6.srt",
+        "lang": ""
+      }
+    ],
+    "order": [
+      "tr1",
+      "tr2",
+      "own-en",
+      "en1"
+    ],
+    "why": "preferred languages only, in preference order, each in the order given, at most perLanguage each, a URL once"
   }
 }

@@ -986,6 +986,21 @@ export interface WatchStream {
   bingeGroup?: string | null;
   headers: Record<string, string>;
   filename?: string | null;
+  /** Subtitles the stream brings with it. */
+  subtitles?: WatchSubtitle[];
+}
+
+/** A subtitle file to offer; `lang` is an ISO 639-2 code once ranked. */
+export interface WatchSubtitle {
+  id: string;
+  url: string;
+  lang: string;
+}
+
+export interface WatchLanguages {
+  /** Most preferred first, as ISO 639-2 codes. */
+  chosen: string[];
+  offered: string[];
 }
 
 export interface WatchProgress {

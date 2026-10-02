@@ -1,6 +1,6 @@
 import type { Href, useRouter } from 'expo-router';
 
-import type { WatchStream, WatchTitle } from '@/src/api';
+import type { WatchStream, WatchSubtitle, WatchTitle } from '@/src/api';
 
 type Router = ReturnType<typeof useRouter>;
 
@@ -32,6 +32,9 @@ export interface PlayRequest {
   nextVideoId: string | null;
   /** False for a trailer: watching it is not watching the title. */
   record: boolean;
+  /** The stream's own subtitles, and its file name, which subtitle add-ons match on. */
+  subtitles?: WatchSubtitle[];
+  filename?: string | null;
 }
 
 /** Hands a request to the player screen. Kept in memory: a stream URL never goes in a route. */

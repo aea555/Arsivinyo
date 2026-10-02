@@ -46,8 +46,18 @@ All notable changes to this project are documented here. Format based on [Keep a
   add-on addresses, which often carry an account key, are encrypted at rest. Add-ons can
   be discovered from Stremio's own official and community lists, which the installed
   add-ons publish; configurable ones open their settings page, whose Install link
-  (`stremio://`) comes back to Arsivinyo and is installed after asking. Torrent streams and
-  the mpv player come in later phases (`shared/watch/CONTRACT.md`).
+  (`stremio://`) comes back to Arsivinyo and is installed after asking. Torrent streams
+  come in a later phase (`shared/watch/CONTRACT.md`).
+- **The player is mpv**, on both apps, for add-on streams and vault videos alike. MKV, HEVC,
+  AC3, DTS and styled ASS subtitles play, which the system players could not do; the vault
+  plays a private MKV without writing it out in the clear. The controls are Arsivinyo's:
+  play, ten seconds either way, a seek bar, audio track, subtitle track, subtitle delay and
+  speed; on the phone it is fullscreen in landscape and pauses when the app goes to the
+  background. Subtitles come from the file, from the stream, and from add-ons that have
+  them (OpenSubtitles, say), in your preferred languages — Turkish, then English, until you
+  change them on the add-ons screen. The best one loads by itself when the file has nothing
+  as good. Adds about 24 MB of native libraries to the phone app, and needs Android 8 or
+  later.
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is

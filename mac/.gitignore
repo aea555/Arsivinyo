@@ -6,3 +6,6 @@
 # Xcode user state, once there is an Xcode project.
 xcuserdata/
 DerivedData/
+
+# The player's frameworks, fetched by scripts/fetch-mpvkit.sh.
+/Vendor/

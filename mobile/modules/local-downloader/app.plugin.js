@@ -61,6 +61,10 @@ const TAGS = {
     begin: '// @generated begin local-downloader-asset-abi-filter-config',
     end: '// @generated end local-downloader-asset-abi-filter-config',
   },
+  cxxRuntime: {
+    begin: '// @generated begin local-downloader-cxx-runtime',
+    end: '// @generated end local-downloader-cxx-runtime',
+  },
 };
 
 function escapeRegex(value) {
@@ -193,13 +197,18 @@ function addAppGradleChanges(contents) {
   // library and packaged here, so this is where leaving them out actually takes effect.
   const assetAbiFilterBlock = `${TAGS.assetAbiFilterConfig.begin}\nandroid {\n    androidResources {\n        def shippedAbis = (findProperty("reactNativeArchitectures") ?: "${DEFAULT_REACT_NATIVE_ARCHITECTURES}").toString().split(",").collect { it.trim() }.findAll { !it.isEmpty() }\n        def ffmpegAssetsDir = file("../../modules/local-downloader/android/src/main/assets/ffmpeg")\n        def bundledAbis = ffmpegAssetsDir.exists() ? (ffmpegAssetsDir.listFiles() ?: []).findAll { it.directory }.collect { it.name } : []\n        bundledAbis.findAll { !shippedAbis.contains(it) }.each { unusedAbi ->\n            println("[local-downloader] Leaving ffmpeg assets for unused ABI out of the package: " + unusedAbi)\n            ignoreAssetsPatterns.add("!" + unusedAbi)\n        }\n    }\n}\n${TAGS.assetAbiFilterConfig.end}`;
 
+  // libmpv needs a newer libc++_shared.so than React Native builds with; the module's
+  // build.gradle explains, and owns the step that puts mpv's copy in place after a merge.
+  const cxxRuntimeBlock = `${TAGS.cxxRuntime.begin}\nevaluationDependsOn(":local-downloader")\ntasks.matching { it.name ==~ /merge.*NativeLibs/ }.configureEach { project(":local-downloader").useMpvCxxRuntime(it) }\n${TAGS.cxxRuntime.end}`;
+
   next = stripTaggedBlock(next, TAGS.pythonConfig);
+  next = stripTaggedBlock(next, TAGS.cxxRuntime);
   next = stripTaggedBlock(next, TAGS.sourceSetConfig);
   next = stripTaggedBlock(next, TAGS.abiFilterConfig);
   next = stripTaggedBlock(next, TAGS.assetAbiFilterConfig);
   next = stripTaggedBlock(next, TAGS.packagingConfig);
 
-  next = `${next.trimEnd()}\n\n${pythonBlock}\n\n${sourceSetBlock}\n\n${abiFilterBlock}\n\n${assetAbiFilterBlock}\n\n${packagingBlock}\n`;
+  next = `${next.trimEnd()}\n\n${pythonBlock}\n\n${sourceSetBlock}\n\n${abiFilterBlock}\n\n${assetAbiFilterBlock}\n\n${packagingBlock}\n\n${cxxRuntimeBlock}\n`;
 
   return next;
 }
@@ -331,6 +340,9 @@ const withLocalDownloader = (config) => {
     };
 
     upsertProperty('expo.useLegacyPackaging', 'true');
+    // A release build zips every unstripped native library into its debug metadata, over
+    // half a gigabyte with React Native, ONNX Runtime and mpv; 2 GB of heap runs out doing it.
+    upsertProperty('org.gradle.jvmargs', '-Xmx4096m -XX:MaxMetaspaceSize=512m');
     // Default to arm64 for reliable impersonation builds; x86_64 can be enabled explicitly.
     upsertProperty('reactNativeArchitectures', DEFAULT_REACT_NATIVE_ARCHITECTURES);
     return config;

@@ -28,6 +28,8 @@ import type {
   WatchResult,
   WatchRow,
   WatchStream,
+  WatchSubtitle,
+  WatchLanguages,
   WatchTitle,
   LocalSoundPresetProgressEvent,
   LocalSoundPresetStartResult,
@@ -185,6 +187,9 @@ type LocalDownloaderNativeModule = {
   watchStreamSources(type: string, id: string): Promise<{ addonKey: string; name: string }[]>;
   watchStreams(addonKey: string, type: string, id: string): Promise<WatchResult<{ streams: WatchStream[] }>>;
   watchPrepare(kind: string, target: string, headers: Record<string, string>): Promise<WatchResult<WatchPrepared>>;
+  watchSubtitles(type: string, id: string, filename: string | null, own: WatchSubtitle[]): Promise<WatchResult<{ subtitles: WatchSubtitle[] }>>;
+  watchLanguages(): Promise<WatchLanguages>;
+  watchSetLanguages(codes: string[]): Promise<void>;
   watchLibrary(): Promise<{ continue: WatchItem[]; saved: WatchItem[] }>;
   watchItem(id: string): Promise<WatchItem | null>;
   watchRecordProgress(title: WatchTitle, videoId: string, positionMs: number, durationMs: number, addonKey: string | null, bingeGroup: string | null): Promise<void>;
@@ -351,6 +356,9 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       watchStreamSources: async () => unsupported(),
       watchStreams: async () => unsupported(),
       watchPrepare: async () => unsupported(),
+      watchSubtitles: async () => unsupported(),
+      watchLanguages: async () => unsupported(),
+      watchSetLanguages: async () => unsupported(),
       watchLibrary: async () => unsupported(),
       watchItem: async () => unsupported(),
       watchRecordProgress: async () => unsupported(),

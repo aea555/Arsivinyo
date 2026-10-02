@@ -137,6 +137,16 @@ class WatchService(val library: WatchLibrary) {
     Addons.streams(getJson(Addons.resourceUrl(addon(addonKey).base, "stream", type, id), timeoutMs = 20_000))
 
   /**
+   * Subtitles for a video from every add-on that has them, in the add-ons' order. An add-on
+   * that fails or is slow is left out rather than holding up the others' answers.
+   */
+  fun subtitles(type: String, id: String, extra: List<Pair<String, String>>): List<Addons.Subtitle> =
+    enabled().filter { (_, manifest) -> Addons.supports(manifest, "subtitles", type, id) }.flatMap { (addon, _) ->
+      runCatching { Addons.subtitles(getJson(Addons.resourceUrl(addon.base, "subtitles", type, id, extra), timeoutMs = 10_000)) }
+        .getOrDefault(emptyList())
+    }
+
+  /**
    * The lists of add-ons that installed add-ons publish (Cinemeta's official and community
    * ones), one per list: the "all" type where there is one, so a list is not shown per type.
    */

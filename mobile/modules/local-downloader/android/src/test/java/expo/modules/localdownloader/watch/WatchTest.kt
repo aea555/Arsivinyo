@@ -92,7 +92,27 @@ class WatchTest {
       assertEquals(c.getString("label"), stream.label)
       assertEquals(c.getString("detail"), stream.detail)
       if (c.has("fileIdx")) assertEquals(c.getInt("fileIdx"), stream.fileIdx)
+      val subtitles = c.optJSONArray("subtitles")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+      assertEquals(subtitles, stream.subtitles.map { it.url })
     }
+  }
+
+  @Test
+  fun languagesAreNamedByOneCode() {
+    val cases = vectors().getJSONObject("languages").getJSONArray("cases")
+    for (i in 0 until cases.length()) {
+      val c = cases.getJSONArray(i)
+      assertEquals(c.getString(0), if (c.isNull(1)) null else c.getString(1), Addons.language(c.getString(0)))
+    }
+  }
+
+  @Test
+  fun subtitlesAreOfferedInThePreferredLanguages() {
+    val v = vectors().getJSONObject("subtitleRanking")
+    fun strings(key: String) = v.getJSONArray(key).let { a -> (0 until a.length()).map { a.getString(it) } }
+    val subtitles = Addons.subtitles(v)
+    val ranked = Addons.rankSubtitles(subtitles, strings("preferred"), v.getInt("perLanguage"))
+    assertEquals(strings("order"), ranked.map { it.id })
   }
 
   @Test
@@ -179,6 +199,14 @@ class WatchTest {
     lib.uninstall("https://c")
     val reopened = library()
     assertEquals(listOf("https://a" to true, "https://b" to false), reopened.addons().map { it.base to it.enabled })
+  }
+
+  @Test
+  fun preferredLanguagesAreKeptByTheirCodes() {
+    val lib = library()
+    assertEquals(WatchLibrary.DEFAULT_LANGUAGES, lib.languages())
+    lib.setLanguages(listOf("EN", "deu", "klingon", "en"))
+    assertEquals(listOf("eng", "ger"), library().languages())
   }
 
   @Test

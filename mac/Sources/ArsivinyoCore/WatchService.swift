@@ -156,4 +156,17 @@ public final class WatchService: @unchecked Sendable {
     public func streams(from source: Source, type: String, id: String) async throws -> [Addons.Stream] {
         Addons.streams(try await getJSON(Addons.resourceURL(base: source.base, resource: "stream", type: type, id: id), timeout: 20))
     }
+
+    /// Subtitles to offer for a video, best first: the stream's own, then those of every
+    /// add-on that has them, in the preferred languages only. An add-on that fails or is slow
+    /// is left out rather than holding up the others'.
+    public func subtitles(type: String, id: String, filename: String?, own: [Addons.Subtitle]) async throws -> [Addons.Subtitle] {
+        let extra = filename.map { [("filename", $0)] } ?? []
+        var all = own
+        for pair in try enabled() where Addons.supports(pair.manifest, resource: "subtitles", type: type, id: id) {
+            let address = Addons.resourceURL(base: pair.addon.base, resource: "subtitles", type: type, id: id, extra: extra)
+            if let json = try? await getJSON(address, timeout: 10) { all += Addons.subtitles(json) }
+        }
+        return Addons.rankSubtitles(all, preferred: try library.languages())
+    }
 }

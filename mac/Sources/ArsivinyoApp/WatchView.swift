@@ -1,5 +1,4 @@
 import ArsivinyoCore
-import AVKit
 import SwiftUI
 
 /// What the player window plays, and what to remember it as.
@@ -16,6 +15,9 @@ struct WatchPlayRequest: Hashable {
     var nextVideo: Addons.Video?
     /// False for a trailer: watching it is not watching the title.
     var record = true
+    /// The stream's own subtitles, and its file name, which subtitle add-ons match on.
+    var subtitles: [Addons.Subtitle] = []
+    var filename: String?
 }
 
 /// A title to open, with what is already known about it.
@@ -47,7 +49,8 @@ extension AppModel {
         let following = regular.firstIndex(where: { $0.id == next.id }).flatMap { $0 + 1 < regular.count ? regular[$0 + 1] : nil }
         return WatchPlayRequest(url: prepared.url, headers: prepared.headers, title: request.title, videoId: next.id,
                                 videoName: WatchTitleView.episodeName(next), source: source,
-                                bingeGroup: stream.bingeGroup, startMs: 0, nextVideo: following)
+                                bingeGroup: stream.bingeGroup, startMs: 0, nextVideo: following,
+                                subtitles: stream.subtitles, filename: stream.filename)
     }
 }
 
@@ -542,7 +545,8 @@ private struct StreamList: View {
                 model.watchPlaying = WatchPlayRequest(
                     url: prepared.url, headers: prepared.headers, title: title, videoId: video.id,
                     videoName: isSeries ? WatchTitleView.episodeName(video) : title.name, source: source,
-                    bingeGroup: stream.bingeGroup, startMs: startMs, nextVideo: nextVideo)
+                    bingeGroup: stream.bingeGroup, startMs: startMs, nextVideo: nextVideo,
+                    subtitles: stream.subtitles, filename: stream.filename)
                 openWindow(id: "watch-player")
             } catch {
                 if stream.kind == .external, let url = URL(string: stream.target) {
@@ -632,6 +636,7 @@ private struct AddonsSheet: View {
                 }
             }
             .frame(minHeight: 220)
+            SubtitleLanguages()
         }
     }
 
@@ -656,6 +661,40 @@ private struct AddonsSheet: View {
             busy = false
             reload()
         }
+    }
+}
+
+/// The languages subtitles and audio are picked in, most preferred first
+/// (`shared/watch/CONTRACT.md`, "The player"). A chosen one is clicked to drop it; another is
+/// added last from the menu.
+private struct SubtitleLanguages: View {
+    @Environment(AppModel.self) private var model
+    @State private var chosen: [String] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Subtitle languages").font(.headline)
+            Text("Subtitles and audio in these languages are picked first, in this order.").foregroundStyle(.secondary)
+            HStack {
+                ForEach(Array(chosen.enumerated()), id: \.element) { index, code in
+                    Button { save(chosen.filter { $0 != code }) } label: {
+                        Label("\(index + 1). \(languageName(code))", systemImage: "xmark")
+                    }
+                }
+                Menu("Add a language") {
+                    ForEach(Addons.languages.map(\.code).filter { !chosen.contains($0) }, id: \.self) { code in
+                        Button(languageName(code)) { save(chosen + [code]) }
+                    }
+                }
+                .fixedSize()
+            }
+        }
+        .onAppear { chosen = (try? model.watch.library.languages()) ?? WatchLibrary.defaultLanguages }
+    }
+
+    private func save(_ codes: [String]) {
+        try? model.watch.library.setLanguages(codes)
+        chosen = (try? model.watch.library.languages()) ?? codes
     }
 }
 
@@ -737,21 +776,19 @@ private struct DiscoverAddons: View {
     }
 }
 
-/// The phase 1 player: AVKit, in its own window. It resumes where the library says the
-/// video stopped, writes the position down as it plays, and offers the next episode at the end.
+/// An add-on's stream in the player, in its own window (`shared/watch/CONTRACT.md`, "The
+/// player"). It resumes where the library says the video stopped, writes the position down as
+/// it plays, brings in subtitles from add-ons, and offers the next episode at the end.
 struct WatchPlayerWindow: View {
     @Environment(AppModel.self) private var model
-    @State private var player: AVPlayer?
+    @State private var player = MPVPlayer()
     @State private var request: WatchPlayRequest?
-    @State private var ended = false
+    @State private var subtitles: [Addons.Subtitle] = []
     @State private var loadingNext = false
-    @State private var observer: Any?
 
     var body: some View {
-        ZStack {
-            Color.black
-            if let player { PlayerView(player: player) }
-            if ended, request?.nextVideo != nil {
+        VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles) {
+            if player.ended, request?.nextVideo != nil {
                 Button {
                     loadingNext = true
                     Task {
@@ -768,62 +805,40 @@ struct WatchPlayerWindow: View {
         .navigationTitle(request?.videoName ?? "")
         .onAppear { if let pending = model.watchPlaying { start(pending) } }
         .onChange(of: model.watchPlaying) { _, pending in if let pending, pending != request { start(pending) } }
-        .onDisappear { stop() }
+        .task {
+            // Where it is, written down every ten seconds.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                save()
+            }
+        }
+        .onDisappear {
+            save()
+            player.detach()
+        }
     }
 
     private func start(_ next: WatchPlayRequest) {
-        stop()
-        request = next
-        ended = false
-        let asset = AVURLAsset(url: next.url, options: next.headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": next.headers])
-        let item = AVPlayerItem(asset: asset)
-        let made = AVPlayer(playerItem: item)
-        if next.startMs > 0 { made.seek(to: CMTime(value: next.startMs, timescale: 1000)) }
-        // Where it is, written down every ten seconds and once more at the end.
-        observer = made.addPeriodicTimeObserver(forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main) { _ in
-            Task { @MainActor in save() }
-        }
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
-            Task { @MainActor in
-                save()
-                ended = true
-            }
-        }
-        player = made
-        made.play()
-    }
-
-    private func save() {
-        guard let player, let request, request.record, let item = player.currentItem else { return }
-        let duration = item.duration.seconds, position = player.currentTime().seconds
-        guard duration.isFinite, duration > 0, position.isFinite else { return }
-        try? model.watch.library.recordProgress(request.title, videoId: request.videoId,
-                                                positionMs: Int64(position * 1000), durationMs: Int64(duration * 1000),
-                                                addon: request.source?.base, bingeGroup: request.bingeGroup)
-    }
-
-    private func stop() {
         save()
-        if let observer { player?.removeTimeObserver(observer) }
-        observer = nil
-        player?.pause()
-        player = nil
-    }
-}
-
-private struct PlayerView: NSViewRepresentable {
-    let player: AVPlayer
-
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
-        view.controlsStyle = .floating
-        view.allowsPictureInPicturePlayback = true
-        view.showsFullScreenToggleButton = true
-        view.player = player
-        return view
+        request = next
+        subtitles = []
+        player.languages = (try? model.watch.library.languages()) ?? WatchLibrary.defaultLanguages
+        player.onEnded = { save(atEnd: true) }
+        player.load(.init(url: next.url.absoluteString, headers: next.headers, startMs: next.startMs))
+        // A trailer is not the title: add-ons have nothing for it.
+        guard next.record else { return }
+        Task {
+            let found = (try? await model.watch.subtitles(type: next.title.type, id: next.videoId,
+                                                         filename: next.filename, own: next.subtitles)) ?? []
+            if request == next { subtitles = found }
+        }
     }
 
-    func updateNSView(_ view: AVPlayerView, context: Context) {
-        if view.player !== player { view.player = player }
+    private func save(atEnd: Bool = false) {
+        guard let request, request.record, player.durationMs > 0 else { return }
+        let duration = Int64(player.durationMs)
+        try? model.watch.library.recordProgress(request.title, videoId: request.videoId,
+                                                positionMs: atEnd ? duration : Int64(player.positionMs), durationMs: duration,
+                                                addon: request.source?.base, bingeGroup: request.bingeGroup)
     }
 }

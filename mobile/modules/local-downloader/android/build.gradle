@@ -48,12 +48,55 @@ abstract class CopyFaceModels extends DefaultTask {
   }
 }
 
+// The player (shared/watch/CONTRACT.md, "The player"): libmpv, from the AAR Findroid
+// publishes. It brings a libc++_shared.so built with a newer NDK than React Native's, and
+// libmpv needs two symbols only the newer one has; none of the app's other libraries uses
+// anything the newer one dropped (checked symbol by symbol when this was added). Every
+// native build in the app brings React Native's copy, and an AAR's never wins the merge,
+// so [useMpvCxxRuntime] puts mpv's in place after it: one runtime in the process, mpv's.
+abstract class ExtractCxxRuntime extends DefaultTask {
+  @InputFiles abstract ConfigurableFileCollection getAar()
+  @OutputDirectory abstract DirectoryProperty getJni()
+  @Inject abstract FileSystemOperations getFiles()
+  @Inject abstract ArchiveOperations getArchives()
+
+  @TaskAction
+  void extract() {
+    files.sync { from(archives.zipTree(aar.singleFile)) { include "jni/*/libc++_shared.so"; eachFile { it.path = it.path - "jni/" } }; into jni }
+  }
+}
+
 def sharedFaces = file("${projectDir}/../../../../shared/faces")
 def onnxRuntimeHeaders = layout.buildDirectory.dir("onnxruntime/headers")
 
 configurations {
   onnxRuntime
+  mpvRuntime
 }
+
+def extractCxxRuntime = tasks.register("extractCxxRuntime", ExtractCxxRuntime) {
+  aar.from(configurations.mpvRuntime)
+  jni.set(layout.buildDirectory.dir("mpv-cxx/jni"))
+}
+
+/** After a native-libs merge, mpv's libc++_shared.so in place of whichever copy it picked. */
+ext.useMpvCxxRuntime = { Task task ->
+  task.dependsOn(extractCxxRuntime)
+  def runtime = extractCxxRuntime.flatMap { it.jni }
+  task.doLast {
+    def out = task.outputDir.get().asFile
+    (runtime.get().asFile.listFiles() ?: []).findAll { it.directory }.each { abi ->
+      def target = new File(out, "lib/${abi.name}/libc++_shared.so")
+      if (target.parentFile.directory) {
+        java.nio.file.Files.copy(new File(abi, "libc++_shared.so").toPath(), target.toPath(),
+          java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      }
+    }
+  }
+}
+
+// This module's own test APK, which runs the player.
+tasks.matching { it.name ==~ /merge.*AndroidTestNativeLibs/ }.configureEach { useMpvCxxRuntime(it) }
 
 def extractOnnxRuntime = tasks.register("extractOnnxRuntime", ExtractOnnxRuntime) {
   aar.from(configurations.onnxRuntime)
@@ -80,11 +123,20 @@ def copyFaceFixtures = tasks.register("copyFaceFixtures", CopyFaceModels) {
   target.set("faces-test")
 }
 
+// The player's sample: an MKV with HEVC, AC3, DTS and styled ASS, which the instrumented
+// test plays as the watch contract's phase 2 asks.
+def copyWatchFixtures = tasks.register("copyWatchFixtures", CopyFaceModels) {
+  models.from(fileTree(file("${projectDir}/../../../../shared/watch/fixtures")) { include "*.mkv" })
+  assets.set(layout.buildDirectory.dir("generated/watch-test-assets"))
+  target.set("watch-test")
+}
+
 androidComponents {
   onVariants(selector().all()) { variant ->
     variant.sources.assets?.addGeneratedSourceDirectory(copyFaceModels) { it.assets }
     variant.sources.jniLibs?.addGeneratedSourceDirectory(extractOnnxRuntime) { it.jni }
     variant.androidTest?.sources?.assets?.addGeneratedSourceDirectory(copyFaceFixtures) { it.assets }
+    variant.androidTest?.sources?.assets?.addGeneratedSourceDirectory(copyWatchFixtures) { it.assets }
   }
 }
 
@@ -141,6 +193,8 @@ android {
   }
 
   packagingOptions {
+    // Every native build brings a libc++_shared.so; useMpvCxxRuntime settles which one ships.
+    jniLibs.pickFirsts += ["**/libc++_shared.so"]
     // The bundled ffmpeg/ffprobe are executables shipped as .so files; stripping
     // them breaks execution. libaudiopresets.so is a real library and is left to be
     // stripped normally.
@@ -151,6 +205,10 @@ android {
 
 dependencies {
   onnxRuntime "com.microsoft.onnxruntime:onnxruntime-android:1.30.0@aar"
+  // The player: libmpv with FFmpeg and libass (MIT, github.com/jarnedemeulemeester/libmpv-android).
+  // Its Kotlin stdlib is left to the app's, which is the one the rest of the module uses.
+  implementation("dev.jdtech.mpv:libmpv:1.0.0") { exclude group: "org.jetbrains.kotlin" }
+  mpvRuntime "dev.jdtech.mpv:libmpv:1.0.0@aar"
   implementation "androidx.core:core-ktx:1.13.1"
   implementation "androidx.activity:activity-ktx:1.9.2"
   implementation "androidx.biometric:biometric:1.1.0"

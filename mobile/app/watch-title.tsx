@@ -179,6 +179,8 @@ export default function WatchTitleScreen() {
         startMs,
         nextVideoId: next?.id ?? null,
         record: true,
+        subtitles: stream.subtitles ?? [],
+        filename: stream.filename ?? null,
       });
     },
     [isSeries, item, known, meta, router, t, video],

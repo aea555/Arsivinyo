@@ -92,6 +92,7 @@ import expo.modules.localdownloader.memes.FacesNative
 import expo.modules.localdownloader.memes.KeystoreSealer
 import expo.modules.localdownloader.memes.MemeCollection
 import expo.modules.localdownloader.watch.Addons
+import expo.modules.localdownloader.watch.MpvPlayerView
 import expo.modules.localdownloader.watch.WatchLibrary
 import expo.modules.localdownloader.watch.WatchService
 import expo.modules.localdownloader.memes.ScannedFace
@@ -896,7 +897,10 @@ class LocalDownloaderModule : Module() {
   private fun streamMap(s: Addons.Stream) = mapOf(
     "kind" to s.kind.wire, "target" to s.target, "fileIdx" to s.fileIdx, "label" to s.label, "detail" to s.detail,
     "bingeGroup" to s.bingeGroup, "headers" to s.headers, "filename" to s.filename,
+    "subtitles" to s.subtitles.map(::subtitleMap),
   )
+
+  private fun subtitleMap(s: Addons.Subtitle) = mapOf("id" to s.id, "url" to s.url, "lang" to s.lang)
 
   private fun watchItemMap(item: WatchLibrary.Item) = mapOf(
     "id" to item.id, "type" to item.type, "name" to item.name, "poster" to item.poster, "addedAt" to item.addedAt,
@@ -1473,6 +1477,54 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("watchPrepare") { kind: String, target: String, headers: Map<String, String>, promise: Promise ->
       watchAsync(promise) { prepareStream(kind, target, headers) }
+    }
+
+    /**
+     * Subtitles to offer for a video, best first: the stream's own, then the add-ons', in the
+     * preferred languages only (CONTRACT.md, "The player").
+     */
+    AsyncFunction("watchSubtitles") { type: String, id: String, filename: String?, own: List<Map<String, Any?>>, promise: Promise ->
+      watchAsync(promise) {
+        val mine = own.mapNotNull { m ->
+          val url = (m["url"] as? String)?.takeIf(Addons::isHttp) ?: return@mapNotNull null
+          Addons.Subtitle(m["id"] as? String ?: url, url, m["lang"] as? String ?: "")
+        }
+        val extra = listOfNotNull(filename?.ifBlank { null }?.let { "filename" to it })
+        val ranked = Addons.rankSubtitles(mine + watch.subtitles(type, id, extra), watch.library.languages())
+        mapOf("success" to true, "subtitles" to ranked.map { subtitleMap(it) + ("lang" to Addons.language(it.lang)) })
+      }
+    }
+
+    AsyncFunction("watchLanguages") {
+      mapOf("chosen" to watch.library.languages(), "offered" to Addons.languages.map { it.code })
+    }
+
+    AsyncFunction("watchSetLanguages") { codes: List<String> -> watch.library.setLanguages(codes) }
+
+    View(MpvPlayerView::class) {
+      Events("onProgress", "onTracks", "onEnded", "onFailed")
+
+      OnViewDestroys { view: MpvPlayerView -> view.release() }
+
+      Prop("source") { view: MpvPlayerView, source: Map<String, Any?>? ->
+        val url = source?.get("url") as? String
+        @Suppress("UNCHECKED_CAST")
+        view.setSource(url?.let {
+          MpvPlayerView.Source(it, (source["headers"] as? Map<String, String>).orEmpty(), (source["startMs"] as? Number)?.toLong() ?: 0L)
+        })
+      }
+
+      Prop("languages") { view: MpvPlayerView, languages: List<String>? -> view.languages = languages.orEmpty() }
+
+      AsyncFunction("setPaused") { view: MpvPlayerView, paused: Boolean -> view.setPaused(paused) }
+      AsyncFunction("seek") { view: MpvPlayerView, ms: Double -> view.seek(ms) }
+      AsyncFunction("seekBy") { view: MpvPlayerView, ms: Double -> view.seekBy(ms) }
+      AsyncFunction("setTrack") { view: MpvPlayerView, kind: String, id: String -> view.setTrack(kind, id) }
+      AsyncFunction("addSubtitle") { view: MpvPlayerView, url: String, title: String, lang: String, select: Boolean ->
+        view.addSubtitle(url, title, lang, select)
+      }
+      AsyncFunction("setSubtitleDelay") { view: MpvPlayerView, ms: Double -> view.setSubtitleDelay(ms) }
+      AsyncFunction("setSpeed") { view: MpvPlayerView, speed: Double -> view.setSpeed(speed) }
     }
 
     AsyncFunction("watchLibrary") {

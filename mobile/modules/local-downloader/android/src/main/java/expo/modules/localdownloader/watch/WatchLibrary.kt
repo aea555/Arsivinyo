@@ -37,7 +37,11 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
     val saved: Boolean = false,
   )
 
-  private data class State(val addons: MutableList<Addon>, val items: MutableList<Item>)
+  private data class State(
+    val addons: MutableList<Addon>,
+    val items: MutableList<Item>,
+    var languages: List<String> = DEFAULT_LANGUAGES,
+  )
 
   private val lock = Any()
   private var cache: State? = null
@@ -52,6 +56,13 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
 
   /** Started and not finished, newest first. */
   fun continueWatching(): List<Item> = items().filter { it.progress != null }.sortedByDescending { it.progress!!.at }
+
+  /** Subtitle and audio languages, most preferred first, as ISO 639-2 codes. */
+  fun languages(): List<String> = synchronized(lock) { read().languages }
+
+  fun setLanguages(codes: List<String>) = write { state ->
+    state.languages = codes.mapNotNull { Addons.language(it) }.distinct().ifEmpty { DEFAULT_LANGUAGES }
+  }
 
   // ---- add-ons -----------------------------------------------------------------------------
 
@@ -170,6 +181,9 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
     /** At or past this share of a video, it counts as watched. */
     const val FINISHED_AT = 0.92
 
+    /** Turkish, then English, until the user says otherwise (CONTRACT.md). */
+    val DEFAULT_LANGUAGES = listOf("tur", "eng")
+
     private fun encode(state: State): JSONObject = JSONObject()
       .put("version", 1)
       .put("addons", JSONArray().apply {
@@ -187,6 +201,7 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
             .put("saved", item.saved))
         }
       })
+      .put("languages", JSONArray(state.languages))
 
     private fun decode(json: JSONObject): State {
       val addons = mutableListOf<Addon>()
@@ -212,7 +227,8 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
           saved = o.optBoolean("saved"),
         ))
       }
-      return State(addons, items)
+      val languages = json.optJSONArray("languages")?.let { l -> (0 until l.length()).mapNotNull { l.optString(it).ifBlank { null } } }
+      return State(addons, items, languages?.ifEmpty { null } ?: DEFAULT_LANGUAGES)
     }
 
     /** Padded before sealing, so the file's size does not count what was watched. */

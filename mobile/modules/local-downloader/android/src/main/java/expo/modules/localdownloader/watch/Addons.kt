@@ -258,6 +258,8 @@ object Addons {
     /** Request headers the add-on says the stream needs. */
     val headers: Map<String, String>,
     val filename: String?,
+    /** Subtitles the stream brings with it. */
+    val subtitles: List<Subtitle> = emptyList(),
   )
 
   private val infoHash = Regex("^[0-9a-fA-F]{40}$")
@@ -292,6 +294,7 @@ object Addons {
       notWebReady = hints?.optBoolean("notWebReady") ?: false,
       headers = headers,
       filename = hints?.optString("filename")?.ifBlank { null },
+      subtitles = subtitles(s),
     )
   }
 
@@ -324,12 +327,46 @@ object Addons {
 
   data class Subtitle(val id: String, val url: String, val lang: String)
 
+  /** A `subtitles` answer, or a stream's own `subtitles`. */
   fun subtitles(json: JSONObject): List<Subtitle> {
     val list = json.optJSONArray("subtitles") ?: return emptyList()
     return (0 until list.length()).mapNotNull { i ->
       val s = list.optJSONObject(i) ?: return@mapNotNull null
       val url = s.optString("url").takeIf(::isHttp) ?: return@mapNotNull null
       Subtitle(s.optString("id").ifBlank { url }, url, s.optString("lang"))
+    }
+  }
+
+  // ---- languages ---------------------------------------------------------------------------
+
+  /** A language the user can prefer: its ISO 639-2 code, and every code add-ons use for it. */
+  data class Language(val code: String, val codes: Set<String>)
+
+  /** The languages offered for subtitles and audio, by ISO 639-2/B code. */
+  val languages: List<Language> = listOf(
+    "tur" to "tr", "eng" to "en", "ger/deu" to "de", "fre/fra" to "fr", "spa" to "es", "ita" to "it",
+    "por" to "pt", "dut/nld" to "nl", "rus" to "ru", "ara" to "ar", "per/fas" to "fa", "gre/ell" to "el",
+    "pol" to "pl", "jpn" to "ja", "kor" to "ko", "chi/zho" to "zh", "aze" to "az",
+  ).map { (three, two) ->
+    val codes = three.split('/')
+    Language(codes.first(), (codes + two).toSet())
+  }
+
+  /** The 639-2 code for whatever an add-on or a file calls a language; null when unknown. */
+  fun language(lang: String): String? {
+    val key = lang.trim().lowercase().substringBefore('-').substringBefore('_')
+    return languages.firstOrNull { key in it.codes }?.code
+  }
+
+  /**
+   * Subtitles to offer, best first: only the preferred languages, in the order they are
+   * preferred, each keeping the order it came in (the stream's own, then the add-ons' in
+   * theirs), at most [perLanguage] of each and none twice.
+   */
+  fun rankSubtitles(subtitles: List<Subtitle>, preferred: List<String>, perLanguage: Int = 5): List<Subtitle> {
+    val seen = mutableSetOf<String>()
+    return preferred.flatMap { code ->
+      subtitles.filter { language(it.lang) == code && seen.add(it.url) }.take(perLanguage)
     }
   }
 }

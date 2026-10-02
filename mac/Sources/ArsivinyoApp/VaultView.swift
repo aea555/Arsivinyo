@@ -1,4 +1,3 @@
-import AVKit
 import ArsivinyoCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -207,16 +206,15 @@ struct VaultView: View {
     }
 }
 
-/// Plays one item straight out of its encrypted file.
+/// Plays one item straight out of its encrypted file, in the same player as Watch: mpv reads
+/// through `VaultStream`, which decrypts what it asks for in memory, so a private MKV plays
+/// too and nothing in the clear is written.
 private struct VaultPlayerSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let item: Vault.Item
 
-    // The loader has to outlive the player: AVFoundation holds its delegate weakly, and a
-    // loader that goes away mid-film stops the film with no error.
-    @State private var loader: VaultAssetLoader?
-    @State private var player: AVPlayer?
+    @State private var player: MPVPlayer?
     @State private var problem: String?
 
     var body: some View {
@@ -224,7 +222,7 @@ private struct VaultPlayerSheet: View {
             ZStack {
                 Color.black
                 if let player {
-                    PlayerView(player: player)
+                    VideoPlayerScreen(player: player, title: item.title)
                 } else if let problem {
                     Text(problem).foregroundStyle(.white)
                 } else {
@@ -242,20 +240,17 @@ private struct VaultPlayerSheet: View {
         }
         .task {
             do {
-                let reader = try model.vault.reader(for: item.id)
-                let loader = VaultAssetLoader(reader: reader, contentType: item.contentType)
-                self.loader = loader
-                let player = AVPlayer(playerItem: AVPlayerItem(asset: loader.makeAsset(id: item.id)))
+                let player = MPVPlayer(vault: try model.vault.reader(for: item.id))
+                player.languages = (try? model.watch.library.languages()) ?? WatchLibrary.defaultLanguages
+                player.load(.init(url: VaultStream.url(id: item.id)))
                 self.player = player
-                player.play()
             } catch {
                 problem = String(describing: error)
             }
         }
         .onDisappear {
-            player?.pause()
+            player?.detach()
             player = nil
-            loader = nil
         }
     }
 }
@@ -285,23 +280,5 @@ private struct RenameSheet: View {
         guard !trimmed.isEmpty else { return }
         onSave(trimmed)
         dismiss()
-    }
-}
-
-/// AppKit's player, the one QuickTime uses: its controls, full screen and Picture in Picture.
-/// SwiftUI's VideoPlayer aborted the app as it was set up, inside the framework itself.
-private struct PlayerView: NSViewRepresentable {
-    let player: AVPlayer
-
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
-        view.controlsStyle = .floating
-        view.allowsPictureInPicturePlayback = true
-        view.player = player
-        return view
-    }
-
-    func updateNSView(_ view: AVPlayerView, context: Context) {
-        if view.player !== player { view.player = player }
     }
 }

@@ -850,6 +850,52 @@
       }
     },
     "trailer": "Trailer",
-    "trailerOf": "Trailer · {{name}}"
+    "trailerOf": "Trailer · {{name}}",
+    "languages": {
+      "title": "Subtitle languages",
+      "hint": "Subtitles and audio in these languages are picked first, in this order.",
+      "add": "Add a language",
+      "none": "No languages chosen; Turkish and English are used."
+    }
+  },
+  "player": {
+    "play": "Play",
+    "pause": "Pause",
+    "back10": "Back 10 seconds",
+    "forward10": "Forward 10 seconds",
+    "close": "Close",
+    "audio": "Audio",
+    "subtitles": "Subtitles",
+    "speed": "Speed",
+    "off": "Off",
+    "track": "Track {{n}}",
+    "fromAddon": "from an add-on",
+    "fromFile": "in the file",
+    "delay": "Subtitle delay",
+    "delayValue": "{{value}} s",
+    "reset": "Reset",
+    "failed": "This video could not be played.",
+    "failedCode": "Code: {{code}}",
+    "noTracks": "None",
+    "retry": "Try again",
+    "languages": {
+      "tur": "Turkish",
+      "eng": "English",
+      "ger": "German",
+      "fre": "French",
+      "spa": "Spanish",
+      "ita": "Italian",
+      "por": "Portuguese",
+      "dut": "Dutch",
+      "rus": "Russian",
+      "ara": "Arabic",
+      "per": "Persian",
+      "gre": "Greek",
+      "pol": "Polish",
+      "jpn": "Japanese",
+      "kor": "Korean",
+      "chi": "Chinese",
+      "aze": "Azerbaijani"
+    }
   }
 }

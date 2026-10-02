@@ -12,6 +12,8 @@ import LocalDownloaderModule, {
   type WatchRow,
   type WatchStream,
   type WatchStreamKind,
+  type WatchSubtitle,
+  type WatchLanguages,
   type WatchTitle,
   type WatchVideo,
 } from '../native/localDownloader';
@@ -28,6 +30,8 @@ export type {
   WatchRow,
   WatchStream,
   WatchStreamKind,
+  WatchSubtitle,
+  WatchLanguages,
   WatchTitle,
   WatchVideo,
 };
@@ -61,6 +65,11 @@ export const getStreamSources = (type: string, id: string) => M.watchStreamSourc
 export const getStreams = (addonKey: string, type: string, id: string) => M.watchStreams(addonKey, type, id);
 export const prepareStream = (stream: Pick<WatchStream, 'kind' | 'target' | 'headers'>) =>
   M.watchPrepare(stream.kind, stream.target, stream.headers ?? {});
+/** Subtitles for a video in the preferred languages, best first: the stream's own, then add-ons'. */
+export const getSubtitles = (type: string, id: string, filename: string | null, own: WatchSubtitle[]) =>
+  M.watchSubtitles(type, id, filename, own);
+export const getLanguages = () => M.watchLanguages();
+export const setLanguages = (codes: string[]) => M.watchSetLanguages(codes);
 export const getLibrary = () => M.watchLibrary();
 export const getLibraryItem = (id: string) => M.watchItem(id);
 export const recordProgress = (

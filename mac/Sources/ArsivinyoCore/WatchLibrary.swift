@@ -56,10 +56,14 @@ public final class WatchLibrary: @unchecked Sendable {
     /// At or past this share of a video, it counts as watched.
     public static let finishedAt = 0.92
 
+    /// Turkish, then English, until the user says otherwise (CONTRACT.md).
+    public static let defaultLanguages = ["tur", "eng"]
+
     private let url: URL
     private let key: () throws -> Data
     private let lock = NSLock()
-    private var cache: (addons: [Addon], items: [Item])?
+    private typealias State = (addons: [Addon], items: [Item], languages: [String])
+    private var cache: State?
     private static let associatedData = "watch/library/v1"
 
     public init(file: URL, key: @escaping () throws -> Data) {
@@ -70,6 +74,17 @@ public final class WatchLibrary: @unchecked Sendable {
     // MARK: - Reading
 
     public func addons() throws -> [Addon] { try lock.withLock { try read().addons } }
+
+    /// Subtitle and audio languages, most preferred first, as ISO 639-2 codes.
+    public func languages() throws -> [String] { try lock.withLock { try read().languages } }
+
+    public func setLanguages(_ codes: [String]) throws {
+        try write { state in
+            var seen = Set<String>()
+            let known = codes.compactMap(Addons.language).filter { seen.insert($0).inserted }
+            state.languages = known.isEmpty ? Self.defaultLanguages : known
+        }
+    }
     public func items() throws -> [Item] { try lock.withLock { try read().items } }
     public func item(_ id: String) throws -> Item? { try items().first { $0.id == id } }
 
@@ -176,7 +191,7 @@ public final class WatchLibrary: @unchecked Sendable {
 
     // MARK: - Storage
 
-    private func write(_ change: (inout (addons: [Addon], items: [Item])) throws -> Void) throws {
+    private func write(_ change: (inout State) throws -> Void) throws {
         try lock.withLock {
             var state = try read()
             try change(&state)
@@ -189,11 +204,11 @@ public final class WatchLibrary: @unchecked Sendable {
         }
     }
 
-    private func read() throws -> (addons: [Addon], items: [Item]) {
+    private func read() throws -> State {
         if let cache { return cache }
         guard FileManager.default.fileExists(atPath: url.path) else {
-            cache = ([], [])
-            return ([], [])
+            cache = ([], [], Self.defaultLanguages)
+            return ([], [], Self.defaultLanguages)
         }
         let json = try Crypto.unpad(Crypto.open(Data(contentsOf: url), key: key(), associatedData: Self.associatedData))
         let state = Self.decode(try JSONSerialization.jsonObject(with: json) as? [String: Any] ?? [:])
@@ -201,7 +216,7 @@ public final class WatchLibrary: @unchecked Sendable {
         return state
     }
 
-    private static func encode(_ state: (addons: [Addon], items: [Item])) -> [String: Any] {
+    private static func encode(_ state: State) -> [String: Any] {
         [
             "version": 1,
             "addons": state.addons.map { ["url": $0.base, "manifest": $0.manifest, "enabled": $0.enabled] as [String: Any] },
@@ -216,10 +231,11 @@ public final class WatchLibrary: @unchecked Sendable {
                 } ?? NSNull()
                 return out
             },
+            "languages": state.languages,
         ]
     }
 
-    private static func decode(_ json: [String: Any]) -> (addons: [Addon], items: [Item]) {
+    private static func decode(_ json: [String: Any]) -> State {
         let addons = (json["addons"] as? [[String: Any]] ?? []).compactMap { a -> Addon? in
             guard let base = a["url"] as? String else { return nil }
             return Addon(base: base, manifest: a["manifest"] as? [String: Any] ?? [:], enabled: a["enabled"] as? Bool ?? true)
@@ -240,6 +256,7 @@ public final class WatchLibrary: @unchecked Sendable {
             item.saved = o["saved"] as? Bool ?? false
             return item
         }
-        return (addons, items)
+        let languages = (json["languages"] as? [String] ?? []).filter { !$0.isEmpty }
+        return (addons, items, languages.isEmpty ? defaultLanguages : languages)
     }
 }

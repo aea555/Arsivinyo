@@ -113,9 +113,17 @@ subtitles. mpv plays all of it.
   subtitle delay, playback speed.
 - Subtitles come from the file, from the stream's `subtitles`, and from add-ons with the
   `subtitles` resource, in the user's preferred languages first (a setting; Turkish, then
-  English, to begin with).
-- The vault's own videos play through the same player, over the vault's loopback server,
-  so a private MKV plays too.
+  English, to begin with). Languages are ISO 639-2 codes; whatever an add-on or a file
+  calls one (`tr`, `TUR`, `tr-TR`) is read as its code, and only the languages offered are
+  known (`VECTORS.json`, `languages`).
+- What is offered from add-ons: the stream's own, then each add-on's in the add-ons' order,
+  kept only in a preferred language, grouped by preference, at most five per language, a URL
+  once (`subtitleRanking`). The best is loaded by itself when the file has nothing in a
+  language preferred as much; the rest wait in the subtitles menu. A trailer asks no add-on.
+- mpv picks the file's own audio and subtitle tracks by the same languages.
+- The vault's own videos play through the same player, so a private MKV plays too: on the
+  phone over the vault's loopback server, on the Mac through mpv's stream callbacks, which
+  decrypt what mpv reads as it reads it. Neither writes plaintext.
 - mpv is GPL/LGPL; Arsivinyo is GPL-3.0-or-later, so it ships under the GPL build.
 
 ## The library
@@ -135,6 +143,7 @@ What has been watched, and where it stopped.
     "progress": {"videoId": "tt0944947:1:2", "positionMs": 0, "durationMs": 0, "at": 0},
     "stream": {"addon": "…", "bingeGroup": "…"}   // to pick the same source for the next one
   }],
+  "languages": ["tur", "eng"],         // subtitles and audio, most preferred first
   "torrents": [{
     "infoHash": "…", "name": "…", "files": [ … ], "wanted": [0, 2],
     "destination": "public" | "private" | "cache",
@@ -183,7 +192,9 @@ add-on URL appears in a log; the library survives a restart and is unreadable on
 plays add-on streams and vault videos.
 
 Done when: an MKV with HEVC video, AC3/DTS audio and ASS subtitles plays with its styling on
-both apps; add-on subtitles load; the vault plays a private MKV without writing plaintext.
+both apps; add-on subtitles load; the vault plays a private MKV without writing plaintext. The
+sample is `fixtures/hevc-ac3-dts-ass.mkv`; the phone plays it in `MpvInstrumentedTest`, the Mac
+in CoreChecks (from a file and out of a vault).
 
 **Phase 3: torrents.** The engine in `shared/torrent`, built for both apps; streaming with
 the local server; downloading `.torrent` files and magnets with file selection, public or

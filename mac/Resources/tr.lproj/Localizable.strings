@@ -452,3 +452,22 @@
 "Installed" = "Kurulu";
 "List" = "Liste";
 "Needs configuring first" = "Önce ayarlanması gerekiyor";
+
+/* The player */
+"%@×" = "%@×";
+"%lld. %@" = "%lld. %@";
+"Add a language" = "Dil ekle";
+"Back 10 seconds" = "10 saniye geri";
+"Earlier by 0.1 s" = "0,1 sn erken";
+"Forward 10 seconds" = "10 saniye ileri";
+"Later by 0.1 s" = "0,1 sn geç";
+"Off" = "Kapalı";
+"Pause" = "Duraklat";
+"Reset delay" = "Gecikmeyi sıfırla";
+"Subtitle delay: %@ s" = "Altyazı gecikmesi: %@ sn";
+"Subtitle languages" = "Altyazı dilleri";
+"Subtitles" = "Altyazı";
+"Subtitles and audio in these languages are picked first, in this order." = "Bu dillerdeki altyazı ve ses önce seçilir, bu sırayla.";
+"This video could not be played." = "Bu video oynatılamadı.";
+"Track %lld" = "Parça %lld";
+"%@ · from an add-on %lld" = "%@ · eklentiden %lld";

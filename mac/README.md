@@ -74,8 +74,20 @@ That puts yt-dlp and curl_cffi under `.build/engine`. yt-dlp is not in the repos
 because it changes weekly and the app replaces it in place anyway. curl_cffi is what lets
 the engine impersonate a browser; without it most sites refuse a downloader outright.
 
-## OpenSSL
+## The player and OpenSSL
 
-Linked statically from Homebrew's `openssl@3`. A dynamic link would tie the finished
-bundle to whatever happens to be in `/opt/homebrew`, which is not something to carry into
-an application. The path is in `Package.swift`.
+The player is libmpv from [MPVKit](https://github.com/mpvkit/MPVKit) 1.0.0's GPL build. Its
+frameworks are not in the repository; fetch them once before building:
+
+```bash
+scripts/fetch-mpvkit.sh
+```
+
+That puts them in `Vendor/MPVKit`, each checked against the SHA-256 `scripts/mpvkit.json` pins
+(MPVKit's own). It is not left to SwiftPM, which would fetch MPVKit's LGPL build as well, one
+connection per file; GitHub's release servers can hold a connection to ~100 KB/s, and the
+script uses many.
+
+MPVKit links its own OpenSSL statically, so the security core uses that one rather than a
+second copy: two static OpenSSLs in one binary define every symbol twice. `swift run
+CoreChecks` holds the result to `shared/crypto/VECTORS.json`.

@@ -77,6 +77,9 @@ export default ({ config }) => {
             // too. Low risk here: the vault is loopback-only and the downloader's network
             // goes through Python/curl-cffi (Chaquopy), which isn't governed by this policy.
             usesCleartextTraffic: true,
+            // Android 8.0: the player's libmpv (shared/watch/CONTRACT.md) is built for it.
+            // Faces need 9 and the music library 10 already; this only drops 7.x.
+            minSdkVersion: 26,
             extraProguardRules: [
               "# Tink (vault cipher v4) uses reflection on its key managers.",
               "-keep class com.google.crypto.tink.** { *; }",

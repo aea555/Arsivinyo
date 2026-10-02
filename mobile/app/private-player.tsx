@@ -1,16 +1,20 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { clearLocalPrivatePlaybackCache, setLocalSecureScreen } from '@/src/api';
+import { clearLocalPrivatePlaybackCache, getLanguages, setLocalSecureScreen } from '@/src/api';
 import { AppText as Text } from '@/src/components';
+import { Player } from '@/src/features/player/Player';
 import { deleteSession, getSession } from '@/src/features/privatePlayback/sessionStore';
 import { useTheme } from '@/src/theme';
 
+/**
+ * A vault video in the player, streamed from the vault's loopback server: nothing decrypted
+ * is written anywhere, and mpv plays what the system player could not (MKV, DTS, styled
+ * subtitles), as `shared/watch/CONTRACT.md` asks of the vault too.
+ */
 export default function PrivatePlayerScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -23,33 +27,17 @@ export default function PrivatePlayerScreen() {
   }, [params.sid]);
 
   const session = useMemo(() => getSession(sid), [sid]);
-  const [firstFrameRendered, setFirstFrameRendered] = useState(false);
-  const [playerError, setPlayerError] = useState<string | null>(null);
-
-  const player = useVideoPlayer(
-    session ? { uri: session.tempUri, useCaching: false } : null,
-    (instance) => {
-      instance.loop = false;
-      instance.muted = false;
-      instance.timeUpdateEventInterval = 0.5;
-      instance.staysActiveInBackground = false;
-      instance.showNowPlayingNotification = false;
-      instance.play();
-    }
-  );
+  const [languages, setLanguages] = useState<string[] | null>(null);
 
   useEffect(() => {
-    if (!session) return;
-    const subscription = player.addListener('statusChange', ({ status, error }) => {
-      if (status === 'error') {
-        setPlayerError(error?.message || 'PRIVATE_VIDEO_NOT_FOUND');
-      }
-      if (status === 'readyToPlay' && !player.playing) {
-        player.play();
-      }
-    });
-    return () => subscription.remove();
-  }, [player, session]);
+    let live = true;
+    getLanguages()
+      .then((l) => live && setLanguages(l.chosen))
+      .catch(() => live && setLanguages(['tur', 'eng']));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     // FLAG_SECURE is applied by the caller before navigation (see app/private-videos.tsx)
@@ -68,19 +56,6 @@ export default function PrivatePlayerScreen() {
       return;
     }
     router.replace('/private-videos');
-  };
-
-  const retryPlayback = async () => {
-    if (!session) return;
-    setPlayerError(null);
-    setFirstFrameRendered(false);
-    try {
-      await player.replaceAsync({ uri: session.tempUri, useCaching: false });
-      player.play();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'PRIVATE_VIDEO_NOT_FOUND';
-      setPlayerError(message);
-    }
   };
 
   if (!session) {
@@ -108,84 +83,18 @@ export default function PrivatePlayerScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: '#000' }]}>
-      <View style={styles.playerContainer}>
-        <VideoView
-          player={player}
-          style={styles.player}
-          nativeControls
-          contentFit="contain"
-          surfaceType="surfaceView"
-          allowsPictureInPicture={false}
-          fullscreenOptions={{
-            enable: true,
-            orientation: 'landscape',
-            autoExitOnRotate: true,
-          }}
-          onFirstFrameRender={() => setFirstFrameRendered(true)}
-        />
-
-        {!firstFrameRendered && !playerError ? (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.loadingText}>{t('privateVault.playerLoading')}</Text>
-          </View>
-        ) : null}
-
-        {playerError ? (
-          <View style={styles.errorOverlay}>
-            <Ionicons name="warning-outline" size={24} color={colors.error} />
-            <Text style={[styles.errorText, { color: colors.error }]}>
-              {t('privateVault.playerError')}
-            </Text>
-            <View style={styles.errorActions}>
-              <Pressable
-                onPress={() => void retryPlayback()}
-                style={({ pressed }) => [
-                  styles.button,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: pressed ? colors.surfaceHover : colors.surface,
-                  },
-                ]}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>
-                  {t('privateVault.playerRetry')}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={goBack}
-                style={({ pressed }) => [
-                  styles.button,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: pressed ? colors.surfaceHover : colors.surface,
-                  },
-                ]}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>
-                  {t('privateVault.playerBack')}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-      </View>
-    </SafeAreaView>
+    <Player
+      source={languages ? { url: session.tempUri } : null}
+      title={session.title}
+      languages={languages ?? []}
+      onClose={goBack}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  playerContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  player: {
-    flex: 1,
-    backgroundColor: '#000',
   },
   centered: {
     flex: 1,
@@ -194,35 +103,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 12,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.38)',
-  },
-  loadingText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(0, 0, 0, 0.62)',
-  },
   errorText: {
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  errorActions: {
-    marginTop: 4,
-    flexDirection: 'row',
-    gap: 10,
   },
   button: {
     minWidth: 120,

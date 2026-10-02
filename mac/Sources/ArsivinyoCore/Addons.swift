@@ -251,6 +251,8 @@ public enum Addons {
         public var notWebReady: Bool
         public var headers: [String: String]
         public var filename: String?
+        /// Subtitles the stream brings with it.
+        public var subtitles: [Subtitle] = []
     }
 
     private static func oneLine(_ text: String) -> String {
@@ -290,7 +292,8 @@ public enum Addons {
                       bingeGroup: text(hints?["bingeGroup"]),
                       notWebReady: hints?["notWebReady"] as? Bool ?? false,
                       headers: headers,
-                      filename: text(hints?["filename"]))
+                      filename: text(hints?["filename"]),
+                      subtitles: subtitles(s))
     }
 
     /// An add-on another add-on offers, ready to install from `base`.
@@ -315,5 +318,60 @@ public enum Addons {
 
     public static func streams(_ json: [String: Any]) -> [Stream] {
         (json["streams"] as? [[String: Any]] ?? []).compactMap(stream)
+    }
+
+    // MARK: - Subtitles and languages
+
+    public struct Subtitle: Hashable, Sendable {
+        public var id: String
+        public var url: String
+        public var lang: String
+        public init(id: String, url: String, lang: String) {
+            self.id = id
+            self.url = url
+            self.lang = lang
+        }
+    }
+
+    /// A `subtitles` answer, or a stream's own `subtitles`.
+    public static func subtitles(_ json: [String: Any]) -> [Subtitle] {
+        (json["subtitles"] as? [[String: Any]] ?? []).compactMap { s in
+            guard let url = s["url"] as? String, isHTTP(url) else { return nil }
+            return Subtitle(id: text(s["id"]) ?? url, url: url, lang: s["lang"] as? String ?? "")
+        }
+    }
+
+    /// A language the user can prefer: its ISO 639-2 code, and every code add-ons use for it.
+    public struct Language: Sendable {
+        public var code: String
+        public var codes: Set<String>
+    }
+
+    /// The languages offered for subtitles and audio, by ISO 639-2/B code.
+    public static let languages: [Language] = [
+        ("tur", "tr"), ("eng", "en"), ("ger/deu", "de"), ("fre/fra", "fr"), ("spa", "es"), ("ita", "it"),
+        ("por", "pt"), ("dut/nld", "nl"), ("rus", "ru"), ("ara", "ar"), ("per/fas", "fa"), ("gre/ell", "el"),
+        ("pol", "pl"), ("jpn", "ja"), ("kor", "ko"), ("chi/zho", "zh"), ("aze", "az"),
+    ].map { three, two in
+        let codes = three.split(separator: "/").map(String.init)
+        return Language(code: codes[0], codes: Set(codes + [two]))
+    }
+
+    /// The 639-2 code for whatever an add-on or a file calls a language; nil when unknown.
+    public static func language(_ lang: String) -> String? {
+        let key = lang.trimmingCharacters(in: .whitespaces).lowercased()
+            .split(separator: "-").first.map(String.init)?
+            .split(separator: "_").first.map(String.init) ?? ""
+        return languages.first { $0.codes.contains(key) }?.code
+    }
+
+    /// Subtitles to offer, best first: only the preferred languages, in the order they are
+    /// preferred, each keeping the order it came in (the stream's own, then the add-ons' in
+    /// theirs), at most `perLanguage` of each and none twice.
+    public static func rankSubtitles(_ subtitles: [Subtitle], preferred: [String], perLanguage: Int = 5) -> [Subtitle] {
+        var seen = Set<String>()
+        return preferred.flatMap { code in
+            subtitles.filter { language($0.lang) == code && seen.insert($0.url).inserted }.prefix(perLanguage)
+        }
     }
 }

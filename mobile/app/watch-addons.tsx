@@ -20,6 +20,7 @@ import {
   type WatchRow,
 } from '@/src/api';
 import { AppText as Text, Chip, ConfirmModal } from '@/src/components';
+import { LanguagesSection } from '@/src/features/watch/Languages';
 import { useTheme } from '@/src/theme';
 
 /**
@@ -200,6 +201,8 @@ export default function WatchAddonsScreen() {
             </View>
           </View>
         ))}
+
+        <LanguagesSection />
 
         {lists.length > 0 ? (
           <>

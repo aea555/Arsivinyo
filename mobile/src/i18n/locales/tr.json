@@ -850,6 +850,52 @@
       }
     },
     "trailer": "Fragman",
-    "trailerOf": "Fragman · {{name}}"
+    "trailerOf": "Fragman · {{name}}",
+    "languages": {
+      "title": "Altyazı dilleri",
+      "hint": "Bu dillerdeki altyazı ve ses önce seçilir, bu sırayla.",
+      "add": "Dil ekle",
+      "none": "Dil seçilmedi; Türkçe ve İngilizce kullanılır."
+    }
+  },
+  "player": {
+    "play": "Oynat",
+    "pause": "Duraklat",
+    "back10": "10 saniye geri",
+    "forward10": "10 saniye ileri",
+    "close": "Kapat",
+    "audio": "Ses",
+    "subtitles": "Altyazı",
+    "speed": "Hız",
+    "off": "Kapalı",
+    "track": "Parça {{n}}",
+    "fromAddon": "eklentiden",
+    "fromFile": "dosyada",
+    "delay": "Altyazı gecikmesi",
+    "delayValue": "{{value}} sn",
+    "reset": "Sıfırla",
+    "failed": "Bu video oynatılamadı.",
+    "failedCode": "Kod: {{code}}",
+    "noTracks": "Yok",
+    "retry": "Tekrar dene",
+    "languages": {
+      "tur": "Türkçe",
+      "eng": "İngilizce",
+      "ger": "Almanca",
+      "fre": "Fransızca",
+      "spa": "İspanyolca",
+      "ita": "İtalyanca",
+      "por": "Portekizce",
+      "dut": "Felemenkçe",
+      "rus": "Rusça",
+      "ara": "Arapça",
+      "per": "Farsça",
+      "gre": "Yunanca",
+      "pol": "Lehçe",
+      "jpn": "Japonca",
+      "kor": "Korece",
+      "chi": "Çince",
+      "aze": "Azerbaycan Türkçesi"
+    }
   }
 }

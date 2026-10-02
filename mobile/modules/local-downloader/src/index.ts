@@ -10,6 +10,7 @@ import LocalDownloaderModule, {
 } from './LocalDownloaderModule';
 
 export * from './LocalDownloader.types';
+export * from './MpvPlayerView';
 export {
   addBackgroundStateListener,
   addBackupProgressListener,

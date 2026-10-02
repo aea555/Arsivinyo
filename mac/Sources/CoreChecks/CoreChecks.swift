@@ -128,6 +128,7 @@ struct CoreChecks {
         await section("crypto") { try $0.run() }
         await section("vault") { try $0.checkKeyboxAndVault() }
         await section("playback") { try await $0.checkPlayback() }
+        await section("player") { try await $0.checkPlayer() }
         await section("music") { try await $0.checkMusic() }
         await section("cookies") { try $0.checkCookies() }
         await section("presets") { try await $0.checkPresets() }
