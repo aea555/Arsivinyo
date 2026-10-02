@@ -128,20 +128,43 @@ class MemeCollection(private val context: Context, privateHalf: MemeStore.Privat
     }
   }
 
-  /** A public meme's faces, for a scan. */
+  /**
+   * A public meme's faces, for a scan. [found] gets them with the frames they were seen in,
+   * while those are still decoded, so the faces can be cut out without decoding again.
+   */
   @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
-  fun scan(item: MemeStore.Item, scanner: FaceScanner): List<ScannedFace> {
+  fun scan(
+    item: MemeStore.Item,
+    scanner: FaceScanner,
+    found: (List<ScannedFace>, Map<Int, Bitmap>) -> Unit = { _, _ -> },
+  ): List<ScannedFace> {
     val uri = Uri.parse(item.uri ?: return emptyList())
-    if (item.kind != "video") {
-      val image = FaceScanner.image(android.graphics.ImageDecoder.createSource(context.contentResolver, uri)) ?: return emptyList()
-      return scanner.scan(listOf(image to 0))
+    val frames: List<Pair<Bitmap, Int>> = if (item.kind != "video") {
+      listOfNotNull(FaceScanner.image(android.graphics.ImageDecoder.createSource(context.contentResolver, uri))?.let { it to 0 })
+    } else {
+      val retriever = android.media.MediaMetadataRetriever()
+      try {
+        retriever.setDataSource(context, uri)
+        scanner.frames(retriever)
+      } finally {
+        runCatching { retriever.release() }
+      }
     }
-    val retriever = android.media.MediaMetadataRetriever()
-    return try {
-      retriever.setDataSource(context, uri)
-      scanner.scan(retriever)
-    } finally {
-      runCatching { retriever.release() }
+    val faces = scanner.scan(frames)
+    found(faces, frames.associate { (frame, ms) -> ms to frame })
+    return faces
+  }
+
+  /** Cuts out and keeps the faces of a public meme from frames already decoded. */
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  fun cacheFaceCrops(item: MemeStore.Item, frames: Map<Int, Bitmap>) {
+    if (item.isPrivate) return
+    faceCrops.mkdirs()
+    for (face in item.faces) {
+      val cached = File(faceCrops, "${face.id}.jpg")
+      if (cached.isFile) continue
+      val crop = frames[face.frameMs]?.let { FaceScanner.crop(it, face.box) } ?: continue
+      runCatching { cached.outputStream().use { crop.compress(Bitmap.CompressFormat.JPEG, 85, it) } }
     }
   }
 

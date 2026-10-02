@@ -88,28 +88,71 @@ struct FacesView: View {
 
     // MARK: People
 
+    /// Everyone, known by face or only labelled by hand: either can be renamed or removed.
     private var knownPeople: [MemeLibrary.Person] {
-        model.memeSnapshot.people.filter { !($0.signatures ?? []).isEmpty }.sorted { $0.name < $1.name }
+        model.memeSnapshot.people.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     private var peopleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("People").font(.headline)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 12)], spacing: 12) {
-                ForEach(knownPeople) { person in
-                    let faces: [MemeLibrary.FaceRef] = MemeLibrary.faces(of: person.id, in: model.memeSnapshot)
-                    VStack(spacing: 6) {
-                        if let first = faces.first { FaceCrop(ref: first, size: 96) }
-                        Text(person.name).font(.callout).lineLimit(1)
-                        Text("\(Set(faces.map(\.item.id)).count) memes").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                ForEach(knownPeople) { person in PersonTile(person: person) }
             }
         }
     }
 
     private func personName(_ id: String?) -> String {
         model.memeSnapshot.people.first { $0.id == id }?.name ?? ""
+    }
+}
+
+/// A person: their face, how many memes they are on, and a menu to rename or remove them.
+private struct PersonTile: View {
+    @Environment(AppModel.self) private var model
+    let person: MemeLibrary.Person
+    @State private var renaming = false
+    @State private var name = ""
+    @State private var deleting = false
+
+    var body: some View {
+        let faces: [MemeLibrary.FaceRef] = MemeLibrary.faces(of: person.id, in: model.memeSnapshot)
+        let count = model.memeSnapshot.items.filter { $0.people.contains(person.id) }.count
+        VStack(spacing: 6) {
+            if let first = faces.first {
+                FaceCrop(ref: first, size: 96)
+            } else {
+                Image(systemName: "person.crop.square").font(.largeTitle).foregroundStyle(.secondary).frame(width: 96, height: 96)
+            }
+            Text(person.name).font(.callout).lineLimit(1)
+            Text("\(count) memes").font(.caption).foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Rename…") { name = person.name; renaming = true }
+            Button("Delete", role: .destructive) { deleting = true }
+        }
+        .popover(isPresented: $renaming) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    TextField("Name", text: $name).frame(width: 200).onSubmit(rename)
+                    Button("Save", action: rename).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Text("If someone else already has this name, the two become one person.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+        .confirmationDialog("Delete “\(person.name)”?", isPresented: $deleting) {
+            Button("Delete", role: .destructive) { model.deletePerson(person.id) }
+        } message: {
+            Text("Their name comes off every meme, and their faces go back to unnamed so they can be named again.")
+        }
+    }
+
+    private func rename() {
+        model.renamePerson(person.id, to: name)
+        renaming = false
     }
 }
 

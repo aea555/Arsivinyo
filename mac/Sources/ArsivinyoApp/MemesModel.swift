@@ -89,6 +89,16 @@ extension AppModel {
         refreshMemes()
     }
 
+    func renamePerson(_ personId: String, to name: String) {
+        do { try memes.rename(person: personId, to: name) } catch { memeProblem = String(describing: error) }
+        refreshMemes()
+    }
+
+    func deletePerson(_ personId: String) {
+        do { try memes.delete(person: personId) } catch { memeProblem = String(describing: error) }
+        refreshMemes()
+    }
+
     func nameFaces(_ faceIds: Set<String>, as name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

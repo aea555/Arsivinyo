@@ -397,6 +397,8 @@ class LocalDownloaderModule : Module() {
       atomicWriteBytes(file(), VaultIndexCodec.seal(key(dek), String(plaintext, Charsets.UTF_8)))
     }
 
+    override fun isOpen(): Boolean = PRIVATE_VAULT_FEATURE_FLAG && vaultSession.peekDek() != null
+
     override fun exists(): Boolean =
       PRIVATE_VAULT_FEATURE_FLAG && File(privateVaultRoot(create = false), MEME_PRIVATE_INDEX_FILENAME).isFile
   }
@@ -455,7 +457,10 @@ class LocalDownloaderModule : Module() {
 
   private fun listMemesInternal(): Map<String, Any?> {
     val store = memes.store
-    runCatching { memes.reconcile() }
+    if (System.currentTimeMillis() - memesReconciledAt > 60_000) {
+      memesReconciledAt = System.currentTimeMillis()
+      memeMedia.execute { if (runCatching { memes.reconcile() }.getOrDefault(0) > 0) memesChanged() }
+    }
     // Private memes are not reconciled here: reading the vault's listing counts as using the
     // vault, and browsing memes must not hold it open. A vault delete drops its meme instead.
     val unlocked = store.privateReadable()
@@ -657,6 +662,24 @@ class LocalDownloaderModule : Module() {
    * listing that follows a scan starts another, and that must not become a loop.
    */
   private val facesUnrecordable = ConcurrentHashMap.newKeySet<String>()
+
+  /**
+   * Pictures for the screens — thumbnails and face crops — off the module's queue. Expo runs
+   * every AsyncFunction on one thread, so a grid asking for fifty pictures, each a video
+   * frame to decode, held up search, the listing and every tap behind them.
+   */
+  private val memeMedia = java.util.concurrent.Executors.newFixedThreadPool(2) { runnable ->
+    Thread(runnable, "meme-media").apply { priority = Thread.NORM_PRIORITY - 1 }
+  }
+
+  /** Checking every meme against MediaStore is a query each; once a minute is plenty. */
+  @Volatile private var memesReconciledAt = 0L
+
+  /** A scan changes the collection a meme at a time; the screens hear of it every few seconds. */
+  @Volatile private var scanAnnouncedAt = 0L
+
+  /** Memes the running scan has written down. */
+  @Volatile private var scanRecorded = 0
   /** How many memes are left while a scan runs; null when idle. */
   @Volatile private var facesRemaining: Int? = null
 
@@ -680,6 +703,7 @@ class LocalDownloaderModule : Module() {
           ?: FaceScanner.load(requireNotNull(appContext.reactContext)).also { faceScanner = it }
         // Tried once per run: one that cannot be recorded must not hold the rest up.
         val tried = mutableSetOf<String>()
+        scanRecorded = 0
         while (true) {
           val version = FacesNative.pipelineVersion
           val pending = MemeStore.needingScan(memes.store.snapshot(), version)
@@ -688,29 +712,53 @@ class LocalDownloaderModule : Module() {
           val next = pending.firstOrNull() ?: break
           tried.add(next.id)
           while (activeDownloads.isNotEmpty()) Thread.sleep(2000)
-          val found = runCatching { scanMeme(next, scanner) }
-          found.exceptionOrNull()?.let { addError("FACES_SCAN_FAILED: ${it.javaClass.simpleName}") }
+          val scanned = runCatching { scanAndRecord(next, scanner) }
+          scanned.exceptionOrNull()?.let { addError("FACES_SCAN_FAILED: ${it.javaClass.simpleName}") }
           // Locked part way through: the private ones wait for the next unlock.
           if (next.isPrivate && !memes.store.privateReadable()) break
           // A file that cannot be read counts as scanned with nothing found, rather than
           // being tried again on every listing.
-          runCatching { memes.store.record(next.id, found.getOrDefault(emptyList())) }
-            .onFailure { facesUnrecordable.add(next.id) }
-          memesChanged()
+          if (scanned.isFailure) {
+            runCatching { memes.store.record(next.id, emptyList()) }.onFailure { facesUnrecordable.add(next.id) }
+          }
+          scanRecorded++
+          if (System.currentTimeMillis() - scanAnnouncedAt > 3000) {
+            scanAnnouncedAt = System.currentTimeMillis()
+            memesChanged()
+          }
         }
       } catch (error: Throwable) {
         addError("FACES_SCAN_FAILED: ${error.javaClass.simpleName}")
       } finally {
         facesRemaining = null
         faceScanRunning.set(false)
-        memesChanged()
+        // Only when something changed. Every listing starts a scan in case something is new;
+        // a scan that found nothing to do announcing a change made the screen list again,
+        // which started another scan: a loop of a thousand listings a second.
+        if (scanRecorded > 0) memesChanged()
       }
     }.apply { name = "meme-faces"; priority = Thread.MIN_PRIORITY }.start()
   }
 
   @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
-  private fun scanMeme(item: MemeStore.Item, scanner: FaceScanner): List<ScannedFace> {
-    if (!item.isPrivate) return memes.scan(item, scanner)
+  private fun scanAndRecord(item: MemeStore.Item, scanner: FaceScanner) {
+    if (!item.isPrivate) {
+      var recorded = false
+      memes.scan(item, scanner) { found, frames ->
+        memes.store.record(item.id, found)
+        recorded = true
+        // The frames are in hand now; cutting the faces out later would decode them again.
+        findMeme(item.id)?.let { memes.cacheFaceCrops(it, frames) }
+      }
+      // Nothing to look at: scanned, with nothing found.
+      if (!recorded) memes.store.record(item.id, emptyList())
+      return
+    }
+    memes.store.record(item.id, scanPrivate(item, scanner))
+  }
+
+  @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+  private fun scanPrivate(item: MemeStore.Item, scanner: FaceScanner): List<ScannedFace> {
     val vaultId = item.vaultId ?: return emptyList()
     return if (item.kind == "video") {
       withVaultVideo(vaultId) { url ->
@@ -1240,12 +1288,16 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("listMemes") { listMemesInternal() }
 
-    AsyncFunction("memeThumbnail") { id: String ->
-      val item = findMeme(id) ?: return@AsyncFunction null
-      if (item.isPrivate) {
-        item.vaultId?.let { runCatching { getPrivateThumbnailUriInternal(it)["uri"] as? String }.getOrNull() }
-      } else {
-        memes.thumbnail(item)
+    AsyncFunction("memeThumbnail") { id: String, promise: Promise ->
+      memeMedia.execute {
+        promise.resolve(runCatching {
+          val item = findMeme(id)
+          when {
+            item == null -> null
+            item.isPrivate -> item.vaultId?.let { getPrivateThumbnailUriInternal(it)["uri"] as? String }
+            else -> memes.thumbnail(item)
+          }
+        }.getOrNull())
       }
     }
 
@@ -1269,9 +1321,13 @@ class LocalDownloaderModule : Module() {
       }
     }
 
-    AsyncFunction("memeFaceCrop") { itemId: String, faceId: String ->
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return@AsyncFunction null
-      runCatching { faceCropInternal(itemId, faceId) }.getOrNull()
+    AsyncFunction("memeFaceCrop") { itemId: String, faceId: String, promise: Promise ->
+      memeMedia.execute {
+        promise.resolve(
+          if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) null
+          else runCatching { faceCropInternal(itemId, faceId) }.getOrNull()
+        )
+      }
     }
 
     AsyncFunction("confirmMemeFace") { faceId: String ->
@@ -1284,6 +1340,14 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("nameMemeFaces") { faceIds: List<String>, name: String ->
       facesAction { memes.store.nameFaces(faceIds.toSet(), name.trim().take(80)) }
+    }
+
+    AsyncFunction("renameMemePerson") { personId: String, name: String ->
+      facesAction { memes.store.renamePerson(personId, name) }
+    }
+
+    AsyncFunction("deleteMemePerson") { personId: String ->
+      facesAction { memes.store.deletePerson(personId) }
     }
 
     AsyncFunction("memeSuggestions") { id: String ->

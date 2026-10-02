@@ -433,59 +433,6 @@ std::vector<MemeFace> mergeSightings(const std::vector<Sighting>& sightings) {
     return faces;
 }
 
-std::vector<int> group(const std::vector<Signature>& signatures, float threshold) {
-    const size_t n = signatures.size();
-    std::vector<std::vector<size_t>> groups(n);
-    for (size_t i = 0; i < n; ++i) groups[i] = {i};
-    // Sums of pairwise similarity between groups; average linkage divides by the sizes.
-    std::vector<std::vector<double>> link(n, std::vector<double>(n, 0));
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) link[i][j] = link[j][i] = cosine(signatures[i], signatures[j]);
-    }
-    std::vector<bool> alive(n, true);
-    while (true) {
-        double best = threshold;
-        size_t bi = n, bj = n;
-        for (size_t i = 0; i < n; ++i) {
-            if (!alive[i]) continue;
-            for (size_t j = i + 1; j < n; ++j) {
-                if (!alive[j]) continue;
-                const double average = link[i][j] / double(groups[i].size() * groups[j].size());
-                if (average >= best) {
-                    // Strictly better, or the first pair seen at this value: deterministic.
-                    if (average > best || bi == n) {
-                        best = average;
-                        bi = i;
-                        bj = j;
-                    }
-                }
-            }
-        }
-        if (bi == n) break;
-        for (size_t k = 0; k < n; ++k) {
-            if (!alive[k] || k == bi || k == bj) continue;
-            link[bi][k] = link[k][bi] = link[bi][k] + link[bj][k];
-        }
-        groups[bi].insert(groups[bi].end(), groups[bj].begin(), groups[bj].end());
-        groups[bj].clear();
-        alive[bj] = false;
-    }
-    std::vector<size_t> live;
-    for (size_t i = 0; i < n; ++i) {
-        if (alive[i]) live.push_back(i);
-    }
-    std::stable_sort(live.begin(), live.end(), [&](size_t a, size_t b) {
-        if (groups[a].size() != groups[b].size()) return groups[a].size() > groups[b].size();
-        return *std::min_element(groups[a].begin(), groups[a].end()) <
-               *std::min_element(groups[b].begin(), groups[b].end());
-    });
-    std::vector<int> labels(n, -1);
-    for (size_t g = 0; g < live.size(); ++g) {
-        for (size_t member : groups[live[g]]) labels[member] = int(g);
-    }
-    return labels;
-}
-
 std::vector<int> sampleTimes(int durationMs) {
     if (durationMs <= 0) return {0};
     const int seconds = std::max(1, durationMs / 1000);

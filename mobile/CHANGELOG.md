@@ -33,7 +33,8 @@ All notable changes to this project are documented here. Format based on [Keep a
   phone to do this: YuNet and SFace run on the device through ONNX Runtime, from the same
   C++ the Mac runs (`shared/faces`), so a person named on one device is recognised on the
   other once a meme or a backup carries them across. Needs Android 9 or later; adds about
-  20 MB to the app.
+  20 MB to the app. A person can be renamed (to someone else's name, and the two become one)
+  or deleted, which takes their name off every meme and leaves their faces unnamed again.
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is

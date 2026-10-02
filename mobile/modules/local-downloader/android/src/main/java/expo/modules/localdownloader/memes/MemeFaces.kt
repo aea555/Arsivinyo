@@ -19,9 +19,6 @@ interface FaceMath {
   /** At most eight, spread out. */
   fun addToSet(set: List<FloatArray>, signature: FloatArray): List<FloatArray>
 
-  /** A group number per signature, largest group first. */
-  fun group(signatures: List<FloatArray>, threshold: Float): IntArray
-
   /** 128 half floats, base64. */
   fun encode(signature: FloatArray): String
   fun decode(text: String): FloatArray?
@@ -56,6 +53,8 @@ data class Face(
   val rejected: List<String> = emptyList(),
   /** Whether this face put its person's label on the meme, and so may take it off. */
   val added: Boolean = false,
+  /** Its unnamed group; null once it has a person. Decided once, when it became unnamed. */
+  val group: String? = null,
 )
 
 /** A face as a scan found it, before it is matched against anyone. */
@@ -190,14 +189,69 @@ internal class FaceRules(private val math: FaceMath) {
     people[at] = people[at].copy(signatures = math.addToSet(set, decoded).map { math.encode(it) })
   }
 
-  /** Unnamed faces in groups of the same person, largest first, as (item, face) pairs. */
+  /**
+   * Every unnamed face in a group, in one pass: the group whose mean signature it is most
+   * like, at or above sure, or a new one. A group already decided stays; a face that has a
+   * person leaves its group. Nothing here compares faces pairwise, so keeping the groups
+   * costs a pass over the faces, and showing them costs nothing.
+   */
+  fun assignGroups(items: MutableList<MemeStore.Item>) {
+    fun needsWork(face: Face) = (face.state == FaceState.UNNAMED) == (face.group == null)
+    if (items.none { item -> item.faces.any(::needsWork) }) return
+    // The groups as they stand: the sum of their members' signatures.
+    val sums = LinkedHashMap<String, FloatArray>()
+    for (item in items) for (face in item.faces) {
+      val group = face.group ?: continue
+      if (face.state != FaceState.UNNAMED) continue
+      val signature = math.decode(face.signature) ?: continue
+      val sum = sums.getOrPut(group) { FloatArray(signature.size) }
+      for (k in signature.indices) sum[k] += signature[k]
+    }
+    for (i in items.indices) {
+      val item = items[i]
+      if (item.faces.none(::needsWork)) continue
+      items[i] = item.copy(faces = item.faces.map { face ->
+        when {
+          face.state != FaceState.UNNAMED -> face.copy(group = null)
+          face.group != null -> face
+          else -> {
+            val signature = math.decode(face.signature) ?: return@map face
+            var best: String? = null
+            var bestScore = math.sure
+            for ((id, sum) in sums) {
+              val score = cosineToMean(signature, sum)
+              if (score >= bestScore && (best == null || score > bestScore)) {
+                best = id
+                bestScore = score
+              }
+            }
+            val group = best ?: MemeStore.newId("g").also { sums[it] = FloatArray(signature.size) }
+            val sum = sums.getValue(group)
+            for (k in signature.indices) sum[k] += signature[k]
+            face.copy(group = group)
+          }
+        }
+      })
+    }
+  }
+
+  /** The cosine of a normalised signature with the mean a sum stands for. */
+  private fun cosineToMean(signature: FloatArray, sum: FloatArray): Float {
+    var dot = 0.0
+    var length = 0.0
+    for (k in signature.indices) {
+      dot += signature[k] * sum[k]
+      length += sum[k].toDouble() * sum[k]
+    }
+    return if (length > 0) (dot / kotlin.math.sqrt(length)).toFloat() else -1f
+  }
+
+  /** The unnamed groups as stored, largest first, as (item, face) pairs. */
   fun unnamedGroups(items: List<MemeStore.Item>): List<List<Pair<MemeStore.Item, Face>>> {
-    val refs = items.flatMap { item -> item.faces.filter { it.state == FaceState.UNNAMED }.map { item to it } }
-    if (refs.isEmpty()) return emptyList()
-    val signatures = refs.map { math.decode(it.second.signature) ?: FloatArray(128) }
-    val labels = math.group(signatures, math.sure)
-    val groups = List((labels.maxOrNull() ?: -1) + 1) { mutableListOf<Pair<MemeStore.Item, Face>>() }
-    refs.forEachIndexed { i, ref -> groups[labels[i]].add(ref) }
-    return groups.filter { it.isNotEmpty() }
+    val groups = LinkedHashMap<String, MutableList<Pair<MemeStore.Item, Face>>>()
+    for (item in items) for (face in item.faces) {
+      if (face.state == FaceState.UNNAMED && face.group != null) groups.getOrPut(face.group) { mutableListOf() }.add(item to face)
+    }
+    return groups.values.sortedByDescending { it.size }
   }
 }

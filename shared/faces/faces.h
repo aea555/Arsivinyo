@@ -6,7 +6,7 @@
 // same signatures from the same frame; `VECTORS.json` holds them to it.
 //
 // The models run through ONNX Runtime (runtime.cpp). Everything else — decoding YuNet's
-// output, alignment, resizing, grouping, the signature sets — is in faces.cpp and needs
+// output, alignment, resizing, the signature sets — is in faces.cpp and needs
 // nothing but the standard library, so it is tested on the host.
 
 #pragma once
@@ -156,12 +156,6 @@ struct MemeFace {
  * face's signature the normalised mean of its sightings.
  */
 std::vector<MemeFace> mergeSightings(const std::vector<Sighting>& sightings);
-
-/**
- * Groups of unnamed faces: average linkage, merged while the closest two groups are at or
- * above [threshold]. Returns a group number per signature, largest group first (0).
- */
-std::vector<int> group(const std::vector<Signature>& signatures, float threshold = kSure);
 
 /** When to look at a video of this length: once a second, at most kMaxFrames, evenly. */
 std::vector<int> sampleTimes(int durationMs);

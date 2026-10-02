@@ -2,22 +2,35 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   askedFaces,
   confirmMemeFace,
+  deleteMemePerson,
   EMPTY_MEME_LIBRARY,
   getMemeFaceGroups,
   listenMemesChanged,
   listMemes,
   nameMemeFaces,
   rejectMemeFace,
+  renameMemePerson,
   type LocalMemeFaceGroup,
   type LocalMemeLibrary,
+  type LocalMemePerson,
 } from '@/src/api';
-import { AppText as Text, Chip } from '@/src/components';
+import { AppText as Text, Chip, ConfirmModal } from '@/src/components';
 import { FaceCrop } from '@/src/features/memes/FaceCrop';
 import { foldForMatching } from '@/src/features/memes/folding';
 import { useTheme } from '@/src/theme';
@@ -57,17 +70,22 @@ export default function FacesScreen() {
 
   const asked = useMemo(() => askedFaces(library), [library]);
   const peopleById = useMemo(() => new Map(library.people.map((p) => [p.id, p])), [library.people]);
+  const [editing, setEditing] = useState<LocalMemePerson | null>(null);
+  const [editName, setEditName] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Everyone, known by face or only labelled by hand: either can be renamed or removed.
   const known = useMemo(
     () =>
       library.people
-        .filter((p) => p.known)
         .map((person) => {
+          const labelled = library.items.filter((meme) => meme.people.includes(person.id)).length;
           const refs = library.items.flatMap((meme) =>
             (meme.faces ?? [])
               .filter((f) => f.person === person.id && (f.state === 'auto' || f.state === 'confirmed'))
               .map((face) => ({ meme, face })),
           );
-          return { person, refs, memes: new Set(refs.map((r) => r.meme.id)).size };
+          return { person, refs, memes: labelled };
         })
         .sort((a, b) => a.person.name.localeCompare(b.person.name, 'tr')),
     [library],
@@ -152,7 +170,16 @@ export default function FacesScreen() {
               <Text style={[styles.section, { color: colors.text }]}>{t('memes.faces.people')}</Text>
               <View style={styles.wrap}>
                 {known.map(({ person, refs, memes }) => (
-                  <View key={person.id} style={styles.person}>
+                  <Pressable
+                    key={person.id}
+                    style={styles.person}
+                    onPress={() => {
+                      setEditing(person);
+                      setEditName(person.name);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityHint={t('memes.faces.editHint')}
+                  >
                     {refs[0] ? (
                       <FaceCrop itemId={refs[0].meme.id} faceId={refs[0].face.id} size={72} />
                     ) : (
@@ -162,13 +189,65 @@ export default function FacesScreen() {
                     <Text style={[styles.caption, { color: colors.textMuted }]}>
                       {t('memes.faces.memeCount', { count: memes })}
                     </Text>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             </>
           ) : null}
         </ScrollView>
       )}
+
+      <Modal visible={editing != null && !confirmDelete} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
+        <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={[styles.scrim, { backgroundColor: colors.overlay }]} onPress={() => setEditing(null)}>
+            <Pressable style={[styles.editor, { backgroundColor: colors.surface }]} onPress={() => undefined}>
+              <Text style={[styles.section, { color: colors.text }]}>{t('memes.faces.editTitle')}</Text>
+              <TextInput
+                value={editName}
+                onChangeText={setEditName}
+                autoFocus
+                autoCorrect={false}
+                style={[styles.input, styles.editInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+              />
+              <Text style={{ color: colors.textMuted }}>{t('memes.faces.renameHint')}</Text>
+              <View style={styles.row}>
+                <Pressable onPress={() => setConfirmDelete(true)} style={[styles.nameButton, { backgroundColor: colors.surfaceActive }]}>
+                  <Text style={{ color: colors.error }}>{t('memes.faces.deletePerson')}</Text>
+                </Pressable>
+                <View style={styles.fill} />
+                <Pressable
+                  disabled={!editName.trim()}
+                  onPress={async () => {
+                    if (editing) await renameMemePerson(editing.id, editName.trim());
+                    setEditing(null);
+                    await reload();
+                  }}
+                  style={[styles.nameButton, { backgroundColor: editName.trim() ? colors.accent : colors.surfaceActive }]}
+                >
+                  <Text style={{ color: editName.trim() ? colors.primaryText : colors.textMuted }}>{t('memes.save')}</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <ConfirmModal
+        visible={confirmDelete}
+        config={editing ? {
+          title: t('memes.faces.deleteTitle', { name: editing.name }),
+          message: t('memes.faces.deleteBody'),
+          confirm: t('memes.faces.deletePerson'),
+          destructive: true,
+        } : null}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={async () => {
+          if (editing) await deleteMemePerson(editing.id);
+          setConfirmDelete(false);
+          setEditing(null);
+          await reload();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -253,4 +332,7 @@ const styles = StyleSheet.create({
   nameButton: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   person: { alignItems: 'center', gap: 4, width: 88 },
   caption: { fontSize: 12 },
+  scrim: { flex: 1, justifyContent: 'center', padding: 24 },
+  editor: { borderRadius: 16, padding: 16, gap: 12 },
+  editInput: { flex: 0 },
 });

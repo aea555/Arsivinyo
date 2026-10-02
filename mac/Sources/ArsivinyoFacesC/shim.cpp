@@ -106,13 +106,6 @@ int av_faces_add_to_set(float *set, int count, const float *signature) {
     return int(all.size());
 }
 
-void av_faces_group(const float *signatures, int count, float threshold, int32_t *labels) {
-    std::vector<Signature> all;
-    for (int i = 0; i < count; ++i) all.push_back(signatureAt(signatures + size_t(i) * kSignatureSize));
-    const auto result = group(all, threshold);
-    for (int i = 0; i < count; ++i) labels[i] = result[size_t(i)];
-}
-
 void av_faces_encode(const float *signature, uint8_t *out) {
     const auto bytes = encode(signatureAt(signature));
     std::memcpy(out, bytes.data(), bytes.size());

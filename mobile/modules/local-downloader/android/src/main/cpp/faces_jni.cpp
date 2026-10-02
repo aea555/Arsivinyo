@@ -132,15 +132,6 @@ JNIEXPORT jfloatArray JNICALL Java_expo_modules_localdownloader_memes_FacesNativ
     return toJava(env, out);
 }
 
-JNIEXPORT jintArray JNICALL Java_expo_modules_localdownloader_memes_FacesNative_nativeGroup(
-    JNIEnv* env, jobject, jfloatArray flat, jfloat threshold) {
-    const auto labels = group(signatures(env, flat), threshold);
-    std::vector<jint> out(labels.begin(), labels.end());
-    jintArray result = env->NewIntArray(jsize(out.size()));
-    env->SetIntArrayRegion(result, 0, jsize(out.size()), out.data());
-    return result;
-}
-
 JNIEXPORT jbyteArray JNICALL Java_expo_modules_localdownloader_memes_FacesNative_nativeEncode(
     JNIEnv* env, jobject, jfloatArray signature) {
     const auto s = floats(env, signature);

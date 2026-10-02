@@ -233,8 +233,12 @@ that person's signature set.
 These start from SFace's published threshold (0.363) and are constants in `shared/faces/`,
 so both apps move together if they are tuned.
 
-**Unnamed groups.** Faces with no person are grouped (average linkage at the sure
-threshold) and shown largest first. Naming a group confirms all its faces as that person.
+**Unnamed groups.** A face with nobody known joins the unnamed group whose mean signature
+it is most like, at or above the sure threshold, or starts a group of its own. The group is
+decided when the face becomes unnamed and stored with it, so showing the groups is reading
+them, never working them out again: keeping them costs one pass over the faces when the
+collection changes. Groups are shown largest first. Naming a group confirms all its faces as
+that person. Groups are this device's own and do not travel.
 
 **Corrections.** Confirming a queued face adds the person. Rejecting it records that this
 face is not that person, and it is never asked again for them. Removing a label that a face
@@ -257,6 +261,7 @@ Each meme gains `faces`, and each person gains `signatures`:
     "frameMs": 3000, "box": [x, y, w, h],   // where to show it from; video time, source pixels
     "person": "p…" | null,
     "state": "auto" | "confirmed" | "asked" | "unnamed",
+    "group": "g…" | null,              // its unnamed group; null once it has a person
     "rejected": ["p…"],                 // never asked again for these; a "no" leaves it unnamed
     "added": true                       // this face put its person's label on the meme
   }],

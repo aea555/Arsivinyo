@@ -41,14 +41,6 @@ public enum FaceMath {
         return (0..<count).map { Array(flat[$0 * size..<($0 + 1) * size]) }
     }
 
-    /// A group number per signature, largest group first.
-    public static func group(_ signatures: [[Float]], threshold: Float = sure) -> [Int] {
-        guard !signatures.isEmpty else { return [] }
-        var labels = [Int32](repeating: 0, count: signatures.count)
-        av_faces_group(signatures.flatMap { $0 }, Int32(signatures.count), threshold, &labels)
-        return labels.map(Int.init)
-    }
-
     public static func sampleTimes(durationMs: Int) -> [Int] {
         var out = [Int32](repeating: 0, count: Int(AV_FACES_MAX_FRAMES))
         let n = Int(av_faces_sample_times(Int32(clamping: durationMs), &out, Int32(AV_FACES_MAX_FRAMES)))
@@ -176,16 +168,67 @@ extension MemeLibrary {
         }
     }
 
-    /// Unnamed faces in groups of the same person, largest first.
+    /// The unnamed groups as stored, largest first.
     public static func unnamedGroups(_ snapshot: Snapshot) -> [[FaceRef]] {
-        let refs = snapshot.items.flatMap { item in
-            (item.faces ?? []).filter { $0.state == .unnamed }.map { FaceRef(item: item, face: $0) }
+        var order: [String] = []
+        var groups: [String: [FaceRef]] = [:]
+        for item in snapshot.items {
+            for face in item.faces ?? [] where face.state == .unnamed {
+                guard let group = face.group else { continue }
+                if groups[group] == nil { order.append(group) }
+                groups[group, default: []].append(FaceRef(item: item, face: face))
+            }
         }
-        let signatures = refs.map { FaceMath.decode($0.face.signature) ?? [Float](repeating: 0, count: FaceMath.size) }
-        let labels = FaceMath.group(signatures)
-        var groups: [[FaceRef]] = Array(repeating: [], count: (labels.max() ?? -1) + 1)
-        for (ref, label) in zip(refs, labels) { groups[label].append(ref) }
-        return groups.filter { !$0.isEmpty }
+        // Stable: equal sizes keep the order they were first seen in.
+        return order.enumerated().sorted { a, b in
+            let (x, y) = (groups[a.element]!.count, groups[b.element]!.count)
+            return x != y ? x > y : a.offset < b.offset
+        }.map { groups[$0.element]! }
+    }
+
+    /// Every unnamed face in a group, in one pass: the group whose mean signature it is most
+    /// like, at or above sure, or a new one. A group already decided stays; a face that has a
+    /// person leaves its group. Nothing here compares faces pairwise, so keeping the groups
+    /// costs a pass over the faces, and showing them costs nothing.
+    static func assignGroups(_ items: inout [Item]) {
+        func needsWork(_ face: Face) -> Bool { (face.state == .unnamed) == (face.group == nil) }
+        guard items.contains(where: { ($0.faces ?? []).contains(where: needsWork) }) else { return }
+        var order: [String] = []
+        var sums: [String: [Float]] = [:]
+        for item in items {
+            for face in item.faces ?? [] where face.state == .unnamed {
+                guard let group = face.group, let signature = FaceMath.decode(face.signature) else { continue }
+                if sums[group] == nil { order.append(group); sums[group] = [Float](repeating: 0, count: signature.count) }
+                for k in signature.indices { sums[group]![k] += signature[k] }
+            }
+        }
+        for i in items.indices {
+            guard var faces = items[i].faces, faces.contains(where: needsWork) else { continue }
+            for f in faces.indices {
+                if faces[f].state != .unnamed { faces[f].group = nil; continue }
+                guard faces[f].group == nil, let signature = FaceMath.decode(faces[f].signature) else { continue }
+                var best: String?
+                var bestScore = FaceMath.sure
+                for id in order {
+                    let score = cosineToMean(signature, sums[id]!)
+                    if score >= bestScore && (best == nil || score > bestScore) { best = id; bestScore = score }
+                }
+                let group = best ?? newId("g")
+                if sums[group] == nil { order.append(group); sums[group] = [Float](repeating: 0, count: signature.count) }
+                for k in signature.indices { sums[group]![k] += signature[k] }
+                faces[f].group = group
+            }
+            items[i].faces = faces
+        }
+    }
+
+    private static func cosineToMean(_ signature: [Float], _ sum: [Float]) -> Float {
+        var dot = 0.0, length = 0.0
+        for k in signature.indices {
+            dot += Double(signature[k] * sum[k])
+            length += Double(sum[k]) * Double(sum[k])
+        }
+        return length > 0 ? Float(dot / length.squareRoot()) : -1
     }
 
     /// A person's signatures, by name, for sending: they travel with the person.
@@ -197,6 +240,62 @@ extension MemeLibrary {
             }
         }
         return out
+    }
+
+    // MARK: - People
+
+    /// A person under a new name. If the name is someone else's already, the two are one
+    /// person: their labels, faces and signatures come together under that one.
+    public func rename(person personId: String, to name: String) throws {
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        guard !trimmed.isEmpty else { return }
+        try mutate { all in
+            guard let at = all.people.firstIndex(where: { $0.id == personId }) else { return }
+            if let same = all.people.first(where: { $0.id != personId && Self.fold($0.name) == Self.fold(trimmed) }) {
+                Self.merge(person: personId, into: same.id, in: &all)
+            } else {
+                all.people[at].name = trimmed
+            }
+        }
+    }
+
+    /// A person gone: their label comes off every meme, and their faces are unnamed again, to
+    /// be grouped and named afresh. What they were told they are not is forgotten with them.
+    public func delete(person personId: String) throws {
+        try mutate { all in
+            all.people.removeAll { $0.id == personId }
+            for i in all.items.indices {
+                all.items[i].people.removeAll { $0 == personId }
+                guard var faces = all.items[i].faces else { continue }
+                for f in faces.indices {
+                    if faces[f].person == personId {
+                        faces[f].person = nil
+                        faces[f].state = .unnamed
+                        faces[f].added = nil
+                        faces[f].group = nil
+                    }
+                    faces[f].rejected?.removeAll { $0 == personId }
+                }
+                all.items[i].faces = faces
+            }
+            Self.reevaluate(&all)
+        }
+    }
+
+    static func merge(person from: String, into: String, in all: inout Index) {
+        let signatures = all.people.first { $0.id == from }?.signatures ?? []
+        for i in all.items.indices {
+            all.items[i].people = Array(Set(all.items[i].people.map { $0 == from ? into : $0 }))
+            guard var faces = all.items[i].faces else { continue }
+            for f in faces.indices {
+                if faces[f].person == from { faces[f].person = into }
+                if let rejected = faces[f].rejected { faces[f].rejected = Array(Set(rejected.map { $0 == from ? into : $0 })).sorted() }
+            }
+            all.items[i].faces = faces
+        }
+        signatures.forEach { learn($0, for: into, in: &all) }
+        all.people.removeAll { $0.id == from }
+        reevaluate(&all)
     }
 
     // MARK: - Arriving from elsewhere

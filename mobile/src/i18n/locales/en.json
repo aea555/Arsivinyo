@@ -774,7 +774,13 @@
       "setName": "Set name",
       "unknown": "Unknown",
       "yesIs": "Yes, {{name}}",
-      "notIs": "Not {{name}}"
+      "notIs": "Not {{name}}",
+      "editTitle": "Person",
+      "editHint": "Rename or delete",
+      "renameHint": "If someone else already has this name, the two become one person.",
+      "deletePerson": "Delete",
+      "deleteTitle": "Delete “{{name}}”?",
+      "deleteBody": "Their name comes off every meme, and their faces go back to unnamed so they can be named again."
     }
   }
 }

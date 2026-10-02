@@ -57,9 +57,6 @@ float av_faces_best(const float *signature, const float *set, int count);
  */
 int av_faces_add_to_set(float *set, int count, const float *signature);
 
-/** Group numbers for `count` signatures, largest group first, into `labels`. */
-void av_faces_group(const float *signatures, int count, float threshold, int32_t *labels);
-
 /** 256 bytes of half floats. */
 void av_faces_encode(const float *signature, uint8_t *out);
 /** Returns 1 and fills `signature` if the bytes are a valid signature. */

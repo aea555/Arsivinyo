@@ -58,6 +58,8 @@ public final class MemeLibrary: @unchecked Sendable {
         public var rejected: [String]? = nil
         /// Whether this face put its person's label on the meme, and so may take it off.
         public var added: Bool? = nil
+        /// Its unnamed group; nil once it has a person. Decided once, when it became unnamed.
+        public var group: String? = nil
     }
 
     public struct Source: Codable, Hashable, Sendable {
@@ -255,6 +257,8 @@ public final class MemeLibrary: @unchecked Sendable {
             let lockedBefore = !keybox.isUnlocked
             var all = try merged()
             let result = try change(&all)
+            // Whatever changed, every unnamed face ends up in a group, and named ones leave theirs.
+            Self.assignGroups(&all.items)
             // Locked, the private memes were never read, so they must not be written over.
             if lockedBefore, all.items.contains(where: \.isPrivate) { throw Failure.locked }
             try save(all)

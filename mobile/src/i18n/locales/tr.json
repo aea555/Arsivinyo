@@ -774,7 +774,13 @@
       "setName": "Ad ver",
       "unknown": "Bilinmiyor",
       "yesIs": "Evet, {{name}}",
-      "notIs": "{{name}} değil"
+      "notIs": "{{name}} değil",
+      "editTitle": "Kişi",
+      "editHint": "Yeniden adlandır ya da sil",
+      "renameHint": "Bu ad zaten başka birindeyse, ikisi tek kişi olur.",
+      "deletePerson": "Sil",
+      "deleteTitle": "“{{name}}” silinsin mi?",
+      "deleteBody": "Adı her mimden kaldırılır; yüzleri yeniden adsız olur, böylece yeniden ad verilebilir."
     }
   }
 }

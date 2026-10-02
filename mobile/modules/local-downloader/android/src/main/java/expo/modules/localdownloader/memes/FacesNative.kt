@@ -25,7 +25,6 @@ object FacesNative : FaceMath {
   external fun nativeMerge(sightings: FloatArray): FloatArray
   private external fun nativeBest(signature: FloatArray, set: FloatArray): Float
   private external fun nativeAddToSet(set: FloatArray, signature: FloatArray): FloatArray
-  private external fun nativeGroup(signatures: FloatArray, threshold: Float): IntArray
   private external fun nativeEncode(signature: FloatArray): ByteArray
   private external fun nativeDecode(bytes: ByteArray): FloatArray?
   external fun nativeSampleTimes(durationMs: Int): IntArray
@@ -52,9 +51,6 @@ object FacesNative : FaceMath {
     val out = nativeAddToSet(flat(set), signature)
     return (0 until out.size / SIGNATURE).map { out.copyOfRange(it * SIGNATURE, (it + 1) * SIGNATURE) }
   }
-
-  override fun group(signatures: List<FloatArray>, threshold: Float): IntArray =
-    if (signatures.isEmpty()) IntArray(0) else nativeGroup(flat(signatures), threshold)
 
   override fun encode(signature: FloatArray): String = Base64.encodeToString(nativeEncode(signature), Base64.NO_WRAP)
 

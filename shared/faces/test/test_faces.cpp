@@ -5,6 +5,7 @@
 
 #include "faces.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -83,12 +84,6 @@ static void pure() {
     Detection a{0, 0, 100, 100, 0.9f, {}}, b{10, 10, 100, 100, 0.95f, {}}, c{300, 300, 50, 50, 0.85f, {}};
     auto kept = suppress({a, b, c}, kNmsIou);
     check(kept.size() == 2 && kept[0].score == 0.95f && kept[1].score == 0.85f, "overlapping detections keep the stronger");
-
-    // Three near one axis, two near another, one alone.
-    std::vector<Signature> sigs = {unit(0, 0.1f), unit(5, 0.1f, 6), unit(0, 0.2f), unit(5, 0.2f, 6), unit(0), unit(9)};
-    auto labels = group(sigs);
-    check(labels[0] == 0 && labels[2] == 0 && labels[4] == 0, "the largest group comes first");
-    check(labels[1] == 1 && labels[3] == 1 && labels[5] == 2, "then the next, then the one alone");
 
     std::vector<Signature> set;
     for (int i = 0; i < kMaxSignatures; ++i) set = addToSet(set, unit(i));

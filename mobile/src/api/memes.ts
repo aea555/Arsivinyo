@@ -87,6 +87,10 @@ export const getMemeFaceCrop = (itemId: string, faceId: string) => LocalDownload
 export const confirmMemeFace = (faceId: string) => LocalDownloaderModule.confirmMemeFace(faceId);
 export const rejectMemeFace = (faceId: string) => LocalDownloaderModule.rejectMemeFace(faceId);
 export const nameMemeFaces = (faceIds: string[], name: string) => LocalDownloaderModule.nameMemeFaces(faceIds, name);
+/** A new name; if it is someone else's already, the two become one person. */
+export const renameMemePerson = (personId: string, name: string) => LocalDownloaderModule.renameMemePerson(personId, name);
+/** Off every meme; their faces go back to being unnamed. */
+export const deleteMemePerson = (personId: string) => LocalDownloaderModule.deleteMemePerson(personId);
 
 /** Faces waiting for a yes or no, with the meme each is in. */
 export function askedFaces(library: LocalMemeLibrary): { meme: LocalMeme; face: LocalMemeFace }[] {

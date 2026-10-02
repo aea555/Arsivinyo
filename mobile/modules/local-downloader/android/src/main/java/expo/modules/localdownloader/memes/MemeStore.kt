@@ -43,6 +43,12 @@ class MemeStore(
      * does. Its existence was already visible on disk; this says nothing more.
      */
     fun exists(): Boolean
+
+    /**
+     * Whether the vault is open, without reading anything. The private index is decrypted
+     * once and kept while this stays true, rather than on every look at the collection.
+     */
+    fun isOpen(): Boolean = read() != null
   }
 
   class LockedException : IllegalStateException("PRIVATE_VAULT_LOCKED")
@@ -126,7 +132,7 @@ class MemeStore(
    */
   fun tidyPrivate() {
     val half = privateHalf ?: return
-    if (!half.exists() || half.read() == null) return
+    if (!half.exists() || synchronized(lock) { readPrivate() } == null) return
     if (snapshot().items.none { it.isPrivate }) synchronized(lock) { half.write(null) }
   }
 
@@ -134,7 +140,7 @@ class MemeStore(
   fun hasPrivate(): Boolean = privateHalf?.exists() == true
 
   /** Whether the private half could be read just now. */
-  fun privateReadable(): Boolean = privateHalf?.read() != null
+  fun privateReadable(): Boolean = privateHalf?.isOpen() == true
 
   // ---- adding ----------------------------------------------------------------------------
 
@@ -364,6 +370,65 @@ class MemeStore(
     index.people.first { it.id == personId }
   }
 
+  /**
+   * A person under a new name. If the name is someone else's already, the two are one
+   * person: their labels, faces and signatures come together under that one.
+   */
+  fun renamePerson(personId: String, name: String) = mutate { index ->
+    val trimmed = name.trim().take(80)
+    val at = index.people.indexOfFirst { it.id == personId }
+    if (trimmed.isEmpty() || at < 0) return@mutate
+    val same = index.people.firstOrNull { it.id != personId && fold(it.name) == fold(trimmed) }
+    if (same == null) {
+      index.people[at] = index.people[at].copy(name = trimmed)
+    } else {
+      mergePerson(index, personId, same.id)
+    }
+  }
+
+  /**
+   * A person gone: their label comes off every meme, and their faces are unnamed again, to be
+   * grouped and named afresh. What they were told they are not is forgotten with them.
+   */
+  fun deletePerson(personId: String) = mutate { index ->
+    index.people.removeAll { it.id == personId }
+    for (i in index.items.indices) {
+      val item = index.items[i]
+      if (personId !in item.people && item.faces.none { it.person == personId || personId in it.rejected }) continue
+      index.items[i] = item.copy(
+        people = item.people - personId,
+        faces = item.faces.map { face ->
+          val unnamed = if (face.person == personId) {
+            face.copy(person = null, state = FaceState.UNNAMED, added = false, group = null)
+          } else {
+            face
+          }
+          unnamed.copy(rejected = unnamed.rejected - personId)
+        },
+      )
+    }
+    faceRules?.reevaluate(index.items, index.people)
+  }
+
+  private fun mergePerson(index: Index, from: String, into: String) {
+    val source = index.people.first { it.id == from }
+    for (i in index.items.indices) {
+      val item = index.items[i]
+      index.items[i] = item.copy(
+        people = item.people.map { if (it == from) into else it }.distinct(),
+        faces = item.faces.map { face ->
+          face.copy(
+            person = if (face.person == from) into else face.person,
+            rejected = face.rejected.map { if (it == from) into else it }.distinct(),
+          )
+        },
+      )
+    }
+    faceRules?.let { rules -> source.signatures.forEach { rules.learn(it, into, index.people) } }
+    index.people.removeAll { it.id == from }
+    faceRules?.reevaluate(index.items, index.people)
+  }
+
   /** Signatures that came with people by name, learnt, then every face looked at again. */
   fun absorb(signatures: Map<String, List<String>>) {
     if (signatures.isEmpty() || faceRules == null) return
@@ -412,9 +477,11 @@ class MemeStore(
   // ---- storage ---------------------------------------------------------------------------
 
   private fun <T> mutate(change: (Index) -> T): T = synchronized(lock) {
-    val lockedBefore = privateHalf?.read() == null
+    val lockedBefore = readPrivate() == null
     val all = merged()
     val result = change(all)
+    // Whatever changed, every unnamed face ends up in a group, and named ones leave theirs.
+    faceRules?.assignGroups(all.items)
     // Locked, the private memes were never read, so they must not be written over.
     if (lockedBefore && all.items.any { it.isPrivate }) throw LockedException()
     save(all, writePrivate = !lockedBefore)
@@ -423,10 +490,10 @@ class MemeStore(
 
   private fun merged(): Index {
     val open = readPublic()
-    val hidden = privateHalf?.read()?.takeIf { it.isNotEmpty() }?.let { decode(JSONObject(String(it, Charsets.UTF_8))) }
+    val hidden = readPrivate()
     val all = Index(open.tags.toMutableList(), open.people.toMutableList(), open.items.toMutableList())
     if (hidden != null) {
-      all.items += hidden.items.map { it.copy(isPrivate = true) }
+      all.items += hidden.items
       val tagIds = open.tags.map { it.id }.toSet()
       all.tags += hidden.tags.filter { it.id !in tagIds }
       val personIds = open.people.map { it.id }.toSet()
@@ -455,6 +522,7 @@ class MemeStore(
     writePublic(open)
     if (writePrivate && privateHalf != null && hiddenItems.isEmpty()) {
       privateHalf.write(null)
+      privateCache = Index()
     } else if (writePrivate && privateHalf != null) {
       val hidden = Index(
         all.tags.filter { it.id in hiddenTags }.toMutableList(),
@@ -462,7 +530,29 @@ class MemeStore(
         hiddenItems.toMutableList(),
       )
       privateHalf.write(encode(hidden).toString().toByteArray(Charsets.UTF_8))
+      privateCache = hidden.copyDeep()
     }
+  }
+
+  /**
+   * The private index while the vault is open: decrypted once, then kept, and forgotten the
+   * moment the vault locks. Null while locked. Called under [lock].
+   */
+  private var privateCache: Index? = null
+
+  private fun readPrivate(): Index? {
+    val half = privateHalf ?: return null
+    if (!half.isOpen()) {
+      privateCache = null
+      return null
+    }
+    privateCache?.let { return it.copyDeep() }
+    val plain = half.read() ?: return null
+    val index = if (plain.isEmpty()) Index() else decode(JSONObject(String(plain, Charsets.UTF_8)))
+    // Everything in this file is private, whatever an older build wrote.
+    val marked = Index(index.tags, index.people, index.items.map { it.copy(isPrivate = true) }.toMutableList())
+    privateCache = marked
+    return marked.copyDeep()
   }
 
   private fun readPublic(): Index {
@@ -773,6 +863,7 @@ class MemeStore(
       .apply {
         if (face.rejected.isNotEmpty()) put("rejected", JSONArray(face.rejected))
         if (face.added) put("added", true)
+        face.group?.let { put("group", it) }
       }
 
     private fun decodeFace(json: JSONObject?): Face? {
@@ -785,6 +876,7 @@ class MemeStore(
         state = FaceState.of(json.optString("state")),
         rejected = json.optJSONArray("rejected")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
         added = json.optBoolean("added", false),
+        group = json.optString("group").ifBlank { null },
       )
     }
 

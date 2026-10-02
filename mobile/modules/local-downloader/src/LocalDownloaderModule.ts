@@ -171,6 +171,8 @@ type LocalDownloaderNativeModule = {
   confirmMemeFace(faceId: string): Promise<LocalMemeResult>;
   rejectMemeFace(faceId: string): Promise<LocalMemeResult>;
   nameMemeFaces(faceIds: string[], name: string): Promise<LocalMemeResult>;
+  renameMemePerson(personId: string, name: string): Promise<LocalMemeResult>;
+  deleteMemePerson(personId: string): Promise<LocalMemeResult>;
   createMemeTag(name: string, facets: LocalMemeFacet[]): Promise<LocalMemeTag>;
   createMemePerson(name: string): Promise<LocalMemePerson>;
   setMemeTagFacets(tagId: string, facets: LocalMemeFacet[]): Promise<void>;
@@ -313,6 +315,8 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       confirmMemeFace: async () => unsupported(),
       rejectMemeFace: async () => unsupported(),
       nameMemeFaces: async () => unsupported(),
+      renameMemePerson: async () => unsupported(),
+      deleteMemePerson: async () => unsupported(),
       createMemeTag: async () => unsupported(),
       createMemePerson: async () => unsupported(),
       setMemeTagFacets: async () => unsupported(),

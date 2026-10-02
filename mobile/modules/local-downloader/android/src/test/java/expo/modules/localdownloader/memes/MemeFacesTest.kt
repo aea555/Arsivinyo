@@ -47,29 +47,6 @@ class MemeFacesTest {
       return all
     }
 
-    override fun group(signatures: List<FloatArray>, threshold: Float): IntArray {
-      val groups = signatures.indices.map { mutableListOf(it) }.toMutableList()
-      while (true) {
-        var best = threshold.toDouble()
-        var pair: Pair<Int, Int>? = null
-        for (i in groups.indices) for (j in i + 1 until groups.size) {
-          val avg = groups[i].sumOf { a -> groups[j].sumOf { b -> cosine(signatures[a], signatures[b]).toDouble() } } /
-            (groups[i].size * groups[j].size)
-          if (avg > best || (avg >= best && pair == null)) {
-            best = avg
-            pair = i to j
-          }
-        }
-        val (i, j) = pair ?: break
-        groups[i].addAll(groups[j])
-        groups.removeAt(j)
-      }
-      val ordered = groups.sortedWith(compareByDescending<MutableList<Int>> { it.size }.thenBy { it.minOrNull() })
-      val labels = IntArray(signatures.size)
-      ordered.forEachIndexed { g, members -> members.forEach { labels[it] = g } }
-      return labels
-    }
-
     override fun encode(signature: FloatArray): String {
       val bytes = ByteArray(256)
       for (i in 0 until 128) {
@@ -186,6 +163,71 @@ class MemeFacesTest {
     val neil = memes.nameFaces(neilGroup.map { it.second.id }.toSet(), "Neil Armstrong")
     assertEquals(2, memes.snapshot().items.count { neil.id in it.people })
     assertEquals(2, memes.snapshot().people.first { it.id == neil.id }.signatures.size)
+  }
+
+  @Test
+  fun groupsAreStoredWithTheFacesAndANamedFaceLeavesItsGroup() {
+    val memes = store()
+    meme(memes, armstrongCrew, aldrinCrew)
+    meme(memes, armstrong)
+    val groups = memes.unnamedGroups(memes.snapshot())
+    assertEquals(listOf(2, 1), groups.map { it.size })
+    // Read back, not worked out again: the same groups from a reopened index.
+    val again = store().let { it.unnamedGroups(it.snapshot()) }
+    assertEquals(groups.map { g -> g.map { it.second.group } }, again.map { g -> g.map { it.second.group } })
+
+    memes.nameFaces(groups[0].map { it.second.id }.toSet(), "Neil Armstrong")
+    val named = memes.snapshot().items.flatMap { it.faces }.filter { it.state == FaceState.CONFIRMED }
+    assertTrue(named.all { it.group == null })
+    assertEquals(listOf(1), memes.unnamedGroups(memes.snapshot()).map { it.size })
+  }
+
+  @Test
+  fun aPersonCanBeRenamedOrDeleted() {
+    val memes = store()
+    val portrait = meme(memes, armstrong)
+    val later = meme(memes, armstrongCrew)
+    val neil = memes.nameFaces(memes.item(portrait).faces.map { it.id }.toSet(), "Neil Armstrong")
+    assertEquals(listOf(neil.id), memes.item(later).people)
+
+    memes.renamePerson(neil.id, "Neil A. Armstrong")
+    assertEquals("Neil A. Armstrong", memes.snapshot().people.single { it.id == neil.id }.name)
+    assertEquals(listOf(neil.id), memes.item(later).people)
+
+    memes.deletePerson(neil.id)
+    val snapshot = memes.snapshot()
+    assertTrue(snapshot.people.none { it.id == neil.id })
+    assertTrue(snapshot.items.all { it.people.isEmpty() })
+    assertTrue(snapshot.items.flatMap { it.faces }.all { it.state == FaceState.UNNAMED && it.person == null })
+    // Unnamed again, so they group and can be named afresh.
+    assertEquals(listOf(2), memes.unnamedGroups(snapshot).map { it.size })
+  }
+
+  @Test
+  fun renamingToSomeoneElsesNameMakesThemOnePerson() {
+    val memes = store()
+    val a = meme(memes, armstrong)
+    val b = meme(memes, aldrin)
+    val neil = memes.nameFaces(memes.item(a).faces.map { it.id }.toSet(), "Neil")
+    val other = memes.nameFaces(memes.item(b).faces.map { it.id }.toSet(), "Someone")
+    memes.renamePerson(other.id, "neil")
+    val snapshot = memes.snapshot()
+    assertEquals(listOf(neil.id), snapshot.people.map { it.id })
+    assertEquals(listOf(listOf(neil.id), listOf(neil.id)), snapshot.items.map { it.people })
+    assertEquals(2, snapshot.people.single().signatures.size)
+  }
+
+  @Test
+  fun aWholeCollectionGroupsInOnePass() {
+    val memes = store()
+    // 600 faces of 40 people, a meme each: grouped as they arrive, never pairwise.
+    val started = System.nanoTime()
+    for (i in 0 until 600) meme(memes, face(i % 40 * 3, 0.15f + 0.01f * (i % 7), i % 40 * 3 + 1))
+    val groups = memes.unnamedGroups(memes.snapshot())
+    assertEquals(40, groups.size)
+    assertTrue(groups.all { it.size == 15 })
+    val seconds = (System.nanoTime() - started) / 1e9
+    assertTrue("600 memes recorded and grouped in $seconds s", seconds < 30)
   }
 
   @Test

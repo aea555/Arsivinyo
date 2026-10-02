@@ -125,12 +125,14 @@ class FaceScanner private constructor(private val handle: Long) : Closeable {
     }
   }
 
-  /** A video, from wherever the retriever was pointed. */
-  fun scan(retriever: MediaMetadataRetriever): List<ScannedFace> {
+  /** The frames of a video that a scan looks at. */
+  fun frames(retriever: MediaMetadataRetriever): List<Pair<Bitmap, Int>> {
     val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toIntOrNull() ?: 0
-    val frames = FacesNative.nativeSampleTimes(duration).toList().mapNotNull { ms -> frameOfVideo(retriever, ms)?.let { it to ms } }
-    return scan(frames)
+    return FacesNative.nativeSampleTimes(duration).toList().mapNotNull { ms -> frameOfVideo(retriever, ms)?.let { it to ms } }
   }
+
+  /** A video, from wherever the retriever was pointed. */
+  fun scan(retriever: MediaMetadataRetriever): List<ScannedFace> = scan(frames(retriever))
 
   override fun close() {
     FacesNative.nativeFree(handle)
