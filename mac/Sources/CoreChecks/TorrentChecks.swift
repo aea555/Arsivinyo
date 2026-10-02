@@ -97,6 +97,8 @@ extension CoreChecks {
         check(((try? first!.downloads())?.first?.engine?["done"] as? NSNumber)?.int64Value ?? -1 == 0,
               "nothing is fetched before the files are chosen, even with the file list here")
         try first!.choose(id, wanted: [movieIndex], destination: "private")
+        // Added again fresh on choosing; loopback has no tracker to find the seeder through.
+        _ = at_connect_peer(try first!.handle(), id, "127.0.0.1", at_session_port(seeder))
         check(Self.wait(30) {
             first!.work()
             let done = ((try? first!.downloads())?.first?.engine?["done"] as? NSNumber)?.int64Value ?? 0
@@ -140,6 +142,7 @@ extension CoreChecks {
         let all = try publicEngine.add(magnet: magnet)
         _ = Self.wait(30) { (try? publicEngine.files(all)) != nil }
         try publicEngine.choose(all, wanted: (try publicEngine.files(all) ?? []).map(\.index), destination: "public")
+        _ = at_connect_peer(try publicEngine.handle(), all, "127.0.0.1", at_session_port(seeder))
         check(Self.wait(90) {
             publicEngine.work()
             return (try? publicLibrary.torrent(all))?.state == "done"

@@ -581,6 +581,11 @@ final class AppModel {
     /// How many memes are left to scan while a scan runs; nil when idle.
     var facesRemaining: Int?
     /// The quick prompt after a meme downloads. On unless turned off.
+    /// The colour theme, the phone's set (Theme.swift).
+    var theme: Theme = Theme.stored {
+        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
+    }
+
     var askForMemeTags: Bool = UserDefaults.standard.object(forKey: "askForMemeTags") as? Bool ?? true {
         didSet { UserDefaults.standard.set(askForMemeTags, forKey: "askForMemeTags") }
     }

@@ -50,9 +50,11 @@ int at_add_torrent(at_session* session, const uint8_t* data, size_t size, const 
 /// Removes a torrent, and its downloaded files with `delete_files`.
 int at_remove(at_session* session, const char* id, int delete_files);
 int at_pause(at_session* session, const char* id);
-/// Holds a torrent (on) or lets it go (off): held, it fetches no pieces but keeps its peers,
-/// so it can wait for its files to be chosen and start at once when they are. Pausing would
-/// drop the peers, and libtorrent waits a minute before it reconnects to one.
+/// Holds a torrent (on) or lets it go (off), for while its files are being chosen. Held, it
+/// wants none of its files, from the moment its metadata is here (a magnet's file list still
+/// comes; before it, there is nothing a torrent could fetch anyway), and keeps its peers, so it
+/// starts at once once the files are chosen. Letting go wants nothing by itself: the files
+/// chosen are set with at_set_priorities.
 int at_hold(at_session* session, const char* id, int on);
 int at_resume(at_session* session, const char* id);
 /// Connects to a peer by address, as trackers and the DHT otherwise would.
@@ -65,6 +67,12 @@ char* at_files(at_session* session, const char* id);
 /// a file can be taken (filed, or encrypted into the vault) as soon as it is complete.
 /// NULL before metadata. Free with at_free.
 char* at_file_progress(at_session* session, const char* id);
+/// The files of a held torrent are chosen: 0 (skip) or 1..7 per file, in file order. It is
+/// added again, fresh, with its metadata, its trackers and these priorities, and starts at
+/// once: the torrent that waited lost its peers while it wanted nothing (a seed hangs up on a
+/// peer that wants nothing from it), and libtorrent waits before reconnecting to a peer it
+/// lost, which a fresh torrent does not. Nothing is lost by it: a held torrent fetched nothing.
+int at_choose(at_session* session, const char* id, const uint8_t* priorities, int count);
 /// 0 (skip) or 1..7, one per file, in file order.
 int at_set_priorities(at_session* session, const char* id, const uint8_t* priorities, int count);
 /// Every torrent's state as JSON; free with at_free.

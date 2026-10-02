@@ -76,6 +76,11 @@ All notable changes to this project are documented here. Format based on [Keep a
   - **The heads-up.** Before the first torrent, a note that everyone in a torrent sees this
     device's address, recommending a VPN; where torrents are, a notice when none appears to
     be on. Neither stops anything.
+- **Mac themes.** The phone's colour themes, in Settings › General. "Mac", the default, is a
+  regular Mac app. A theme colours all of it: the window, the sidebar and its icons, the
+  toolbar, forms, the accent, and tables striped in the theme's two tones as Finder stripes
+  them. No public API colours a table's stripes, so the app answers one private NSTableView
+  method with the theme's colours; with "Mac" it is untouched.
 
 ### Changed
 - The app is named **Arsivinyo**, not "Arsivinyo Local", and its deep-link scheme is
@@ -87,6 +92,11 @@ All notable changes to this project are documented here. Format based on [Keep a
   `shared/` can join it. npm commands run from `mobile/`.
 
 ### Fixed
+- Mac: the presets list in Settings had a hover highlight cut off at a fixed width. Presets is
+  one form now, with a picker for the preset, and the system draws the highlight.
+- Torrent downloads from a magnet stalled while their files were chosen, and on the phone
+  never got their file list: the waiting torrent lost its peers. It now fetches nothing but
+  its file list until the files are chosen, then starts afresh and finds its peers at once.
 - Mac: denying the Keychain's prompt for the watch library's or the memes index's key made
   the app replace that key, which left what it sealed unreadable. Only a key that is not
   there is made anew now; a refusal is an error. A library its key cannot open is moved

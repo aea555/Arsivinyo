@@ -245,9 +245,9 @@ public final class TorrentEngine: @unchecked Sendable {
         guard let files = try files(id) else { throw Failure(code: "TORRENT_NO_METADATA") }
         _ = lock.withLock { holdUntilChosen.remove(id) }
         let chosen = Set(wanted)
-        setPriorities(session, id, count: (files.map(\.index).max() ?? -1) + 1) { chosen.contains($0) ? 4 : 0 }
-        _ = at_hold(session, id, 0)
-        _ = at_resume(session, id)
+        // Added again, fresh, with these files: the torrent that waited lost its peers.
+        let priorities = (0..<((files.map(\.index).max() ?? -1) + 1)).map { chosen.contains($0) ? UInt8(4) : 0 }
+        guard at_choose(session, id, priorities, Int32(priorities.count)) == 0 else { throw Failure(code: "TORRENT_FAILED") }
         var record = try records().torrent(id)
             ?? WatchLibrary.Torrent(infoHash: id, name: "", wanted: [], destination: destination, addedAt: Int64(Date().timeIntervalSince1970 * 1000))
         record.name = engineState(id)?["name"] as? String ?? record.name

@@ -35,7 +35,6 @@
 "Another device is already pairing." = "Başka bir cihaz zaten eşleşiyor.";
 "Another site…" = "Başka bir site…";
 "Anyone with this file can open the vault. Keep it off this Mac." = "Bu dosyaya sahip olan herkes kasayı açabilir. Bu Mac'te tutmayın.";
-"Applied to every audio download" = "Her ses indirmesine uygulanır";
 "Apply Preset" = "Ön Ayar Uygula";
 "Apply to every audio download" = "Her ses indirmesine uygula";
 "Applying %@" = "%@ uygulanıyor";
@@ -88,7 +87,6 @@
 "Delete" = "Sil";
 "Delete %lld items from the vault?" = "%lld öğe kasadan silinsin mi?";
 "Delete Playlist" = "Çalma listesini sil";
-"Delete the selected preset" = "Seçili ön ayarı sil";
 "Delete this profile" = "Bu profili sil";
 "Delete “%@” from the vault?" = "“%@” kasadan silinsin mi?";
 "Delete “%@”?" = "“%@” silinsin mi?";
@@ -173,7 +171,6 @@
 "New Preset" = "Yeni Ön Ayar";
 "New Tag “%@”" = "Yeni Etiket “%@”";
 "New passphrase" = "Yeni parola cümlesi";
-"New preset, starting from the selected one" = "Seçili olandan başlayarak yeni ön ayar";
 "Nightcore" = "Nightcore";
 "No cookie profiles. A site that refuses signed-out downloads works with a cookies.txt exported from a browser where you are signed in." = "Cookie profili yok. Oturum açılmadan indirmeyi reddeden bir site, oturum açık bir tarayıcıdan dışa aktarılan cookies.txt ile çalışır.";
 "No favourites yet" = "Henüz favori yok";
@@ -518,3 +515,10 @@
 "Nothing found." = "Hiçbir şey bulunamadı.";
 "No installed add-on has a stream for this." = "Kurulu eklentilerin hiçbirinde bunun için yayın yok.";
 "This list did not load. Try again in a little while." = "Bu liste yüklenmedi. Biraz sonra yeniden dene.";
+"New preset, starting from this one" = "Bundan başlayan yeni ön ayar";
+"Delete this preset" = "Bu ön ayarı sil";
+"Preset" = "Ön ayar";
+"Theme" = "Tema";
+"Dark" = "Koyu";
+"Light" = "Açık";
+"Mac is a regular Mac app. A theme colours all of it, as on the phone." = "Mac, sıradan bir Mac uygulamasıdır. Bir tema, telefondaki gibi her yerini renklendirir.";

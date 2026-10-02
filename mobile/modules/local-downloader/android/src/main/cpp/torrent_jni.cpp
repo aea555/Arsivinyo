@@ -95,6 +95,12 @@ jstring FN(nativeFileProgress)(JNIEnv* env, jobject, jlong handle, jstring id) {
     return owned(env, at_file_progress(session(handle), text(env, id).c_str()));
 }
 
+jint FN(nativeChoose)(JNIEnv* env, jobject, jlong handle, jstring id, jbyteArray priorities) {
+    std::vector<uint8_t> values(size_t(env->GetArrayLength(priorities)));
+    env->GetByteArrayRegion(priorities, 0, jsize(values.size()), reinterpret_cast<jbyte*>(values.data()));
+    return at_choose(session(handle), text(env, id).c_str(), values.data(), int(values.size()));
+}
+
 jint FN(nativeSetPriorities)(JNIEnv* env, jobject, jlong handle, jstring id, jbyteArray priorities) {
     std::vector<uint8_t> values(size_t(env->GetArrayLength(priorities)));
     env->GetByteArrayRegion(priorities, 0, jsize(values.size()), reinterpret_cast<jbyte*>(values.data()));

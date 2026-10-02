@@ -8,6 +8,8 @@ import SwiftUI
 /// and the reason it read as a port.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    /// The theme's accent for the sidebar's icons; nil keeps the system's (Theme.swift).
+    @Environment(\.themeAccent) private var themeAccent
     @State private var creatingPlaylist = false
     @State private var renamingPlaylist: MusicLibrary.Playlist?
 
@@ -30,6 +32,7 @@ struct RootView: View {
                     ForEach(model.playlists) { playlist in
                         Label(AppModel.displayName(of: playlist),
                               systemImage: playlist.isSystem ? "heart" : "music.note.list")
+                            .listItemTint(themeAccent)
                             .tag(SidebarSelection.playlist(playlist.id))
                             .contextMenu {
                                 if !playlist.isSystem {
@@ -49,6 +52,7 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
+            .themedSidebar()
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
             detail
@@ -100,6 +104,7 @@ struct RootView: View {
 
     private func row(_ section: AppSection) -> some View {
         Label(section.title, systemImage: section.symbol)
+            .listItemTint(themeAccent)
             .tag(SidebarSelection.section(section))
     }
 

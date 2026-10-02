@@ -1,59 +1,22 @@
 import ArsivinyoCore
 import SwiftUI
 
-/// The presets: a list on the left, the chosen one's controls on the right.
+/// The presets, one Form like every other Settings tab: the preset chosen from a menu at the
+/// top, its controls below. It used to be a list beside a Form, the only two-column tab, and
+/// the toolbar above it treated the two columns differently: the tabs above the list lost
+/// their hover. One column has nothing to split.
 struct PresetSettings: View {
     @Environment(AppModel.self) private var model
     @State private var selectedId: String?
     @State private var naming = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                List(selection: $selectedId) {
-                    ForEach(model.presetList) { preset in
-                        HStack {
-                            Text(AppModel.displayName(of: preset))
-                            Spacer()
-                            if model.autoPresets.presetIds.contains(preset.id) {
-                                Image(systemName: "arrow.down.circle")
-                                    .foregroundStyle(.secondary)
-                                    .help("Applied to every audio download")
-                            }
-                        }
-                        .tag(preset.id)
-                    }
-                }
-                .listStyle(.bordered)
-                HStack(spacing: 0) {
-                    Button { naming = true } label: { Image(systemName: "plus").frame(width: 24, height: 20) }
-                        .help("New preset, starting from the selected one")
-                    Button {
-                        if let id = selectedId { model.deletePreset(id); selectedId = nil }
-                    } label: { Image(systemName: "minus").frame(width: 24, height: 20) }
-                        .disabled(selected?.builtIn != false)
-                        .help("Delete the selected preset")
-                    Spacer()
-                }
-                .buttonStyle(.borderless)
-                .padding(4)
-                Toggle("Keep the original of a download", isOn: Binding(
-                    get: { model.autoPresets.keepOriginal },
-                    set: { model.setKeepOriginal($0) }))
-                    .toggleStyle(.checkbox)
-                    .disabled(model.autoPresets.presetIds.isEmpty)
-                    .help("With presets applied to every download, whether the unchanged download stays too.")
-                    .padding(.vertical, 6)
-            }
-            .frame(width: 210)
-            .padding([.leading, .vertical], 16)
-
+        Group {
             if let preset = selected {
-                PresetEditor(preset: preset).id(preset.id)
+                PresetEditor(preset: preset, selectedId: $selectedId, naming: $naming).id(preset.id)
             } else {
                 ContentUnavailableView("Choose a preset", systemImage: "slider.horizontal.3",
                                        description: Text("Right-click songs in Music to apply one."))
-                    .frame(maxWidth: .infinity)
             }
         }
         .onAppear { if selectedId == nil { selectedId = model.presetList.first?.id } }
@@ -72,28 +35,51 @@ struct PresetSettings: View {
 private struct PresetEditor: View {
     @Environment(AppModel.self) private var model
     let preset: AudioPreset
+    @Binding var selectedId: String?
+    @Binding var naming: Bool
     @State private var params: PresetParams
 
-    init(preset: AudioPreset) {
+    init(preset: AudioPreset, selectedId: Binding<String?>, naming: Binding<Bool>) {
         self.preset = preset
+        _selectedId = selectedId
+        _naming = naming
         _params = State(initialValue: preset.params)
     }
 
     var body: some View {
         Form {
             Section {
+                LabeledContent("Preset") {
+                    HStack(spacing: 8) {
+                        Picker("Preset", selection: $selectedId) {
+                            ForEach(model.presetList) { item in
+                                Text(AppModel.displayName(of: item)).tag(Optional(item.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Button { naming = true } label: { Image(systemName: "plus") }
+                            .help("New preset, starting from this one")
+                        Button {
+                            model.deletePreset(preset.id)
+                            selectedId = model.presetList.first?.id
+                        } label: { Image(systemName: "minus") }
+                            .disabled(preset.builtIn)
+                            .help("Delete this preset")
+                    }
+                }
                 Toggle("Apply to every audio download", isOn: Binding(
                     get: { model.autoPresets.presetIds.contains(preset.id) },
                     set: { model.setAutoApply(preset.id, $0) }))
-            } header: {
-                HStack {
-                    Text(AppModel.displayName(of: preset)).font(.headline)
-                    Spacer()
-                    if preset.builtIn && preset.modified == true {
-                        Button("Restore Defaults") {
-                            model.resetPreset(preset.id)
-                            params = AudioPreset.builtIns.first { $0.id == preset.id }?.params ?? params
-                        }
+                Toggle("Keep the original of a download", isOn: Binding(
+                    get: { model.autoPresets.keepOriginal },
+                    set: { model.setKeepOriginal($0) }))
+                    .disabled(model.autoPresets.presetIds.isEmpty)
+                    .help("With presets applied to every download, whether the unchanged download stays too.")
+                if preset.builtIn && preset.modified == true {
+                    Button("Restore Defaults") {
+                        model.resetPreset(preset.id)
+                        params = AudioPreset.builtIns.first { $0.id == preset.id }?.params ?? params
                     }
                 }
             }

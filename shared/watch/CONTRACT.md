@@ -81,8 +81,12 @@ against them with the defines libtorrent was built with (`build/<platform>/defin
 - From a `.torrent` file (opened, dropped, shared to the app), a magnet link (pasted, or
   opened from the browser), or a stream's "Download" action.
 - The files in it are shown with sizes; the user picks which. Defaults: all of them. Until
-  they are picked, the torrent is held: it fetches no pieces but keeps its peers, so it starts
-  at once when they are (pausing would drop them, and libtorrent waits a minute to reconnect).
+  they are picked, the torrent fetches nothing but its file list. Once they are, it is added
+  again, fresh, with the file list, its trackers and the choice: a torrent that waits wanting
+  nothing loses its peers (a seed hangs up on a peer that wants nothing from it), and
+  libtorrent waits before reconnecting to a peer it lost; a fresh torrent asks its trackers
+  and the DHT at once. Measured on a real swarm: 0 peers after waiting, 51 peers and 637 MB
+  in the first 15 seconds once added fresh.
 - It joins the app's download list and its notifications, with progress, speed, peers and
   time left. It can be paused, resumed and removed, with or without its files.
 - **Where it lands:** public (the Mac's download folder; the phone's `Download/Arsivinyo`

@@ -135,6 +135,16 @@ struct Core {
     std::atomic<bool> running{true};
     double seed_ratio = 1.0;
     bool upload_allowed = true;
+    // Torrents held until their files are chosen (at_hold): every file is skipped as soon as
+    // the metadata is here, by the alert thread, so nothing is fetched in between.
+    std::set<std::string> held;
+
+    void hold_now(lt::torrent_handle const& h) {
+        auto ti = h.torrent_file();
+        if (!ti) return;
+        h.prioritize_files(std::vector<lt::download_priority_t>(static_cast<size_t>(ti->num_files()), lt::dont_download));
+    }
+
     // When each torrent in a cache was last streamed, in seconds; kept in cache.json.
     std::map<std::string, int64_t> last_used;
 
@@ -206,6 +216,12 @@ struct Core {
                 if (auto* r = lt::alert_cast<lt::save_resume_data_alert>(a)) {
                     write_file(resume_path(hex(r->params.info_hashes.get_best())), lt::write_resume_data_buf(r->params));
                 } else if (auto* m = lt::alert_cast<lt::metadata_received_alert>(a)) {
+                    bool hold;
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        hold = held.count(hex(m->handle.info_hashes().get_best())) > 0;
+                    }
+                    if (hold) hold_now(m->handle);
                     // Kept with the resume data, so a restart does not fetch it again.
                     m->handle.save_resume_data(lt::torrent_handle::save_info_dict);
                     woke = true;
@@ -510,6 +526,10 @@ lt::settings_pack pack(at_settings const& s) {
     // Streaming asks for pieces by deadline; let it have peers' attention quickly.
     p.set_int(lt::settings_pack::request_timeout, 10);
     p.set_bool(lt::settings_pack::allow_multiple_connections_per_ip, s.discovery == 0);
+    // A torrent waiting for its files to be chosen wants nothing, which libtorrent counts as
+    // finished, and it would close its connections to seeds as redundant: the peers that just
+    // sent the file list, and that should start the download the moment the files are chosen.
+    p.set_bool(lt::settings_pack::close_redundant_connections, false);
     p.set_int(lt::settings_pack::upload_rate_limit, std::max(0, s.upload_limit));
     p.set_int(lt::settings_pack::download_rate_limit, std::max(0, s.download_limit));
     return p;
@@ -676,8 +696,13 @@ int at_pause(at_session* session, const char* id) {
 int at_hold(at_session* session, const char* id, int on) {
     lt::torrent_handle h = session && id ? session->core->find(id) : lt::torrent_handle();
     if (!h.is_valid()) return AT_NO_TORRENT;
-    if (on) h.set_flags(lt::torrent_flags::upload_mode);
-    else h.unset_flags(lt::torrent_flags::upload_mode);
+    {
+        std::lock_guard<std::mutex> lock(session->core->mutex);
+        if (on) session->core->held.insert(id);
+        else session->core->held.erase(id);
+    }
+    // Already here (a .torrent file, or a magnet whose list came): skipped now.
+    if (on) session->core->hold_now(h);
     return AT_OK;
 }
 
@@ -698,6 +723,44 @@ int at_connect_peer(at_session* session, const char* id, const char* ip, int por
     auto const address = lt::make_address(ip, ec);
     if (ec) return AT_BAD_INPUT;
     h.connect_peer(lt::tcp::endpoint(address, static_cast<std::uint16_t>(port)));
+    return AT_OK;
+}
+
+int at_choose(at_session* session, const char* id, const uint8_t* priorities, int count) {
+    if (!session || !id || !priorities || count < 0) return AT_BAD_INPUT;
+    auto core = session->core;
+    lt::torrent_handle h = core->find(id);
+    if (!h.is_valid()) return AT_NO_TORRENT;
+    auto ti = h.torrent_file();
+    if (!ti) return AT_NO_METADATA;
+
+    lt::add_torrent_params atp;
+    atp.ti = std::make_shared<lt::torrent_info>(*ti);
+    for (auto const& tracker : h.trackers()) atp.trackers.push_back(tracker.url);
+    atp.save_path = h.status(lt::torrent_handle::query_save_path).save_path;
+    for (int i = 0; i < ti->num_files(); ++i)
+        atp.file_priorities.emplace_back(i < count ? std::min<std::uint8_t>(priorities[i], 7) : 0);
+    atp.flags &= ~(lt::torrent_flags::auto_managed | lt::torrent_flags::paused);
+
+    {
+        std::lock_guard<std::mutex> lock(core->mutex);
+        core->held.erase(id);
+        core->torrents.erase(id);
+    }
+    core->session->remove_torrent(h);
+    // The removal is asynchronous; adding the same torrent before it is done is refused.
+    lt::error_code ec;
+    lt::torrent_handle fresh;
+    for (int attempt = 0; attempt < 50 && !fresh.is_valid(); ++attempt) {
+        fresh = core->session->add_torrent(atp, ec);
+        if (!fresh.is_valid()) std::this_thread::sleep_for(100ms);
+    }
+    if (!fresh.is_valid()) return AT_FAILED;
+    {
+        std::lock_guard<std::mutex> lock(core->mutex);
+        core->torrents[id] = fresh;
+    }
+    fresh.save_resume_data(lt::torrent_handle::save_info_dict);
     return AT_OK;
 }
 

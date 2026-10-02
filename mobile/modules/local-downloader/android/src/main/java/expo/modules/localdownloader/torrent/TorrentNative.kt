@@ -28,6 +28,8 @@ object TorrentNative {
   external fun nativeFiles(handle: Long, id: String): String?
   /** JSON [{index, done, size, priority}], or null before metadata. */
   external fun nativeFileProgress(handle: Long, id: String): String?
+  /** A held torrent's files chosen: it is added again, fresh, with these priorities. */
+  external fun nativeChoose(handle: Long, id: String, priorities: ByteArray): Int
   external fun nativeSetPriorities(handle: Long, id: String, priorities: ByteArray): Int
   external fun nativeStatus(handle: Long): String?
   external fun nativeTorrentFile(handle: Long, id: String): ByteArray?

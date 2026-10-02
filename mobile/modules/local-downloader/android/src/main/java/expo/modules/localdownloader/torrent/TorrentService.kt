@@ -225,9 +225,10 @@ class TorrentService private constructor(private val context: Context) {
     val files = files(id) ?: throw Failure("TORRENT_NO_METADATA")
     val count = (0 until files.length()).maxOf { files.getJSONObject(it).getInt("index") } + 1
     holdUntilChosen.remove(id)
-    TorrentNative.nativeSetPriorities(session, id, ByteArray(count) { if (it in wanted) 4 else 0 })
-    TorrentNative.nativeHold(session, id, false)
-    TorrentNative.nativeResume(session, id)
+    // Added again, fresh, with these files: the torrent that waited lost its peers.
+    if (TorrentNative.nativeChoose(session, id, ByteArray(count) { if (it in wanted) 4 else 0 }) != 0) {
+      throw Failure("TORRENT_FAILED")
+    }
     val record = records().torrent(id) ?: WatchLibrary.Torrent(id, "", emptyList(), destination, System.currentTimeMillis())
     records().putTorrent(record.copy(name = nameOf(id) ?: record.name, wanted = wanted, destination = destination,
       state = "downloading"))

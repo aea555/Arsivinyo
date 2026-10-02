@@ -18,6 +18,7 @@ struct ArsivinyoApp: App {
         Window("Arsivinyo", id: "main") {
             RootView()
                 .environment(model)
+                .themed(model.theme)
                 // Wide enough that the source list and a detail pane both have room; the
                 // window is otherwise free to be resized and its size is restored.
                 .frame(minWidth: 860, minHeight: 560)
@@ -45,6 +46,7 @@ struct ArsivinyoApp: App {
         Window("Player", id: "watch-player") {
             WatchPlayerWindow()
                 .environment(model)
+                .themed(model.theme)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1100, height: 640)
@@ -55,6 +57,7 @@ struct ArsivinyoApp: App {
         Settings {
             SettingsView()
                 .environment(model)
+                .themed(model.theme)
         }
     }
 }
