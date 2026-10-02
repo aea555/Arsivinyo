@@ -12,6 +12,8 @@ shared/     Anything the apps must agree on: the device-pairing protocol, the se
             core, the audio DSP, the yt-dlp download engine, the icon (brand/), and the
             memes contract (memes/CONTRACT.md), which both apps build to, and the faces
             pipeline (faces/): C++ over pinned ONNX models, held to faces/VECTORS.json.
+            The watch contract (watch/CONTRACT.md) covers Stremio add-ons, the player and
+            torrents.
 ```
 
 `mac/` does not reimplement the security core. It compiles the same C++ through a symlink,
