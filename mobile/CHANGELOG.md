@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [4.0.0-beta.1] — Device pairing, memes, Watch and torrents, and the Mac app
+
+Two devices pair and send files to each other; memes are collected, tagged and grouped by
+face; Watch plays Stremio add-ons' streams and torrents in mpv; and the Mac app reaches the
+phone's features with its own native interface. The major version moves because the app is
+no longer a downloader alone. The Mac app carries the same version. `versionCode` → `40000`.
+
 ### Added
 - **Device pairing.** Two devices you own, on the same network, exchanging files directly
   — no cloud, no account, no relay. The desktop app implements the whole protocol:
