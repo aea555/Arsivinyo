@@ -102,6 +102,16 @@ All notable changes to this project are documented here. Format based on [Keep a
   `shared/` can join it. npm commands run from `mobile/`.
 
 ### Fixed
+- Mac player: the player window could not go full screen. A SwiftUI Window scene is made
+  with full screen turned off, and turns it off again whenever it updates the window, so the
+  green button only zoomed it; the player turns it back on each time. It goes full screen now,
+  from the green button, a button in the controls, F or a double click; Esc leaves it.
+- Mac player: a window made bigger after a video started showed the picture at its old size
+  in a corner. MPVKit's MoltenVK context sizes mpv's output only when the video's parameters
+  change, so once a resize settles, and only when mpv draws at another size, the player
+  converts the picture to a pixel format it is not in and back, and mpv draws at the new
+  size: measured, 1280×720 in a 3200×1736 layer before, 3200×1736 after, decoded in hardware
+  or in software, and the same in and out of full screen.
 - Mac: Watch had no search field. It was attached around Watch's own navigation stack, where
   the split view's toolbar never showed it; it is on the stack's root now.
 - Mac: the vault's lock is in the toolbar only where the vault is used (Download, Torrents,

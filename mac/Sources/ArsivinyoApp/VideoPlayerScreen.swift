@@ -8,6 +8,7 @@ struct MPVVideoView: NSViewRepresentable {
     func makeNSView(context: Context) -> MPVLayerView {
         let view = MPVLayerView(frame: .zero)
         player.attach(view.metal)
+        view.resized = { [weak player] size in player?.layerResized(to: size) }
         return view
     }
 
@@ -24,6 +25,10 @@ struct VideoPlayerScreen<Overlay: View>: View {
     /// Subtitles from add-ons, best first; the best is loaded by itself when the file has
     /// nothing in a language preferred as much.
     var subtitles: [Addons.Subtitle] = []
+    /// Whether the window it plays in may go full screen: Watch's player window, not the
+    /// vault's sheet. A SwiftUI Window scene is made with full screen turned off, so its green
+    /// button only zoomed.
+    var fullScreenWindow = false
     /// A torrent being streamed: its peers and speed are shown while the player waits.
     var torrentId: String? = nil
     @ViewBuilder var overlay: () -> Overlay
@@ -32,11 +37,15 @@ struct VideoPlayerScreen<Overlay: View>: View {
     @State private var lastMove = Date()
     @State private var scrubMs: Double?
     @State private var loaded: Set<String> = []
+    /// The window it plays in, for full screen; only one that allows it gets the button.
+    @State private var window: NSWindow?
+    @State private var fullScreen = false
 
     var body: some View {
         ZStack {
             Color.black
             MPVVideoView(player: player)
+                .onTapGesture(count: 2) { toggleFullScreen() }
             if player.buffering, player.failed == nil {
                 VStack(spacing: 10) {
                     ProgressView().controlSize(.large).tint(.white)
@@ -76,9 +85,43 @@ struct VideoPlayerScreen<Overlay: View>: View {
         }
         .focusable()
         .focusEffectDisabled()
+        .background(WindowReader { found in
+            window = found
+            fullScreen = found?.styleMask.contains(.fullScreen) ?? false
+        })
+        // SwiftUI turns a Window scene's full screen off, and turns it off again whenever it
+        // updates the window, so the green button only zoomed: it is turned back on each time.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didUpdateNotification)) { note in
+            guard fullScreenWindow, let window, note.object as? NSWindow === window,
+                  !window.collectionBehavior.contains(.fullScreenPrimary) else { return }
+            window.collectionBehavior.remove(.fullScreenNone)
+            window.collectionBehavior.insert(.fullScreenPrimary)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+            if note.object as? NSWindow === window { fullScreen = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
+            if note.object as? NSWindow === window { fullScreen = false }
+        }
+        .onKeyPress("f") { toggleFullScreen(); return .handled }
+        .onKeyPress(.escape) {
+            guard fullScreen else { return .ignored }
+            toggleFullScreen()
+            return .handled
+        }
         .onKeyPress(.space) { player.togglePause(); return .handled }
         .onKeyPress(.leftArrow) { player.seek(byMs: -10_000); return .handled }
         .onKeyPress(.rightArrow) { player.seek(byMs: 10_000); return .handled }
+    }
+
+    private var canFullScreen: Bool { fullScreenWindow && window != nil }
+
+    private func toggleFullScreen() {
+        guard canFullScreen, let window else { return }
+        // On right before it is asked for, too: SwiftUI may have just turned it off.
+        window.collectionBehavior.remove(.fullScreenNone)
+        window.collectionBehavior.insert(.fullScreenPrimary)
+        window.toggleFullScreen(nil)
     }
 
     private func reveal() {
@@ -120,6 +163,16 @@ struct VideoPlayerScreen<Overlay: View>: View {
                 audioMenu
                 subtitleMenu
                 speedMenu
+                if canFullScreen {
+                    Button(action: toggleFullScreen) {
+                        Image(systemName: fullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                    }
+                    .help(fullScreen ? "Exit Full Screen" : "Full Screen")
+                    // Like the menus beside it: bordered and white, not in the accent, which read
+                    // as switched on.
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+                }
             }
             .padding(12)
             .background(.black.opacity(0.45))
@@ -230,4 +283,27 @@ private func clock(_ ms: Double) -> String {
     let total = max(0, Int(ms / 1000))
     let h = total / 3600, m = (total % 3600) / 60, s = total % 60
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+}
+
+/// The window a view is in, as it gets one.
+struct WindowReader: NSViewRepresentable {
+    let found: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView { Reader(found: found) }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class Reader: NSView {
+        let found: (NSWindow?) -> Void
+        init(found: @escaping (NSWindow?) -> Void) {
+            self.found = found
+            super.init(frame: .zero)
+        }
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            let window = self.window
+            DispatchQueue.main.async { [found] in found(window) }
+        }
+    }
 }

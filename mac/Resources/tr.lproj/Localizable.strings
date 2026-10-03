@@ -116,6 +116,7 @@
 "Every item, decrypted into the backup and encrypted again under its passphrase." = "Her öğe, şifresi çözülerek yedeğe girer ve yedeğin parola cümlesiyle yeniden şifrelenir.";
 "Everything here is encrypted, and so is the list of what it is." = "Buradaki her şey şifreli, neyin burada olduğunun listesi de.";
 "Everything in the vault is encrypted with your passphrase." = "Kasadaki her şey parola cümlenizle şifrelenir.";
+"Exit Full Screen" = "Tam Ekrandan Çık";
 "Export a New Recovery Key…" = "Yeni Kurtarma Anahtarı Dışa Aktar…";
 "Export a Recovery Key…" = "Kurtarma Anahtarı Dışa Aktar…";
 "Exported" = "Dışa aktarıldı";
@@ -129,6 +130,7 @@
 "Forget" = "Unut";
 "Forget this device" = "Bu cihazı unut";
 "Forget “%@”?" = "“%@” unutulsun mu?";
+"Full Screen" = "Tam Ekran";
 "Gain" = "Kazanç";
 "General" = "Genel";
 "Get" = "Al";

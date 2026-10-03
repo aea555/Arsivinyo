@@ -1003,7 +1003,8 @@ struct WatchPlayerWindow: View {
     @State private var loadingNext = false
 
     var body: some View {
-        VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles, torrentId: request?.torrentId) {
+        VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles, fullScreenWindow: true,
+                          torrentId: request?.torrentId) {
             if player.ended, request?.nextVideo != nil {
                 Button {
                     loadingNext = true

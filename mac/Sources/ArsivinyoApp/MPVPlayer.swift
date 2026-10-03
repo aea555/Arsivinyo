@@ -59,6 +59,7 @@ final class MPVPlayer {
     @ObservationIgnored private var seeking = false
     /// What `arsivinyo-vault://` URLs read from: a vault item, decrypted as mpv asks.
     @ObservationIgnored private let vault: EncryptedReader?
+    @ObservationIgnored private var refit: Task<Void, Never>?
 
     init(vault: EncryptedReader? = nil) {
         self.vault = vault
@@ -76,6 +77,21 @@ final class MPVPlayer {
             loadPending()
         } catch {
             failed = "PLAYER_UNAVAILABLE"
+        }
+    }
+
+    /// The view's size changed. MPVKit's MoltenVK context sizes mpv's picture only when the
+    /// video's parameters change (its control hook does nothing), so a bigger window showed the
+    /// picture at its old size in a corner. Once the size settles, the video is refitted
+    /// (`Core.refit`). Measured with the sample in a window grown from 640×360: 1280×720 drawn
+    /// into a 3200×1736 layer before, 3200×1736 after, decoded in hardware or not.
+    func layerResized(to size: CGSize) {
+        guard loaded != nil else { return }
+        refit?.cancel()
+        refit = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            self?.core?.refit(to: size)
         }
     }
 
@@ -285,6 +301,30 @@ final class MPVPlayer {
             }
         }
 
+        /// Makes mpv draw at its layer's size: a filter converting the picture to a pixel format
+        /// it is not in is put in and, a frame later, taken out, so the video's parameters change
+        /// and the output is made again. Always a different format: a conversion to the one the
+        /// frames already have (yuv420p, decoded in software) changes nothing and refits nothing.
+        func refit(to size: CGSize) {
+            queue.async { [self] in
+                // Only when mpv draws at another size: a refit makes it decode again from the last
+                // keyframe, which a torrent may not have yet.
+                var width: Int64 = 0, height: Int64 = 0
+                guard alive else { return }
+                mpv_get_property(handle, "osd-width", MPV_FORMAT_INT64, &width)
+                mpv_get_property(handle, "osd-height", MPV_FORMAT_INT64, &height)
+                guard width > 0, Int(width) != Int(size.width) || Int(height) != Int(size.height),
+                      let raw = mpv_get_property_string(handle, "video-params/pixelformat") else { return }
+                let format = String(cString: raw)
+                mpv_free(raw)
+                command(["vf", "add", "@arsivinyo-refit:format=fmt=\(format == "yuv420p" ? "nv12" : "yuv420p")"])
+                queue.asyncAfter(deadline: .now() + 0.3) { [self] in
+                    guard alive else { return }
+                    command(["vf", "remove", "@arsivinyo-refit"])
+                }
+            }
+        }
+
         func command(_ args: [String]) {
             queue.async { [self] in
                 guard alive else { return }
@@ -342,6 +382,10 @@ final class MPVLayer: CAMetalLayer {
 /// The view a player draws in: a Metal layer, sized with the view.
 final class MPVLayerView: NSView {
     let metal = MPVLayer()
+    /// Told the new size in pixels when it changes, so mpv is made to draw at it.
+    var resized: ((CGSize) -> Void)?
+    /// The last size reported: AppKit may already have set the drawable's size by itself.
+    private var reported = CGSize.zero
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -358,6 +402,10 @@ final class MPVLayerView: NSView {
         super.layout()
         let scale = window?.backingScaleFactor ?? 2
         metal.contentsScale = scale
-        metal.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        metal.drawableSize = size
+        guard size != reported else { return }
+        reported = size
+        resized?(size)
     }
 }
