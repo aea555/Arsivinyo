@@ -123,22 +123,23 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        // The lock belongs in the toolbar whatever section is showing: it is the one piece
-        // of state that changes what the rest of the app will let you do.
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                model.toggleVaultLock()
-            } label: {
-                // In words as well: an open padlock alone read as "locked", and the vault may
-                // already be open at launch ("Remember on this Mac").
-                Label(model.vaultUnlocked ? LocalizedStringKey("Vault Open") : LocalizedStringKey("Vault Locked"),
-                      systemImage: model.vaultUnlocked ? "lock.open.fill" : "lock.fill")
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(model.vaultUnlocked ? Color.orange : Color.secondary)
+        // The lock, where the vault is used: what is shown or saved there depends on it.
+        if model.section.usesVault {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.toggleVaultLock()
+                } label: {
+                    // In words as well: an open padlock alone read as "locked", and the vault may
+                    // already be open at launch ("Remember on this Mac").
+                    Label(model.vaultUnlocked ? LocalizedStringKey("Vault Open") : LocalizedStringKey("Vault Locked"),
+                          systemImage: model.vaultUnlocked ? "lock.open.fill" : "lock.fill")
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(model.vaultUnlocked ? Color.orange : Color.secondary)
+                }
+                .help(model.vaultUnlocked
+                      ? "The vault is unlocked. Lock it now."
+                      : "The vault is locked.")
             }
-            .help(model.vaultUnlocked
-                  ? "The vault is unlocked. Lock it now."
-                  : "The vault is locked.")
         }
     }
 }

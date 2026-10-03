@@ -102,6 +102,10 @@ All notable changes to this project are documented here. Format based on [Keep a
   `shared/` can join it. npm commands run from `mobile/`.
 
 ### Fixed
+- Mac: Watch had no search field. It was attached around Watch's own navigation stack, where
+  the split view's toolbar never showed it; it is on the stack's root now.
+- Mac: the vault's lock is in the toolbar only where the vault is used (Download, Torrents,
+  Memes, Vault), not on Music, Watch or Devices.
 - Phone player: subtitles lost their spaces and drew ı, ş and ğ apart from their words.
   libass has no fonts of its own on Android; the app now ships Noto Sans for it.
 - Subtitles from add-ons ran late when they were made for another release. Within a

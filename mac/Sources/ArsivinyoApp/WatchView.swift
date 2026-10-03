@@ -92,11 +92,13 @@ struct WatchView: View {
     var body: some View {
         NavigationStack(path: $path) {
             board
+                // On the stack's root, not around the stack: there the split view's toolbar
+                // never showed the field.
+                .searchable(text: $query, placement: .toolbar, prompt: Text("Search films and series"))
+                .onSubmit(of: .search) { searching = query.trimmingCharacters(in: .whitespaces) }
+                .onChange(of: query) { _, text in if text.isEmpty { searching = "" } }
                 .navigationDestination(for: WatchRoute.self) { route in WatchTitleView(title: route.title) }
         }
-        .searchable(text: $query, placement: .toolbar, prompt: Text("Search films and series"))
-        .onSubmit(of: .search) { searching = query.trimmingCharacters(in: .whitespaces) }
-        .onChange(of: query) { _, text in if text.isEmpty { searching = "" } }
         .toolbar {
             ToolbarItem {
                 Button { managingAddons = true } label: { Label("Add-ons", systemImage: "puzzlepiece.extension") }

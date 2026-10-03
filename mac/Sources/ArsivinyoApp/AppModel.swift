@@ -19,6 +19,15 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
 
     var id: String { rawValue }
 
+    /// Whether the vault's lock belongs in the toolbar here: the sections that put things into
+    /// the vault or show what is in it. Music, Watch and Devices never touch it.
+    var usesVault: Bool {
+        switch self {
+        case .download, .torrents, .memes, .vault: return true
+        case .library, .watch, .devices: return false
+        }
+    }
+
     var title: String {
         switch self {
         case .download: return String(localized: "Download")
