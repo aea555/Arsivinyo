@@ -73,6 +73,13 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     // yt-dlp runs in the app, not inside mpv.
     setOptionString("ytdl", "no")
     setOptionString("sub-auto", "fuzzy")
+    // libass has no font provider on Android: without fonts of its own it draws text subtitles
+    // in a fallback with no Turkish letters, the spaces lost and ı, ş, ğ set apart.
+    fonts(context)?.let {
+      setOptionString("sub-fonts-dir", it.path)
+      setOptionString("osd-fonts-dir", it.path)
+      setOptionString("sub-font", "Noto Sans")
+    }
     setOptionString("keep-open", "yes")
     setOptionString("idle", "yes")
     init()
@@ -274,6 +281,27 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
      * every file in the system store. Made once per app version.
      */
     @Volatile private var bundle: File? = null
+    @Volatile private var fontDir: File? = null
+
+    /**
+     * The subtitle fonts (Noto Sans, OFL, in assets/subfonts) as files, where mpv can read
+     * them. Copied once per app version.
+     */
+    fun fonts(context: Context): File? {
+      fontDir?.let { return it }
+      return runCatching {
+        val version = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        val dir = File(context.filesDir, "mpv-fonts/$version")
+        if (!dir.isDirectory) {
+          dir.parentFile?.deleteRecursively()
+          dir.mkdirs()
+          context.assets.list("subfonts").orEmpty().filter { it.endsWith(".ttf") }.forEach { name ->
+            context.assets.open("subfonts/$name").use { input -> File(dir, name).outputStream().use { input.copyTo(it) } }
+          }
+        }
+        dir.also { fontDir = it }
+      }.getOrNull()
+    }
 
     fun certificates(context: Context): File? {
       bundle?.let { return it }

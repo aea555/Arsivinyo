@@ -332,10 +332,14 @@ public enum Addons {
         public var id: String
         public var url: String
         public var lang: String
-        public init(id: String, url: String, lang: String) {
+        /// The release it was made for, when the add-on says (OpenSubtitles' movieReleaseName,
+        /// else its subtitleFileName): one made for the file being played is in time with it.
+        public var release: String
+        public init(id: String, url: String, lang: String, release: String = "") {
             self.id = id
             self.url = url
             self.lang = lang
+            self.release = release
         }
     }
 
@@ -343,7 +347,8 @@ public enum Addons {
     public static func subtitles(_ json: [String: Any]) -> [Subtitle] {
         (json["subtitles"] as? [[String: Any]] ?? []).compactMap { s in
             guard let url = s["url"] as? String, isHTTP(url) else { return nil }
-            return Subtitle(id: text(s["id"]) ?? url, url: url, lang: s["lang"] as? String ?? "")
+            let release = (s["movieReleaseName"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? s["subtitleFileName"] as? String ?? ""
+            return Subtitle(id: text(s["id"]) ?? url, url: url, lang: s["lang"] as? String ?? "", release: release)
         }
     }
 
@@ -374,10 +379,25 @@ public enum Addons {
     /// Subtitles to offer, best first: only the preferred languages, in the order they are
     /// preferred, each keeping the order it came in (the stream's own, then the add-ons' in
     /// theirs), at most `perLanguage` of each and none twice.
-    public static func rankSubtitles(_ subtitles: [Subtitle], preferred: [String], perLanguage: Int = 5) -> [Subtitle] {
+    public static func rankSubtitles(_ subtitles: [Subtitle], preferred: [String], perLanguage: Int = 5,
+                                     filename: String? = nil) -> [Subtitle] {
         var seen = Set<String>()
+        let file = filename.map(releaseWords) ?? []
         return preferred.flatMap { code in
-            subtitles.filter { language($0.lang) == code && seen.insert($0.url).inserted }.prefix(perLanguage)
+            let ofLanguage = subtitles.filter { language($0.lang) == code && seen.insert($0.url).inserted }
+            // Made for this release first: a subtitle for another cut or frame rate drifts.
+            // Stable, so ties keep the add-ons' own order.
+            let ranked = file.isEmpty ? ofLanguage : ofLanguage.enumerated().sorted { a, b in
+                let x = releaseWords(a.element.release).intersection(file).count
+                let y = releaseWords(b.element.release).intersection(file).count
+                return x != y ? x > y : a.offset < b.offset
+            }.map(\.element)
+            return ranked.prefix(perLanguage)
         }
+    }
+
+    /// A release name's words: "Show.S01E01.1080p.WEB-DL" is show, s01e01, 1080p, web, dl.
+    static func releaseWords(_ name: String) -> Set<String> {
+        Set(name.lowercased().split { !($0.isASCII && ($0.isLetter || $0.isNumber)) }.map(String.init))
     }
 }

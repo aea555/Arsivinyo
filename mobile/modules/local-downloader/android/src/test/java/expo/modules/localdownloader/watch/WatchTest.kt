@@ -116,6 +116,17 @@ class WatchTest {
   }
 
   @Test
+  fun subtitlesMadeForTheFileComeFirst() {
+    val v = vectors().getJSONObject("subtitleRelease")
+    fun strings(key: String) = v.getJSONArray(key).let { a -> (0 until a.length()).map { a.getString(it) } }
+    val subtitles = Addons.subtitles(v)
+    val ranked = Addons.rankSubtitles(subtitles, strings("preferred"), v.getInt("perLanguage"), v.getString("filename"))
+    assertEquals(strings("order"), ranked.map { it.id })
+    val unranked = Addons.rankSubtitles(subtitles, strings("preferred"), v.getInt("perLanguage"))
+    assertEquals(strings("orderWithoutFilename"), unranked.map { it.id })
+  }
+
+  @Test
   fun metasAreReadAsTheVectorsSay() {
     val cases = vectors().getJSONArray("metas")
     for (i in 0 until cases.length()) {

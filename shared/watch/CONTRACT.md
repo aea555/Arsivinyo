@@ -158,8 +158,15 @@ subtitles. mpv plays all of it.
   known (`VECTORS.json`, `languages`).
 - What is offered from add-ons: the stream's own, then each add-on's in the add-ons' order,
   kept only in a preferred language, grouped by preference, at most five per language, a URL
-  once (`subtitleRanking`). The best is loaded by itself when the file has nothing in a
-  language preferred as much; the rest wait in the subtitles menu. A trailer asks no add-on.
+  once (`subtitleRanking`). Within a language, one made for the file being played comes
+  first: its release (OpenSubtitles' `movieReleaseName`, else `subtitleFileName`) sharing
+  more words with the stream's file name, ties in the add-ons' order; the stream's own count
+  as made for it (`subtitleRelease`). A subtitle made for another cut or frame rate runs late
+  or drifts, so the subtitle delay is the first thing in the subtitles menu. The best is
+  loaded by itself when the file has nothing in a language preferred as much; the rest wait
+  in the subtitles menu. A trailer asks no add-on.
+- On the phone, libass has no system font provider, so the app ships the fonts subtitles are
+  drawn in (Noto Sans, OFL); without them text loses its spaces and Turkish letters.
 - mpv picks the file's own audio and subtitle tracks by the same languages.
 - A page that goes through yt-dlp (YouTube, a trailer) is handed to mpv as two plain files,
   the best video up to 1080p and the best audio, opened together. Not as an HLS master
@@ -167,7 +174,8 @@ subtitles. mpv plays all of it.
   each, before it plays anything (about nine seconds for YouTube's on a phone, against a
   quarter of a second for the two files). A live stream has only HLS, and gets it.
 - The player shows that it is loading from the moment it is asked to play until the first
-  frame, and while it waits for the network or a seek.
+  frame, and while it waits for the network or a seek; for a torrent, with its peers and
+  speed.
 - The vault's own videos play through the same player, so a private MKV plays too: on the
   phone over the vault's loopback server, on the Mac through mpv's stream callbacks, which
   decrypt what mpv reads as it reads it. Neither writes plaintext.

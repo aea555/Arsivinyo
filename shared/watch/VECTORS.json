@@ -561,5 +561,51 @@
       "en1"
     ],
     "why": "preferred languages only, in preference order, each in the order given, at most perLanguage each, a URL once"
+  },
+  "subtitleRelease": {
+    "why": "within a language, a subtitle whose release shares more words with the file name comes first, ties keep the add-ons' order; the release is movieReleaseName, else subtitleFileName (OpenSubtitles' fields)",
+    "preferred": [
+      "tur"
+    ],
+    "perLanguage": 5,
+    "filename": "Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP.mkv",
+    "subtitles": [
+      {
+        "id": "plain",
+        "url": "https://b/1.srt",
+        "lang": "tur"
+      },
+      {
+        "id": "dvd",
+        "url": "https://b/2.srt",
+        "lang": "tur",
+        "movieReleaseName": "Show.S01E01.DVDRip.XviD-OLD"
+      },
+      {
+        "id": "web",
+        "url": "https://b/3.srt",
+        "lang": "tur",
+        "movieReleaseName": "Show S01E01 Season Pack",
+        "subtitleFileName": "x.srt"
+      },
+      {
+        "id": "exact",
+        "url": "https://b/4.srt",
+        "lang": "tur",
+        "subtitleFileName": "Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP.srt"
+      }
+    ],
+    "order": [
+      "exact",
+      "dvd",
+      "web",
+      "plain"
+    ],
+    "orderWithoutFilename": [
+      "plain",
+      "dvd",
+      "web",
+      "exact"
+    ]
   }
 }

@@ -102,6 +102,15 @@ All notable changes to this project are documented here. Format based on [Keep a
   `shared/` can join it. npm commands run from `mobile/`.
 
 ### Fixed
+- Phone player: subtitles lost their spaces and drew ı, ş and ğ apart from their words.
+  libass has no fonts of its own on Android; the app now ships Noto Sans for it.
+- Subtitles from add-ons ran late when they were made for another release. Within a
+  language, one whose release name matches the file being played now comes first, on both
+  apps, and the subtitle delay is at the top of the phone's subtitles menu.
+- Phone player: menus close with their close button, a tap beside them, or a back swipe. The
+  ±10 s buttons look like what they do, and a double tap on the left or right of the picture
+  seeks. The spinner takes the pause button's place, in the middle of the screen. While a
+  video plays, a back swipe asks for a second one before it closes the player.
 - Phone: the keyboard covered the add-on filter in Discover. The screen now makes room for it
   and brings the filter to the top when it is focused.
 - Mac: the presets list in Settings had a hover highlight cut off at a fixed width. Presets is

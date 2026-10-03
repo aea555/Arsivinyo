@@ -58,6 +58,12 @@ extension CoreChecks {
         let ranked = Addons.rankSubtitles(Addons.subtitles(ranking), preferred: ranking["preferred"] as! [String],
                                           perLanguage: ranking["perLanguage"] as! Int)
         check(ranked.map(\.id) == ranking["order"] as! [String], "subtitles: \(ranking["why"]!)")
+        let release = vectors["subtitleRelease"] as! [String: Any]
+        for (filename, key) in [(release["filename"] as? String, "order"), (nil, "orderWithoutFilename")] {
+            let byRelease = Addons.rankSubtitles(Addons.subtitles(release), preferred: release["preferred"] as! [String],
+                                                 perLanguage: release["perLanguage"] as! Int, filename: filename)
+            check(byRelease.map(\.id) == release[key] as! [String], "subtitles by release (\(key)): \(release["why"]!)")
+        }
 
         for case let c as [String: Any] in vectors["metas"] as! [Any] {
             let meta = Addons.meta(["meta": c["meta"]!])

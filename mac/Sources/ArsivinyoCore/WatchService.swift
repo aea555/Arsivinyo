@@ -195,11 +195,12 @@ public final class WatchService: @unchecked Sendable {
     /// is left out rather than holding up the others'.
     public func subtitles(type: String, id: String, filename: String?, own: [Addons.Subtitle]) async throws -> [Addons.Subtitle] {
         let extra = filename.map { [("filename", $0)] } ?? []
-        var all = own
+        // The stream's own are made for its file.
+        var all = own.map { var s = $0; s.release = filename ?? ""; return s }
         for pair in try enabled() where Addons.supports(pair.manifest, resource: "subtitles", type: type, id: id) {
             let address = Addons.resourceURL(base: pair.addon.base, resource: "subtitles", type: type, id: id, extra: extra)
             if let json = try? await getJSON(address, timeout: 10) { all += Addons.subtitles(json) }
         }
-        return Addons.rankSubtitles(all, preferred: try library.languages())
+        return Addons.rankSubtitles(all, preferred: try library.languages(), filename: filename)
     }
 }

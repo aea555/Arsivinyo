@@ -869,6 +869,9 @@
     "noStreamsAnywhere": "Kurulu eklentilerin hiçbirinde bunun için yayın yok."
   },
   "player": {
+    "backAgain": "Kapatmak için yeniden kaydır",
+    "delayHint": "Altyazı geç kalıyorsa − bas, erken geliyorsa + bas.",
+    "tracks": "Parçalar",
     "play": "Oynat",
     "pause": "Duraklat",
     "back10": "10 saniye geri",

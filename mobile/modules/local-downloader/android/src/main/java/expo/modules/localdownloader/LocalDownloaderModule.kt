@@ -1716,10 +1716,12 @@ class LocalDownloaderModule : Module() {
       watchAsync(promise) {
         val mine = own.mapNotNull { m ->
           val url = (m["url"] as? String)?.takeIf(Addons::isHttp) ?: return@mapNotNull null
-          Addons.Subtitle(m["id"] as? String ?: url, url, m["lang"] as? String ?: "")
+          // The stream's own are made for its file.
+          Addons.Subtitle(m["id"] as? String ?: url, url, m["lang"] as? String ?: "", filename.orEmpty())
         }
         val extra = listOfNotNull(filename?.ifBlank { null }?.let { "filename" to it })
-        val ranked = Addons.rankSubtitles(mine + watch.subtitles(type, id, extra), watch.library.languages())
+        val ranked = Addons.rankSubtitles(mine + watch.subtitles(type, id, extra), watch.library.languages(),
+          filename = filename?.ifBlank { null })
         mapOf("success" to true, "subtitles" to ranked.map { subtitleMap(it) + ("lang" to Addons.language(it.lang)) })
       }
     }

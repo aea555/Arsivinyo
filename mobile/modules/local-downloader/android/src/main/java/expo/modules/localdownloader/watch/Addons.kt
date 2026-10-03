@@ -331,7 +331,12 @@ object Addons {
     }
   }
 
-  data class Subtitle(val id: String, val url: String, val lang: String)
+  /**
+   * [release]: the release it was made for, when the add-on says (OpenSubtitles'
+   * movieReleaseName, else its subtitleFileName): one made for the file being played is in
+   * time with it.
+   */
+  data class Subtitle(val id: String, val url: String, val lang: String, val release: String = "")
 
   /** A `subtitles` answer, or a stream's own `subtitles`. */
   fun subtitles(json: JSONObject): List<Subtitle> {
@@ -339,7 +344,8 @@ object Addons {
     return (0 until list.length()).mapNotNull { i ->
       val s = list.optJSONObject(i) ?: return@mapNotNull null
       val url = s.optString("url").takeIf(::isHttp) ?: return@mapNotNull null
-      Subtitle(s.optString("id").ifBlank { url }, url, s.optString("lang"))
+      val release = s.optString("movieReleaseName").ifBlank { s.optString("subtitleFileName") }
+      Subtitle(s.optString("id").ifBlank { url }, url, s.optString("lang"), release)
     }
   }
 
@@ -369,10 +375,21 @@ object Addons {
    * preferred, each keeping the order it came in (the stream's own, then the add-ons' in
    * theirs), at most [perLanguage] of each and none twice.
    */
-  fun rankSubtitles(subtitles: List<Subtitle>, preferred: List<String>, perLanguage: Int = 5): List<Subtitle> {
+  fun rankSubtitles(subtitles: List<Subtitle>, preferred: List<String>, perLanguage: Int = 5,
+                    filename: String? = null): List<Subtitle> {
     val seen = mutableSetOf<String>()
+    val file = filename?.let(::releaseWords).orEmpty()
     return preferred.flatMap { code ->
-      subtitles.filter { language(it.lang) == code && seen.add(it.url) }.take(perLanguage)
+      val ofLanguage = subtitles.filter { language(it.lang) == code && seen.add(it.url) }
+      // Made for this release first: a subtitle for another cut or frame rate drifts. Stable,
+      // so ties keep the add-ons' own order.
+      val ranked = if (file.isEmpty()) ofLanguage
+        else ofLanguage.sortedByDescending { (releaseWords(it.release) intersect file).size }
+      ranked.take(perLanguage)
     }
   }
+
+  /** A release name's words: "Show.S01E01.1080p.WEB-DL" is show, s01e01, 1080p, web, dl. */
+  fun releaseWords(name: String): Set<String> =
+    name.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
 }

@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { WatchSubtitle } from '@/src/api';
@@ -18,6 +18,11 @@ import {
 const HIDE_AFTER_MS = 3500;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const DELAY_STEPS = [-500, -100, 100, 500];
+/** Two taps this close together on a side of the picture seek, as one would toggle twice. */
+const DOUBLE_TAP_MS = 280;
+/** How long a back swipe waits for a second one to close the player. */
+const BACK_AGAIN_MS = 2000;
+const SEEK_MS = 10_000;
 
 type Panel = 'audio' | 'subtitles' | 'speed' | null;
 
@@ -70,6 +75,14 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
   const [loaded, setLoaded] = useState<Set<string>>(() => new Set());
   const chosen = useRef(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [width, setWidth] = useState(1);
+  /** A side tapped twice: which way it seeked, shown a moment. */
+  const [jumped, setJumped] = useState<-1 | 1 | null>(null);
+  const lastTap = useRef<{ at: number; side: -1 | 0 | 1 }>({ at: 0, side: 0 });
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [backArmed, setBackArmed] = useState(false);
+  const backTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const languageName = useCallback(
     (lang?: string | null) => (lang ? t(`player.languages.${lang}`, { defaultValue: lang }) : ''),
@@ -89,6 +102,62 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
     };
   }, [touch]);
   const shown = visible || progress.paused || panel !== null || !!failed;
+
+  const seekBy = useCallback((ms: number) => {
+    void player.current?.seekBy(ms);
+    setJumped(ms < 0 ? -1 : 1);
+    if (jumpTimer.current) clearTimeout(jumpTimer.current);
+    jumpTimer.current = setTimeout(() => setJumped(null), 700);
+  }, []);
+
+  // A tap shows or hides the controls; two quick taps on the left or right third seek, as
+  // other players do. A lone tap waits a moment to know it is not the first of two.
+  const onPicture = (x: number) => {
+    const side: -1 | 0 | 1 = x < width / 3 ? -1 : x > (width * 2) / 3 ? 1 : 0;
+    const now = Date.now();
+    const twice = side !== 0 && side === lastTap.current.side && now - lastTap.current.at < DOUBLE_TAP_MS;
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    if (twice) {
+      lastTap.current = { at: 0, side: 0 };
+      seekBy(side * SEEK_MS);
+      return;
+    }
+    lastTap.current = { at: now, side };
+    tapTimer.current = setTimeout(() => {
+      if (panel) setPanel(null);
+      else if (shown && !progress.paused) setVisible(false);
+      else touch();
+    }, side === 0 ? 0 : DOUBLE_TAP_MS);
+  };
+
+  // Android's back swipe: it closes a menu first; while playing, the first one only says that
+  // a second closes the player, so a swipe meant for something else does not end the video.
+  // The close button closes at once.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (panel) {
+        setPanel(null);
+        return true;
+      }
+      if (failed || progress.paused || backArmed) {
+        onClose();
+        return true;
+      }
+      setBackArmed(true);
+      touch();
+      if (backTimer.current) clearTimeout(backTimer.current);
+      backTimer.current = setTimeout(() => setBackArmed(false), BACK_AGAIN_MS);
+      return true;
+    });
+    return () => sub.remove();
+  }, [backArmed, failed, onClose, panel, progress.paused, touch]);
+
+  useEffect(
+    () => () => {
+      for (const timer of [tapTimer, jumpTimer, backTimer]) if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   const addonLabel = useCallback(
     (s: WatchSubtitle, index: number) => `${languageName(s.lang)} · ${t('player.fromAddon')} ${index + 1}`,
@@ -187,15 +256,12 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
         onFailed={(e) => setFailed(e.nativeEvent.code)}
       />
 
-      {/* Touching the picture shows or hides the controls. */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => (shown && !progress.paused ? setVisible(false) : touch())} />
-
-      {progress.buffering && !failed ? (
-        <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
-          <ActivityIndicator size="large" color="#fff" />
-          {waiting}
-        </View>
-      ) : null}
+      {/* Touching the picture shows or hides the controls; twice on a side, it seeks. */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onLayout={(e) => setWidth(Math.max(1, e.nativeEvent.layout.width))}
+        onPress={(e) => onPicture(e.nativeEvent.locationX)}
+      />
 
       {shown ? (
         <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none" edges={['left', 'right', 'top', 'bottom']}>
@@ -218,24 +284,7 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
             </Pressable>
           </View>
 
-          <View style={styles.middle} pointerEvents="box-none">
-            <Pressable onPress={() => { touch(); void player.current?.seekBy(-10_000); }} hitSlop={16}
-              accessibilityRole="button" accessibilityLabel={t('player.back10')}>
-              <Ionicons name="play-back" size={36} color="#fff" />
-            </Pressable>
-            <Pressable
-              onPress={() => { touch(); void player.current?.setPaused(!progress.paused); }}
-              hitSlop={16}
-              accessibilityRole="button"
-              accessibilityLabel={progress.paused ? t('player.play') : t('player.pause')}
-            >
-              <Ionicons name={progress.paused ? 'play' : 'pause'} size={56} color="#fff" />
-            </Pressable>
-            <Pressable onPress={() => { touch(); void player.current?.seekBy(10_000); }} hitSlop={16}
-              accessibilityRole="button" accessibilityLabel={t('player.forward10')}>
-              <Ionicons name="play-forward" size={36} color="#fff" />
-            </Pressable>
-          </View>
+          <View style={styles.flex} pointerEvents="none" />
 
           <View style={styles.bottom}>
             <Text style={styles.time}>{clock(position)}</Text>
@@ -254,12 +303,63 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
         </SafeAreaView>
       ) : null}
 
+      {/* The middle of the screen, whatever the bars above and below: seek back, play or pause
+          (or the spinner in its place while it waits), seek forward. */}
+      <View style={[StyleSheet.absoluteFill, styles.middle]} pointerEvents="box-none">
+        <View style={styles.side}>
+          {shown && !failed ? (
+            <Pressable onPress={() => { touch(); seekBy(-SEEK_MS); }} hitSlop={16}
+              accessibilityRole="button" accessibilityLabel={t('player.back10')}>
+              <MaterialCommunityIcons name="rewind-10" size={40} color="#fff" />
+            </Pressable>
+          ) : jumped === -1 ? <MaterialCommunityIcons name="rewind-10" size={40} color="#fff" /> : null}
+        </View>
+        <View style={styles.slot} pointerEvents="box-none">
+          {progress.buffering && !failed ? (
+            <>
+              <ActivityIndicator size="large" color="#fff" />
+              <View style={styles.waiting} pointerEvents="none">{waiting}</View>
+            </>
+          ) : shown && !failed ? (
+            <Pressable
+              onPress={() => { touch(); void player.current?.setPaused(!progress.paused); }}
+              hitSlop={16}
+              accessibilityRole="button"
+              accessibilityLabel={progress.paused ? t('player.play') : t('player.pause')}
+            >
+              <Ionicons name={progress.paused ? 'play' : 'pause'} size={56} color="#fff" />
+            </Pressable>
+          ) : null}
+        </View>
+        <View style={styles.side}>
+          {shown && !failed ? (
+            <Pressable onPress={() => { touch(); seekBy(SEEK_MS); }} hitSlop={16}
+              accessibilityRole="button" accessibilityLabel={t('player.forward10')}>
+              <MaterialCommunityIcons name="fast-forward-10" size={40} color="#fff" />
+            </Pressable>
+          ) : jumped === 1 ? <MaterialCommunityIcons name="fast-forward-10" size={40} color="#fff" /> : null}
+        </View>
+      </View>
+
+      {backArmed ? (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.white}>{t('player.backAgain')}</Text>
+        </View>
+      ) : null}
+
       {panel ? (
         <SafeAreaView style={styles.panel} edges={['top', 'bottom', 'right']}>
+          <View style={styles.panelHead}>
+            <Text style={styles.panelHeading}>
+              {panel === 'audio' ? t('player.audio') : panel === 'subtitles' ? t('player.subtitles') : t('player.speed')}
+            </Text>
+            <Pressable onPress={() => setPanel(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('player.close')}>
+              <Ionicons name="close" size={24} color="#fff" />
+            </Pressable>
+          </View>
           <ScrollView contentContainerStyle={styles.panelBody}>
             {panel === 'audio' ? (
               <>
-                <Text style={styles.panelTitle}>{t('player.audio')}</Text>
                 {audio.length === 0 ? <Text style={styles.dim}>{t('player.noTracks')}</Text> : null}
                 {audio.map((x, n) => (
                   <Option key={x.id} label={trackLabel(x, n + 1)} selected={x.selected}
@@ -270,17 +370,9 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
 
             {panel === 'subtitles' ? (
               <>
-                <Text style={styles.panelTitle}>{t('player.subtitles')}</Text>
-                <Option label={t('player.off')} selected={!subs.some((x) => x.selected)}
-                  onPress={() => void player.current?.setTrack('subtitle', 'no')} />
-                {subs.map((x, n) => (
-                  <Option key={x.id} label={trackLabel(x, n + 1)} detail={x.external ? undefined : t('player.fromFile')}
-                    selected={x.selected} onPress={() => void player.current?.setTrack('subtitle', x.id)} />
-                ))}
-                {offered.map(({ s, i }) => (
-                  <Option key={s.url} label={addonLabel(s, i)} selected={false} onPress={() => loadSubtitle(s, i, true)} />
-                ))}
-                <Text style={[styles.panelTitle, styles.gap]}>{t('player.delay')}</Text>
+                {/* The delay first: a subtitle made for another release runs late or early. */}
+                <Text style={styles.panelTitle}>{t('player.delay')}</Text>
+                <Text style={[styles.dim, styles.small]}>{t('player.delayHint')}</Text>
                 <View style={styles.row}>
                   {DELAY_STEPS.map((step) => (
                     <Pressable key={step} style={styles.step} onPress={() => {
@@ -298,12 +390,21 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
                     <Text style={styles.link}>{t('player.reset')}</Text>
                   </Pressable>
                 </View>
+                <Text style={[styles.panelTitle, styles.gap]}>{t('player.tracks')}</Text>
+                <Option label={t('player.off')} selected={!subs.some((x) => x.selected)}
+                  onPress={() => void player.current?.setTrack('subtitle', 'no')} />
+                {subs.map((x, n) => (
+                  <Option key={x.id} label={trackLabel(x, n + 1)} detail={x.external ? undefined : t('player.fromFile')}
+                    selected={x.selected} onPress={() => void player.current?.setTrack('subtitle', x.id)} />
+                ))}
+                {offered.map(({ s, i }) => (
+                  <Option key={s.url} label={addonLabel(s, i)} selected={false} onPress={() => loadSubtitle(s, i, true)} />
+                ))}
               </>
             ) : null}
 
             {panel === 'speed' ? (
               <>
-                <Text style={styles.panelTitle}>{t('player.speed')}</Text>
                 {SPEEDS.map((x) => (
                   <Option key={x} label={`${x}×`} selected={speed === x} onPress={() => {
                     setSpeed(x);
@@ -357,7 +458,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   title: { color: '#fff', flex: 1, fontSize: 15 },
-  middle: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 56 },
+  middle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 40 },
+  side: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  slot: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
+  // Below the spinner without moving it off the middle.
+  waiting: { position: 'absolute', top: 76, width: 260, alignItems: 'center' },
+  toast: {
+    position: 'absolute', bottom: 72, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 18, paddingHorizontal: 16, paddingVertical: 8,
+  },
+  panelHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14 },
+  panelHeading: { color: '#fff', fontSize: 17, fontWeight: '700' },
   bottom: {
     flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10,
     backgroundColor: 'rgba(0,0,0,0.45)',

@@ -869,6 +869,9 @@
     "noStreamsAnywhere": "No installed add-on has a stream for this."
   },
   "player": {
+    "backAgain": "Swipe again to close",
+    "delayHint": "Subtitles late: press −. Early: press +.",
+    "tracks": "Tracks",
     "play": "Play",
     "pause": "Pause",
     "back10": "Back 10 seconds",
