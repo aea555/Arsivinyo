@@ -2,6 +2,7 @@ import type { EventSubscription } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import LocalDownloaderModule, {
   addSoundPresetProgressListener,
+  addSoundsChangedListener,
   type LocalAudioFormat,
   type LocalAudioFormatState,
   type LocalAudioPresetDiagnostics,
@@ -190,6 +191,11 @@ export function listenLocalSoundPresetProgress(
   listener: (event: LocalSoundPresetProgressEvent) => void
 ): EventSubscription {
   return addSoundPresetProgressListener(listener);
+}
+
+/** The library changed from another device: a track arrived, or joined a playlist. */
+export function listenLocalSoundsChanged(listener: () => void): EventSubscription {
+  return addSoundsChangedListener(listener);
 }
 
 /** Native-renderer availability and resolved tool paths, for the diagnostics screen. */

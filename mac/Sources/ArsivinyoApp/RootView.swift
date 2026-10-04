@@ -35,17 +35,28 @@ struct RootView: View {
                             .listItemTint(themeAccent)
                             .tag(SidebarSelection.playlist(playlist.id))
                             .contextMenu {
+                                // The whole playlist, which the other device makes too, in this
+                                // order. Favorites are newest first, and each one received goes
+                                // on top, so they are sent oldest first.
+                                SendToMenu(isEmpty: playlist.trackIds.isEmpty,
+                                           playlist: playlist.isSystem ? PeerPlaylist(name: "", favorites: true)
+                                                                       : PeerPlaylist(name: playlist.name)) {
+                                    let byId = Dictionary(model.tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                                    let ordered = playlist.trackIds.compactMap { byId[$0] }
+                                    return playlist.isSystem ? ordered.reversed() : ordered
+                                }
                                 if !playlist.isSystem {
                                     Button("Rename…") { renamingPlaylist = playlist }
                                     Button("Delete Playlist", role: .destructive) {
                                         model.deletePlaylist(playlist.id)
                                     }
                                 }
+                                Divider()
+                                // Here rather than on the section: a menu on the section replaced
+                                // every playlist's own, so only this one item was ever shown.
+                                Button("New Playlist…") { creatingPlaylist = true }
                             }
                     }
-                }
-                .contextMenu {
-                    Button("New Playlist…") { creatingPlaylist = true }
                 }
                 Section("Network") {
                     row(.devices)
@@ -99,7 +110,12 @@ struct RootView: View {
             MemeSheet(ids: [prompt.id], mode: .prompt)
         }
         // Across the whole window, so the transport survives switching sections.
-        .safeAreaInset(edge: .bottom, spacing: 0) { PlayerBar() }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                TransferBar()
+                PlayerBar()
+            }
+        }
     }
 
     private func row(_ section: AppSection) -> some View {

@@ -33,8 +33,35 @@ class SoundsContent(
   private val onMemeReceived: (file: File, meme: JSONObject?) -> Unit = { file, _ -> file.delete() },
 ) : PeerContent {
 
+  /** Told after a track is added or joins a playlist, so the Music screen can reload. */
+  var onLibraryChanged: (() -> Unit)? = null
+
+  /** Set by the coordinator: sends a playlist through its queue, as Send does. */
+  var onPlaylistRequested: ((id: String, fingerprint: String) -> Unit)? = null
+
+  override fun sendPlaylist(id: String, toFingerprint: String): Boolean {
+    val exists = runCatching { store.listPlaylists() }.getOrNull().orEmpty()
+      .any { it["id"] == id && (it["songIds"] as? List<*>).orEmpty().isNotEmpty() }
+    if (exists) onPlaylistRequested?.invoke(id, toFingerprint)
+    return exists
+  }
+
   override fun listing(kind: String): JSONArray {
     val items = JSONArray()
+    if (kind == "playlists" && store.isSupported()) {
+      // Only ones with something in them: an empty playlist has nothing to send.
+      runCatching { store.listPlaylists() }.getOrNull().orEmpty().forEach { playlist ->
+        val count = (playlist["songIds"] as? List<*>)?.size ?: 0
+        if (count == 0) return@forEach
+        val favorites = playlist["system"] == true
+        items.put(JSONObject()
+          .put("id", playlist["id"] as? String ?: return@forEach)
+          .put("name", if (favorites) "" else playlist["name"] as? String ?: "")
+          .put("favorites", favorites)
+          .put("count", count))
+      }
+      return items
+    }
     // Only music is listed. "backups" is accepted as a `put` kind, but this device does
     // not offer its own backups for browsing: a backup is a deliberate export, not
     // something a peer helps itself to.
@@ -69,7 +96,8 @@ class SoundsContent(
 
     // The cover lives beside the file, not inside it, so it is sent with the track or lost.
     val artwork = (song["thumbnailPath"] as? String)?.let(::File)?.takeIf { it.isFile }
-    return ItemSource(name, size, artwork) {
+    return ItemSource(name, size, artwork,
+      title = song["title"] as? String, artist = (song["artist"] as? String)?.takeUnless { it == android.provider.MediaStore.UNKNOWN_STRING }) {
       context.contentResolver.openInputStream(Uri.parse(uri))
         ?: throw java.io.IOException("the library entry could not be opened")
     }
@@ -96,7 +124,59 @@ class SoundsContent(
     return candidate.path
   }
 
-  override fun accepted(path: String, kind: String, artworkPath: String?, meme: JSONObject?) {
+  override fun existing(sizeBytes: Long, sha256: ByteArray, kind: String): String? {
+    if (kind != "music" || !store.isSupported()) return null
+    @Suppress("UNCHECKED_CAST")
+    val songs = runCatching { store.listLibrary()["songs"] as? List<Map<String, Any?>> }.getOrNull().orEmpty()
+    // Only songs of the same size are read and hashed, so a library is not hashed whole for
+    // each offer.
+    for (song in songs) {
+      if ((song["sizeBytes"] as? Number)?.toLong() != sizeBytes) continue
+      val uri = (song["contentUri"] as? String)?.takeIf { it.isNotEmpty() } ?: continue
+      val digest = runCatching {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        context.contentResolver.openInputStream(Uri.parse(uri))?.use { input ->
+          val buffer = ByteArray(1 shl 16)
+          while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            md.update(buffer, 0, read)
+          }
+        } ?: return@runCatching null
+        md.digest()
+      }.getOrNull() ?: continue
+      if (digest.contentEquals(sha256)) return song["id"] as? String
+    }
+    return null
+  }
+
+  override fun reuse(id: String, playlist: PeerPlaylist?) {
+    playlist?.let {
+      join(id, it)
+      onLibraryChanged?.invoke()
+    }
+  }
+
+  /**
+   * A track joins the playlist a peer sent it in: the playlist of that name, made if there
+   * is none, or Favorites. At the end, in the order the tracks come.
+   */
+  private fun join(songId: String, playlist: PeerPlaylist) {
+    runCatching {
+      if (playlist.favorites) {
+        store.setSoundsFavorite(listOf(songId), true)
+        return
+      }
+      val id = store.listPlaylists()
+        .firstOrNull { it["system"] != true && it["name"] == playlist.name }?.get("id") as? String
+        ?: store.createPlaylist(playlist.name)["id"] as? String
+        ?: return
+      store.addSongsToPlaylists(listOf(songId), listOf(id))
+    }.onFailure { Log.w(TAG, "a received track could not join its playlist: ${it.javaClass.simpleName}") }
+  }
+
+  override fun accepted(path: String, kind: String, artworkPath: String?, meme: JSONObject?, playlist: PeerPlaylist?,
+                        title: String?, artist: String?) {
     val file = File(path)
     if (!file.isFile) return
 
@@ -118,7 +198,12 @@ class SoundsContent(
 
     runCatching {
       // sourceUrl is null: this came from a device, not a download.
-      store.registerDownloadedSound(file.path, file.name, null, artworkPath)
+      val song = store.registerDownloadedSound(file.path, file.name, null, artworkPath)
+      val id = song["id"] as? String
+      // The file's own artist first; the sender's where the file has none.
+      if (id != null && artist != null) store.fillArtist(id, artist)
+      if (playlist != null && id != null) join(id, playlist)
+      onLibraryChanged?.invoke()
     }.onFailure {
       Log.w(TAG, "a received track could not be added to the library: ${it.javaClass.simpleName}")
     }

@@ -678,10 +678,19 @@
     "renameHint": "Other devices see this name when pairing.",
     "sendLinkTitle": "Send a link to {{name}}",
     "sendLinkBody": "The other device decides whether to download it.",
-    "sendPickTitle": "Send a track to {{name}}",
+    "sendPickTitle": "Send to {{name}}",
     "empty": "No tracks to send.",
     "autoDownloadLinks": "Download links automatically",
-    "autoDownloadLinksHint": "A link a paired device sends starts downloading without asking."
+    "autoDownloadLinksHint": "A link a paired device sends starts downloading without asking.",
+    "playlists": "Playlists",
+    "tracks": "Tracks",
+    "favorites": "Favorites",
+    "trackCount_one": "{{count}} track",
+    "trackCount_other": "{{count}} tracks",
+    "batch": "{{index}} of {{count}}",
+    "receivingFrom": "Receiving from {{name}}",
+    "sendingTo": "Sending to {{name}}",
+    "aDevice": "a paired device"
   },
   "memes": {
     "title": "Memes",

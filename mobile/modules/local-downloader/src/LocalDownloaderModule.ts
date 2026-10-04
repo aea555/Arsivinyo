@@ -170,6 +170,8 @@ type LocalDownloaderNativeModule = {
   pairingBrowse(fingerprint: string): Promise<boolean>;
   pairingFetch(fingerprint: string, id: string): Promise<boolean>;
   pairingSend(fingerprint: string, songId: string): Promise<boolean>;
+  pairingSendPlaylist(fingerprint: string, playlistId: string): Promise<boolean>;
+  pairingFetchPlaylist(fingerprint: string, playlistId: string): Promise<boolean>;
   pairingSendUrl(fingerprint: string, url: string, mediaKind: string): Promise<boolean>;
   pairingCancelTransfer(fingerprint: string): Promise<boolean>;
   pairingClearPeerUrl(): Promise<boolean>;
@@ -353,6 +355,8 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       pairingBrowse: async () => unsupported(),
       pairingFetch: async () => unsupported(),
       pairingSend: async () => unsupported(),
+      pairingSendPlaylist: async () => unsupported(),
+      pairingFetchPlaylist: async () => unsupported(),
       pairingSendUrl: async () => unsupported(),
       pairingCancelTransfer: async () => unsupported(),
       pairingClearPeerUrl: async () => unsupported(),
@@ -508,6 +512,14 @@ export function addPrivateVaultMigrationProgressListener(
  * code to confirm, transfer progress, a listing coming back.
  */
 /** The collection changed: a download landed, a transfer arrived, labels moved. */
+/** The music library changed from another device: a track arrived, or joined a playlist. */
+export function addSoundsChangedListener(listener: () => void): EventSubscription {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+  return emitter.addListener('soundsChanged', listener);
+}
+
 export function addMemesChangedListener(listener: () => void): EventSubscription {
   if (!emitter) {
     return { remove: () => undefined };

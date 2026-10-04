@@ -16,7 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import '@/global.css';
-import { AnimatedSplash, PeerLinkPrompt } from '@/src/components';
+import { AnimatedSplash, PeerLinkPrompt, PeerTransferBar } from '@/src/components';
 import i18n from '@/src/i18n';
 import { appHeaderTitleFontFamily } from '@/src/components';
 import { ThemeProvider, useTheme } from '@/src/theme';
@@ -128,6 +128,7 @@ function AppContent() {
           }}
         />
       </Stack>
+      <PeerTransferBar />
       <PeerLinkPrompt />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </>

@@ -41,10 +41,17 @@ export const EMPTY_PAIRING_STATE: LocalPairingState = {
   message: '',
   transferDone: 0,
   transferTotal: 0,
+  transferIncoming: false,
+  transferPeer: '',
+  transferIndex: 0,
+  transferCount: 0,
+  batchIndex: 0,
+  batchCount: 0,
   peers: [],
   discovered: [],
   listingFrom: '',
   listing: [],
+  playlistListing: [],
   peerUrl: '',
   peerMediaKind: '',
   autoDownloadLinks: false,
@@ -143,10 +150,29 @@ export async function fetchFromDevice(fingerprint: string, id: string): Promise<
   return LocalDownloaderModule.pairingFetch(fingerprint, id);
 }
 
+/**
+ * Ask a paired device for one of its playlists. It sends the tracks this phone does not have,
+ * and the playlist is made here in its order.
+ */
+export async function fetchPlaylistFromDevice(fingerprint: string, playlistId: string): Promise<boolean> {
+  ensureAndroid();
+  return LocalDownloaderModule.pairingFetchPlaylist(fingerprint, playlistId);
+}
+
 /** Send one track from this phone's library to a paired device. */
 export async function sendToDevice(fingerprint: string, songId: string): Promise<boolean> {
   ensureAndroid();
   return LocalDownloaderModule.pairingSend(fingerprint, songId);
+}
+
+/**
+ * Send a whole playlist to a paired device, in its order. The device makes the playlist too,
+ * or adds to its own of the same name; Favorites go to its Favorites. Tracks it already has
+ * are not sent again.
+ */
+export async function sendPlaylistToDevice(fingerprint: string, playlistId: string): Promise<boolean> {
+  ensureAndroid();
+  return LocalDownloaderModule.pairingSendPlaylist(fingerprint, playlistId);
 }
 
 /** Hand a URL to a paired device. It decides whether to download it. */

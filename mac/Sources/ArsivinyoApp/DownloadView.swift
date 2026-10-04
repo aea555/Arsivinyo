@@ -7,7 +7,6 @@ import UniformTypeIdentifiers
 /// has something in it rather than three controls centred in a field of grey.
 struct DownloadView: View {
     @Environment(AppModel.self) private var model
-    @State private var audioOnly = false
     @State private var isTargetedForDrop = false
 
     private var queue: DownloadQueue { model.queue }
@@ -80,7 +79,7 @@ struct DownloadView: View {
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 7))
 
             HStack(spacing: 12) {
-                Picker("", selection: $audioOnly) {
+                Picker("", selection: $model.downloadAudioOnly) {
                     Text("Video").tag(false)
                     Text("Audio").tag(true)
                 }
@@ -145,7 +144,7 @@ struct DownloadView: View {
 
     private func start() {
         guard canStart else { return }
-        queue.enqueue(url: model.pendingURL, audioOnly: audioOnly)
+        queue.enqueue(url: model.pendingURL, audioOnly: model.downloadAudioOnly)
         model.pendingURL = ""
     }
 

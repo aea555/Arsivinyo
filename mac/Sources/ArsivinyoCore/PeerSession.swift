@@ -1,6 +1,31 @@
 import CryptoKit
 import Foundation
 
+/// The playlist a track is sent as part of (`shared/pairing/PROTOCOL.md`, "put"). The
+/// receiver files the track as it would any, then adds it to its own playlist of that name,
+/// making it if it has none. Favorites is each device's own, whatever its language calls it.
+public struct PeerPlaylist: Sendable, Hashable {
+    public var name: String
+    public var favorites: Bool
+
+    public init(name: String, favorites: Bool = false) {
+        self.name = name
+        self.favorites = favorites
+    }
+
+    var offer: [String: Any] { favorites ? ["favorites": true] : ["name": name] }
+
+    /// What a peer said, checked: a name is trimmed, kept short, and never empty.
+    static func read(_ object: Any?) -> PeerPlaylist? {
+        guard let object = object as? [String: Any] else { return nil }
+        if object["favorites"] as? Bool == true { return PeerPlaylist(name: "", favorites: true) }
+        guard let name = (object["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return nil
+        }
+        return PeerPlaylist(name: String(name.prefix(200)))
+    }
+}
+
 /// Something a peer may fetch: a name, a size, and a way to read the bytes.
 public struct ItemSource: Sendable {
     public let name: String
@@ -10,8 +35,22 @@ public struct ItemSource: Sendable {
     public let artwork: URL?
     /// A meme's labels and source, as the `meme` object of the offer (JSON).
     public let meme: Data?
+    /// The playlist it is sent as part of, if any.
+    public let playlist: PeerPlaylist?
+    /// Where it is in a batch of sends, 1-based, and of how many: the receiver shows "3 of 12".
+    public let batch: (index: Int, count: Int)?
+    /// A track's title and artist as this library has them, for a receiver whose file has
+    /// none in its tags: a render's file, for one, was written without an artist.
+    public let title: String?
+    public let artist: String?
 
-    public init(name: String, sizeBytes: Int64, file: URL, artwork: URL? = nil, meme: Data? = nil) {
+    public init(name: String, sizeBytes: Int64, file: URL, artwork: URL? = nil, meme: Data? = nil,
+                playlist: PeerPlaylist? = nil, batch: (index: Int, count: Int)? = nil,
+                title: String? = nil, artist: String? = nil) {
+        self.title = title
+        self.artist = artist
+        self.playlist = playlist
+        self.batch = batch
         self.name = name
         self.sizeBytes = sizeBytes
         self.file = file
@@ -23,15 +62,25 @@ public struct ItemSource: Sendable {
 /// What a paired device may see and do here: the music library, a place for what it sends,
 /// and a link it asks this Mac to download. Never the vault, which only moves by backup.
 public protocol PeerContent: AnyObject, Sendable {
-    /// Items of `kind` ("music") as protocol `listing` entries.
+    /// Items of `kind` as protocol `listing` entries: "music" for tracks, "playlists" for
+    /// playlists (id, name, favorites, count).
     func listing(kind: String) -> [[String: Any]]
+    /// The peer asks for a whole playlist from `listing("playlists")`: send it to `fingerprint`
+    /// as this device's own Send would. False if there is no such playlist.
+    func sendPlaylist(_ id: String, to fingerprint: String) -> Bool
     /// The bytes behind an id from `listing`, or nil if the peer may not have it.
     func openItem(id: String) -> ItemSource?
     /// Where an incoming file should be written. The sender's name is a hint, never a path.
     func destination(forName name: String, kind: String) -> URL?
     /// A verified file has landed, with the cover and, for a meme, the labels that came with
-    /// it; take them in.
-    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?)
+    /// it, the playlist it was sent in, and the title and artist the sender has for it; take
+    /// them in.
+    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?, playlist: PeerPlaylist?,
+                  title: String?, artist: String?)
+    /// The id of an item already here with exactly these bytes, so it is not sent twice.
+    func existing(sizeBytes: Int64, sha256: Data, kind: String) -> String?
+    /// An item already here was offered as part of a playlist: it joins the playlist instead.
+    func reuse(_ id: String, playlist: PeerPlaylist?)
     /// The peer asks this Mac to fetch a link. Shown to the user, never started unasked.
     func downloadRequested(url: String, mediaKind: String, from peerName: String)
 }
@@ -56,6 +105,8 @@ public final class PeerSession: @unchecked Sendable {
     private var sending: ItemSource?
     private var accepted = DispatchSemaphore(value: 0)
     private var cancelled = false
+    /// The other device already has what was offered: the send is done without the bytes.
+    private var alreadyThere = false
 
     private final class Receiving {
         let kind: String
@@ -67,13 +118,22 @@ public final class PeerSession: @unchecked Sendable {
         let artwork: Data?
         let artworkExtension: String
         let meme: Data?
+        let playlist: PeerPlaylist?
+        let batch: (index: Int, count: Int)?
+        let title: String?
+        let artist: String?
         let handle: FileHandle
         var hasher = SHA256()
         var received: Int64 = 0
 
         init(kind: String, finalURL: URL, total: Int64, expected: Data, artwork: Data?, artworkExtension: String,
-             meme: Data?) throws {
+             meme: Data?, playlist: PeerPlaylist?, batch: (index: Int, count: Int)?,
+             title: String?, artist: String?) throws {
+            self.title = title
+            self.artist = artist
             self.kind = kind
+            self.playlist = playlist
+            self.batch = batch
             self.finalURL = finalURL
             partURL = finalURL.appendingPathExtension("part")
             self.total = total
@@ -113,6 +173,22 @@ public final class PeerSession: @unchecked Sendable {
 
     public var isTransferring: Bool { lock.withLock { receiving != nil || sending != nil } }
 
+    /// Where the file coming in is in the sender's batch, if it said.
+    public var incomingBatch: (index: Int, count: Int)? { lock.withLock { receiving?.batch } }
+
+    /// A sender's text, checked: trimmed, kept short, never empty.
+    private static func text(_ value: Any?) -> String? {
+        guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return String(text.prefix(500))
+    }
+
+    /// A sender's batch, checked: 1 ≤ index ≤ count, both small.
+    private static func batch(_ object: Any?) -> (index: Int, count: Int)? {
+        guard let object = object as? [String: Any], let index = (object["index"] as? NSNumber)?.intValue,
+              let count = (object["count"] as? NSNumber)?.intValue, (1...count).contains(index), count <= 100_000 else { return nil }
+        return (index, count)
+    }
+
     /// Runs `request` now, or once the other device has confirmed the pairing.
     @discardableResult
     private func whenReady(_ request: @escaping () -> Bool) -> Bool {
@@ -136,6 +212,13 @@ public final class PeerSession: @unchecked Sendable {
 
     public func requestListing(kind: String = "music") -> Bool {
         whenReady { [link] in link.send(control: ["t": "list", "kind": kind]) }
+    }
+
+    /// Asks for a whole playlist; the other device sends its tracks one after another, and
+    /// this one makes the playlist as they come.
+    public func requestPlaylist(id: String) -> Bool {
+        guard !isTransferring else { return false }
+        return whenReady { [link] in link.send(control: ["t": "get", "playlist": id]) }
     }
 
     public func requestItem(id: String) -> Bool {
@@ -167,8 +250,9 @@ public final class PeerSession: @unchecked Sendable {
 
     private func stream(_ source: ItemSource, kind: String) {
         guard let digest = Self.sha256(of: source.file) else { return abortSending(String(localized: "could not read the item")) }
+        // "have": this sender understands a `have` answer, so it may be given one.
         var offer: [String: Any] = ["t": "put", "name": source.name, "kind": kind,
-                                    "sizeBytes": source.sizeBytes, "sha256": digest.hexString]
+                                    "sizeBytes": source.sizeBytes, "sha256": digest.hexString, "have": true]
         // The cover rides in the offer: small, optional, ignored by a receiver that does not
         // know it, and left out over the cap rather than making the offer huge.
         if let art = source.artwork, let data = try? Data(contentsOf: art), (1...Self.maxArtworkBytes).contains(data.count) {
@@ -178,6 +262,10 @@ public final class PeerSession: @unchecked Sendable {
         if let meme = source.meme, let object = try? JSONSerialization.jsonObject(with: meme) as? [String: Any] {
             offer["meme"] = object
         }
+        if let playlist = source.playlist { offer["playlist"] = playlist.offer }
+        if let batch = source.batch { offer["batch"] = ["index": batch.index, "count": batch.count] }
+        if let title = source.title, !title.isEmpty { offer["title"] = String(title.prefix(500)) }
+        if let artist = source.artist, !artist.isEmpty { offer["artist"] = String(artist.prefix(500)) }
         guard link.send(control: offer) else {
             return abortSending(String(localized: "the connection went away"))
         }
@@ -186,6 +274,12 @@ public final class PeerSession: @unchecked Sendable {
             return abortSending(String(localized: "the device did not answer"))
         }
         if lock.withLock({ cancelled || sending == nil }) { return }
+        // Already there: nothing to stream, and the send is done.
+        if lock.withLock({ () -> Bool in defer { alreadyThere = false }; return alreadyThere }) {
+            lock.withLock { sending = nil }
+            onSent?()
+            return
+        }
 
         guard let handle = try? FileHandle(forReadingFrom: source.file) else {
             return abortSending(String(localized: "could not read the item"))
@@ -224,6 +318,10 @@ public final class PeerSession: @unchecked Sendable {
             link.send(control: ["t": "listing", "kind": kind, "items": content.listing(kind: kind)])
         case "listing":
             onListing?(message["kind"] as? String ?? "", message["items"] as? [[String: Any]] ?? [])
+        case "get" where message["playlist"] is String:
+            if !content.sendPlaylist(message["playlist"] as? String ?? "", to: link.peerFingerprint) {
+                link.send(control: ["t": "error", "code": "NOT_FOUND", "message": "no such playlist"])
+            }
         case "get":
             if isTransferring {
                 link.send(control: ["t": "reject", "reason": "busy"])
@@ -235,6 +333,10 @@ public final class PeerSession: @unchecked Sendable {
         case "put":
             handlePut(message)
         case "accept":
+            accepted.signal()
+        case "reject" where message["reason"] as? String == "have":
+            // Not a refusal: the other device has these bytes already.
+            lock.withLock { alreadyThere = true }
             accepted.signal()
         case "reject":
             abortSending(message["reason"] as? String ?? String(localized: "refused"))
@@ -264,6 +366,14 @@ public final class PeerSession: @unchecked Sendable {
             return
         }
         let kind = message["kind"] as? String ?? "music"
+        let playlist = PeerPlaylist.read(message["playlist"])
+        // A track already here is not taken twice; one sent in a playlist joins it instead.
+        if kind == "music", message["have"] as? Bool == true,
+           let id = content.existing(sizeBytes: size, sha256: expected, kind: kind) {
+            content.reuse(id, playlist: playlist)
+            link.send(control: ["t": "reject", "reason": "have"])
+            return
+        }
         let artwork = (message["artwork"] as? String).flatMap { Data(base64Encoded: $0) }
             .flatMap { (1...Self.maxArtworkBytes).contains($0.count) ? $0 : nil }
         // Only the extension is taken from the peer's name, and only a plain one.
@@ -273,7 +383,9 @@ public final class PeerSession: @unchecked Sendable {
               let started = try? Receiving(kind: kind, finalURL: destination, total: size, expected: expected,
                                            artwork: artwork, artworkExtension: artworkExtension,
                                            meme: (message["meme"] as? [String: Any]).flatMap {
-                                               try? JSONSerialization.data(withJSONObject: $0) }) else {
+                                               try? JSONSerialization.data(withJSONObject: $0) },
+                                           playlist: playlist, batch: Self.batch(message["batch"]),
+                                           title: Self.text(message["title"]), artist: Self.text(message["artist"])) else {
             link.send(control: ["t": "reject", "reason": "refused"])
             return
         }
@@ -318,7 +430,8 @@ public final class PeerSession: @unchecked Sendable {
             if (try? artwork.write(to: url)) != nil { artworkURL = url }
         }
         let meme = current.meme.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        content.accepted(current.finalURL, kind: current.kind, artwork: artworkURL, meme: meme)
+        content.accepted(current.finalURL, kind: current.kind, artwork: artworkURL, meme: meme, playlist: current.playlist,
+                         title: current.title, artist: current.artist)
         onReceived?(current.kind)
     }
 

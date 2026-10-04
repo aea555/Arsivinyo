@@ -213,17 +213,27 @@ class SoundsStore(private val context: Context) {
       throw e
     }
 
-    // A render is a stream copy of processed audio and carries no artist tag of its
-    // own, so keep the source's rather than letting the track show as unknown.
-    if (inheritedArtist != null && song.optString("artist").isBlank()) {
-      song.put("artist", inheritedArtist)
-    }
+    // A render is the source's track, processed: its artist is the source's, whatever the
+    // rendered file's tags say or fail to say.
+    knownArtist(inheritedArtist)?.let { song.put("artist", it) }
     song.put("presetId", presetId)
     if (sourceSongId != null) song.put("sourceSongId", sourceSongId)
 
     appendSongsLocked(listOf(song))
     releaseDisplayName(uniqueName)
     return jsonToSongMap(song)
+  }
+
+  /** Sets a song's artist where it has none (or only MediaStore's "<unknown>"); never replaces one. */
+  fun fillArtist(songId: String, artist: String) {
+    val known = knownArtist(artist) ?: return
+    synchronized(lock) {
+      val index = readIndexLocked()
+      val song = findSongLocked(index, songId) ?: return
+      if (knownArtist(song.optString("artist").takeUnless { song.isNull("artist") }) != null) return
+      song.put("artist", known)
+      writeIndexLocked(index)
+    }
   }
 
   /** Look up a single song by id, or null. Used to resolve a render's source track. */
@@ -543,7 +553,13 @@ class SoundsStore(private val context: Context) {
         existing.put("fileName", row.displayName)
         existing.put("durationSec", row.durationSec)
         existing.put("sizeBytes", row.sizeBytes)
-        if (!row.artist.isNullOrBlank()) existing.put("artist", row.artist)
+        // Only to fill a blank: an artist the library already has is kept. MediaStore answers
+        // "<unknown>" for a file whose tags it did not read, and taking that over the stored
+        // artist is what left every rendered track, and some received ones, as unknown.
+        val known = knownArtist(row.artist)
+        if (known != null && knownArtist(existing.optString("artist").takeUnless { existing.isNull("artist") }) == null) {
+          existing.put("artist", known)
+        }
         if (!existing.has("thumbFileName") || existing.optString("thumbFileName").isBlank()) {
           extractAndStoreThumb(id, row.uri)?.let { existing.put("thumbFileName", it) }
         }
@@ -554,6 +570,7 @@ class SoundsStore(private val context: Context) {
       }
     }
     index.put("songs", newSongs)
+    inheritArtistsLocked(newSongs)
 
     ensureFavoritesLocked(index)
 
@@ -726,7 +743,7 @@ class SoundsStore(private val context: Context) {
     return JSONObject().apply {
       put("id", id)
       put("title", meta.title?.takeUnless { it.isBlank() } ?: titleFromFileName(fileName))
-      put("artist", meta.artist ?: JSONObject.NULL)
+      put("artist", knownArtist(meta.artist) ?: JSONObject.NULL)
       put("fileName", fileName)
       put("contentUri", uri.toString())
       put("durationSec", meta.durationSec)
@@ -744,7 +761,7 @@ class SoundsStore(private val context: Context) {
     return JSONObject().apply {
       put("id", row.id)
       put("title", row.title?.takeUnless { it.isBlank() } ?: titleFromFileName(row.displayName))
-      put("artist", row.artist ?: JSONObject.NULL)
+      put("artist", knownArtist(row.artist) ?: JSONObject.NULL)
       put("fileName", row.displayName)
       put("contentUri", row.uri.toString())
       put("durationSec", row.durationSec)
@@ -757,6 +774,50 @@ class SoundsStore(private val context: Context) {
   }
 
   private data class TrackMeta(val title: String?, val artist: String?, val durationSec: Double, val sizeBytes: Long)
+
+  /**
+   * A render whose artist is missing or "<unknown>" takes its source's, going back through a
+   * render of a render. Repairs the renders stored before MediaStore's "<unknown>" stopped
+   * overwriting them.
+   */
+  private fun inheritArtistsLocked(songs: JSONArray) {
+    val byId = LinkedHashMap<String, JSONObject>()
+    for (i in 0 until songs.length()) songs.optJSONObject(i)?.let { byId[it.optString("id")] = it }
+    fun artistOf(song: JSONObject) = knownArtist(song.optString("artist").takeUnless { song.isNull("artist") })
+    fun sourceOf(song: JSONObject) = song.optString("sourceSongId").takeUnless { it.isBlank() }
+
+    // Originals first, so a render below finds its source repaired. One whose artist
+    // MediaStore overwrote still has it in its file: read once, then left alone.
+    for (song in byId.values) {
+      if (sourceOf(song) != null || artistOf(song) != null || song.optBoolean("artistRead")) continue
+      val uri = song.optString("contentUri").takeUnless { it.isBlank() }?.let(Uri::parse)
+      song.put("artist", uri?.let { knownArtist(extractMetadata(it).artist) } ?: JSONObject.NULL)
+      song.put("artistRead", true)
+    }
+    // Then renders, through a render of a render to the first that has one.
+    for (song in byId.values) {
+      if (artistOf(song) != null) continue
+      var source = sourceOf(song)
+      var hops = 0
+      while (source != null && hops < 8) {
+        val from = byId[source] ?: break
+        val artist = artistOf(from)
+        if (artist != null) {
+          song.put("artist", artist)
+          break
+        }
+        source = sourceOf(from)
+        hops++
+      }
+    }
+  }
+
+  /**
+   * An artist worth keeping: not blank, and not MediaStore's "<unknown>", which it gives for a
+   * file whose tags it did not read and which shows to the user as if it were a name.
+   */
+  private fun knownArtist(value: String?): String? =
+    value?.trim()?.takeUnless { it.isEmpty() || it == MediaStore.UNKNOWN_STRING }
 
   private fun extractMetadata(uri: Uri): TrackMeta {
     val mmr = MediaMetadataRetriever()

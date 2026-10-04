@@ -98,6 +98,7 @@ import expo.modules.localdownloader.watch.WatchLibrary
 import expo.modules.localdownloader.watch.WatchService
 import expo.modules.localdownloader.memes.ScannedFace
 import expo.modules.localdownloader.pairing.ItemSource
+import expo.modules.localdownloader.pairing.PeerPlaylist
 import expo.modules.localdownloader.memes.MemeStore
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -341,6 +342,8 @@ class LocalDownloaderModule : Module() {
         }
       },
       onMemeReceived = { file, meme -> receiveMeme(file, meme) },
+      // A track or a playlist changed from another device: the Music screen reloads.
+      onLibraryChanged = { runCatching { sendEvent("soundsChanged", emptyMap<String, Any?>()) } },
     )
     pairingCoordinator = created
     return created
@@ -1182,6 +1185,7 @@ class LocalDownloaderModule : Module() {
       "backupProgress",
       "pairingStateChanged",
       "memesChanged",
+      "soundsChanged",
     )
 
     OnCreate {
@@ -1979,6 +1983,25 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("pairingSend") { fingerprint: String, songId: String ->
       pairing().sendItemToPeer(fingerprint, songId)
+    }
+
+    /**
+     * A whole playlist to a paired device, in its order; the device makes the playlist too.
+     * Favorites travel as Favorites, oldest first, as this phone keeps them.
+     */
+    /** Ask a paired device for one of its playlists; it sends the tracks, and the playlist is made here. */
+    AsyncFunction("pairingFetchPlaylist") { fingerprint: String, playlistId: String ->
+      pairing().fetchPlaylist(fingerprint, playlistId)
+    }
+
+    AsyncFunction("pairingSendPlaylist") { fingerprint: String, playlistId: String ->
+      @Suppress("UNCHECKED_CAST")
+      val playlist = soundsStore.listPlaylists().firstOrNull { it["id"] == playlistId }
+        ?: return@AsyncFunction false
+      val songIds = (playlist["songIds"] as? List<String>).orEmpty()
+      val target = if (playlist["system"] == true) PeerPlaylist("", favorites = true)
+        else PeerPlaylist(playlist["name"] as? String ?: return@AsyncFunction false)
+      pairing().sendSongsToPeer(fingerprint, songIds, target)
     }
 
     AsyncFunction("pairingSendUrl") { fingerprint: String, url: String, mediaKind: String ->

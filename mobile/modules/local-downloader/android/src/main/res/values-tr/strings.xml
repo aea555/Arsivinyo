@@ -45,4 +45,18 @@
   <string name="ldl_memes_channel_description">Bir mimin indirmesi bitince etiket ister</string>
   <string name="ldl_meme_prompt_title">Bir mim indirildi</string>
   <string name="ldl_meme_prompt_text">Etiketlemek için dokun</string>
+
+  <!-- Transfers between paired devices (PairingNotifier). -->
+  <string name="ldl_pairing_channel">Cihazlar arası aktarımlar</string>
+  <string name="ldl_pairing_channel_description">Eşleştirilmiş cihazlarınıza giden ve onlardan gelen müziği gösterir</string>
+  <string name="ldl_pairing_receiving">%1$s cihazından alınıyor</string>
+  <string name="ldl_pairing_sending">%1$s cihazına gönderiliyor</string>
+  <string name="ldl_pairing_received">%1$s cihazından alındı</string>
+  <string name="ldl_pairing_sent">%1$s cihazına gönderildi</string>
+  <string name="ldl_pairing_batch">%2$d içinden %1$d</string>
+  <string name="ldl_pairing_device">eşleştirilmiş bir cihaz</string>
+  <plurals name="ldl_pairing_tracks">
+    <item quantity="one">%d parça</item>
+    <item quantity="other">%d parça</item>
+  </plurals>
 </resources>

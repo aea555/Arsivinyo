@@ -6,6 +6,7 @@ export {
   addPrivateVaultMigrationProgressListener,
   addPairingStateListener,
   addMemesChangedListener,
+  addSoundsChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from '../../modules/local-downloader/src';

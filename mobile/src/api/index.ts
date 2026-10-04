@@ -66,6 +66,7 @@ export {
     isLosslessSound,
     isRenderedSound,
     listenLocalSoundPresetProgress,
+    listenLocalSoundsChanged,
     listLocalSoundPlaylists,
     listLocalSounds,
     removeLocalSoundsFromPlaylist,

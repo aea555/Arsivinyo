@@ -193,24 +193,65 @@ control message without tearing down the connection.
 {"t":"auth","v":1,"key":"<hex ed25519 public key>","name":"Desktop","sig":"<hex>"}
 // the first message in each direction; nothing else is read until it verifies
 
-{"t":"list","kind":"music"}                 // or "backups"
+{"t":"list","kind":"music"}                 // or "playlists", "backups"
 {"t":"listing","kind":"music","items":[
   {"id":"...","title":"...","artist":"...","durationSec":0,"sizeBytes":0,"sha256":"..."}
 ]}
 
+{"t":"listing","kind":"playlists","items":[
+  {"id":"...","name":"Road trip","favorites":false,"count":12}
+]}                                          // Favorites: "name" empty, "favorites" true
+
 {"t":"get","id":"..."}
+{"t":"get","playlist":"<id from the playlists listing>"}
+                                            // the other device sends that playlist
 {"t":"put","name":"...","kind":"music","sizeBytes":0,"sha256":"...",
- "artwork":"<base64, optional, at most 1 MiB>","artworkName":"cover.jpg"}
+ "artwork":"<base64, optional, at most 1 MiB>","artworkName":"cover.jpg",
+ "playlist":{"name":"Road trip"},           // or {"favorites":true}; optional
+ "batch":{"index":3,"count":12},            // optional: where it is in a run of sends
+ "title":"...","artist":"...",              // optional, music: what the sender's library says
+ "have":true}                               // this sender understands reason "have"
                                             // both apps keep covers beside the files, so
                                             // the cover travels in the offer or not at all
 {"t":"accept","transferId":"..."}           // receiver agrees; sender then streams type 1
 {"t":"reject","reason":"..."}
+{"t":"reject","reason":"have"}              // not a refusal: it has these bytes already
 {"t":"complete","transferId":"...","sha256":"..."}
 {"t":"cancel","transferId":"..."}
 
 {"t":"download","url":"...","mediaKind":"audio"}
 {"t":"error","code":"...","message":"..."}
 ```
+
+## Playlists
+
+A track sent as part of a playlist carries `playlist` in its `put`: the playlist's name, or
+`{"favorites": true}` for Favorites, which is each device's own whatever its language calls
+it. The receiver files the track as it would any, then adds it at the end of its own
+playlist of that name, making it if it has none; a track for Favorites becomes a favorite.
+The tracks of a playlist are sent one after another in its order, so they arrive in it.
+Favorites are sent oldest first: the Mac keeps them newest first and the phone oldest
+first, and each puts what arrives where its own order says.
+
+A track's offer carries the `title` and `artist` the sender's library has for it. The receiver
+reads the file's own tags first and uses these only where the file says nothing, as a
+rendered track's file may not.
+
+Several tracks sent together carry `batch` (`index` from 1, and `count`), so the receiver can
+say "3 of 12" while they come; the phone shows it in a notification, wherever the user is.
+
+A playlist can also be asked for. `list` with kind `playlists` gives the device's playlists
+that have tracks, and `get` with `playlist` makes it send that one exactly as its own Send
+would: its tracks, one after another, each carrying the playlist. An older device answers
+the listing with nothing and the `get` with `NOT_FOUND`.
+
+A receiver never takes the same bytes twice. Before it accepts a `music` offer it looks for
+a track with the same size and SHA-256 (hashing only files of that size), and if it has one
+it answers `reject` with reason `have`, adds that track to the offer's playlist, and the
+sender counts the track as sent. Sending a playlist whose songs the other device already has
+therefore only makes the playlist. It answers `have` only to a sender that offered
+`"have": true`, so an older sender never meets a reply it cannot read; a receiver that does
+not know `playlist` ignores it and keeps the track.
 
 ## Holding the two implementations together
 

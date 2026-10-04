@@ -24,10 +24,12 @@ import {
   connectToDevice,
   EMPTY_PAIRING_STATE,
   fetchFromDevice,
+  fetchPlaylistFromDevice,
   forgetDevice,
   getPairingState,
   isPairingSupported,
   listLocalSounds,
+  sendPlaylistToDevice,
   sendToDevice,
   sendUrlToDevice,
   setAutoDownloadLinks,
@@ -36,6 +38,7 @@ import {
   subscribeToPairingState,
   type LocalPairingState,
   type LocalSound,
+  type LocalSoundPlaylist,
 } from '@/src/api';
 import { AppText as Text, ConfirmModal, type ConfirmConfig } from '@/src/components';
 import { useTheme } from '@/src/theme';
@@ -72,6 +75,7 @@ export default function DevicesScreen() {
   const [linkText, setLinkText] = useState('');
   const [sendTarget, setSendTarget] = useState<{ fingerprint: string; name: string } | null>(null);
   const [tracks, setTracks] = useState<LocalSound[]>([]);
+  const [playlists, setPlaylists] = useState<LocalSoundPlaylist[]>([]);
   const [renaming, setRenaming] = useState(false);
   const [nameText, setNameText] = useState('');
   const [confirm, setConfirm] = useState<{ config: ConfirmConfig; onConfirm: () => void } | null>(
@@ -139,6 +143,7 @@ export default function DevicesScreen() {
   const openSend = useCallback(async (fingerprint: string, name: string) => {
     const library = await listLocalSounds();
     setTracks(library.songs);
+    setPlaylists(library.playlists.filter((p) => p.songIds.length > 0));
     setSendTarget({ fingerprint, name });
   }, []);
 
@@ -222,6 +227,9 @@ export default function DevicesScreen() {
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.rowBetween}>
               <Text style={[styles.cardSub, { color: colors.textMuted }]}>
+                {state.batchCount > 1
+                  ? `${t('devices.batch', { index: state.batchIndex, count: state.batchCount })} · `
+                  : ''}
                 {sizeLabel(state.transferDone)} / {sizeLabel(state.transferTotal)}
               </Text>
               <Text style={[styles.cardSub, { color: colors.accent }]}>{percent}%</Text>
@@ -250,6 +258,36 @@ export default function DevicesScreen() {
                 {t('devices.libraryOf', { name: browsing.name })}
               </Text>
             </View>
+            {browsing && state.playlistListing.length > 0 ? (
+              <Text style={[styles.rowSub, { color: colors.textMuted }]}>{t('devices.playlists')}</Text>
+            ) : null}
+            {state.playlistListing.map((playlist) => (
+              <View
+                key={playlist.id}
+                style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <View style={styles.flex}>
+                  <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
+                    {playlist.favorites ? t('devices.favorites') : playlist.name}
+                  </Text>
+                  <Text style={[styles.rowSub, { color: colors.textSubtle }]}>
+                    {t('devices.trackCount', { count: playlist.count })}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => void fetchPlaylistFromDevice(browsing.fingerprint, playlist.id)}
+                  disabled={transferring}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.action, { color: transferring ? colors.textSubtle : colors.accent }]}>
+                    {t('devices.get')}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+            {state.playlistListing.length > 0 && listing.length > 0 ? (
+              <Text style={[styles.rowSub, { color: colors.textMuted }]}>{t('devices.tracks')}</Text>
+            ) : null}
             {listing.map((item) => (
               <View
                 key={item.id}
@@ -515,6 +553,29 @@ export default function DevicesScreen() {
               {t('devices.sendPickTitle', { name: sendTarget?.name ?? '' })}
             </Text>
             <ScrollView style={styles.pickList}>
+              {playlists.length > 0 ? (
+                <Text style={[styles.rowSub, { color: colors.textMuted }]}>{t('devices.playlists')}</Text>
+              ) : null}
+              {playlists.map((playlist) => (
+                <Pressable
+                  key={playlist.id}
+                  onPress={() => {
+                    if (sendTarget) void sendPlaylistToDevice(sendTarget.fingerprint, playlist.id);
+                    setSendTarget(null);
+                  }}
+                  style={styles.pickRow}
+                >
+                  <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
+                    {playlist.system ? t('devices.favorites') : playlist.name}
+                  </Text>
+                  <Text style={[styles.rowSub, { color: colors.textSubtle }]}>
+                    {t('devices.trackCount', { count: playlist.songIds.length })}
+                  </Text>
+                </Pressable>
+              ))}
+              {playlists.length > 0 && tracks.length > 0 ? (
+                <Text style={[styles.rowSub, { color: colors.textMuted }]}>{t('devices.tracks')}</Text>
+              ) : null}
               {tracks.length === 0 ? (
                 <Text style={[styles.blurb, { color: colors.textSubtle }]}>
                   {t('devices.empty')}

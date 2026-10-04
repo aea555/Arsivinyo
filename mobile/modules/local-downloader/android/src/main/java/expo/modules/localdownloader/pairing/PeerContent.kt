@@ -4,6 +4,26 @@ import java.io.InputStream
 import org.json.JSONArray
 
 /**
+ * The playlist a track is sent as part of (`shared/pairing/PROTOCOL.md`, "put"). The receiver
+ * files the track as it would any, then adds it to its own playlist of that name, making it
+ * if it has none. Favorites is each device's own, whatever its language calls it.
+ */
+data class PeerPlaylist(val name: String, val favorites: Boolean = false) {
+  fun offer(): org.json.JSONObject =
+    if (favorites) org.json.JSONObject().put("favorites", true) else org.json.JSONObject().put("name", name)
+
+  companion object {
+    /** What a peer said, checked: a name is trimmed, kept short, and never empty. */
+    fun read(value: Any?): PeerPlaylist? {
+      val obj = value as? org.json.JSONObject ?: return null
+      if (obj.optBoolean("favorites")) return PeerPlaylist("", favorites = true)
+      val name = obj.optString("name").trim().take(200)
+      return if (name.isEmpty()) null else PeerPlaylist(name)
+    }
+  }
+}
+
+/**
  * Something a peer may fetch: a name, a size, and a way to read the bytes.
  *
  * [open] hands back a *fresh* stream each time, because the bytes are read twice — once to
@@ -16,6 +36,16 @@ data class ItemSource(
   val artwork: java.io.File? = null,
   /** A meme's kind, source and labels by name: `shared/memes/CONTRACT.md`. */
   val meme: org.json.JSONObject? = null,
+  /** The playlist it is sent as part of, if any. */
+  val playlist: PeerPlaylist? = null,
+  /** Where it is in a batch of sends, 1-based, and of how many: the receiver shows "3 of 12". */
+  val batch: Pair<Int, Int>? = null,
+  /**
+   * A track's title and artist as this library has them, for a receiver whose file has none
+   * in its tags: a render's file, for one, may carry no artist.
+   */
+  val title: String? = null,
+  val artist: String? = null,
   val open: () -> InputStream,
 )
 
@@ -35,8 +65,17 @@ data class ItemSource(
  */
 interface PeerContent {
 
-  /** Items of [kind] — "music" or "backups" — as protocol `listing` entries. */
+  /**
+   * Items of [kind] as protocol `listing` entries: "music" for tracks, "playlists" for
+   * playlists (id, name, favorites, count), "backups".
+   */
   fun listing(kind: String): JSONArray
+
+  /**
+   * The peer asks for a whole playlist from `listing("playlists")`: send it to
+   * [toFingerprint] as this device's own Send would. False if there is no such playlist.
+   */
+  fun sendPlaylist(id: String, toFingerprint: String): Boolean = false
 
   /** The bytes behind an id from [listing], or null if the peer may not have it. */
   fun openItem(id: String): ItemSource?
@@ -53,8 +92,17 @@ interface PeerContent {
   /**
    * A completed file has landed at [path]; take it into the library. [meme] is what the
    * sender said about a meme, unchecked: it is data to merge, never an instruction.
+   * [playlist] is the playlist it was sent in; [title] and [artist] are what the sender has
+   * for it, used only where the file's own tags say nothing.
    */
-  fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?)
+  fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?, playlist: PeerPlaylist?,
+               title: String?, artist: String?)
+
+  /** The id of an item already here with exactly these bytes, so it is not sent twice. */
+  fun existing(sizeBytes: Long, sha256: ByteArray, kind: String): String? = null
+
+  /** An item already here was offered as part of a playlist: it joins the playlist instead. */
+  fun reuse(id: String, playlist: PeerPlaylist?) {}
 
   /** The peer asked this device to fetch a URL itself. */
   fun download(url: String, mediaKind: String)

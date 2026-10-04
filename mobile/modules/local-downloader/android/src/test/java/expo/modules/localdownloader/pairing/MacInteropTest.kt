@@ -45,7 +45,7 @@ class MacInteropTest {
       override fun openItem(id: String) =
         if (id == "p1") ItemSource(track.name, track.length(), cover) { track.inputStream() } else null
       override fun destinationFor(name: String, kind: String) = File(work, "in-" + File(name).name).path
-      override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?) {
+      override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?, playlist: PeerPlaylist?, title: String?, artist: String?) {
         if (kind == "meme") {
           val decoded = MemeStore.decodeMeme(meme)
           val tags = decoded.tags.joinToString(";") { (name, facets) -> name + ":" + facets.joinToString(",") { it.wire } }

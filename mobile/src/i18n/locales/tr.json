@@ -678,10 +678,19 @@
     "renameHint": "Diğer cihazlar eşleştirirken bu adı görür.",
     "sendLinkTitle": "{{name}} cihazına bağlantı gönder",
     "sendLinkBody": "Diğer cihaz indirip indirmeyeceğine karar verir.",
-    "sendPickTitle": "{{name}} cihazına parça gönder",
+    "sendPickTitle": "{{name}} cihazına gönder",
     "empty": "Gönderilecek parça yok.",
     "autoDownloadLinks": "Bağlantıları otomatik indir",
-    "autoDownloadLinksHint": "Eşleştirilmiş bir cihazın gönderdiği bağlantı sormadan indirilmeye başlar."
+    "autoDownloadLinksHint": "Eşleştirilmiş bir cihazın gönderdiği bağlantı sormadan indirilmeye başlar.",
+    "playlists": "Çalma listeleri",
+    "tracks": "Parçalar",
+    "favorites": "Favoriler",
+    "trackCount_one": "{{count}} parça",
+    "trackCount_other": "{{count}} parça",
+    "batch": "{{count}} içinden {{index}}",
+    "receivingFrom": "{{name}} cihazından alınıyor",
+    "sendingTo": "{{name}} cihazına gönderiliyor",
+    "aDevice": "eşleştirilmiş bir cihaz"
   },
   "memes": {
     "title": "Mimler",

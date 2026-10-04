@@ -183,16 +183,7 @@ struct MusicView: View {
                     Button(target.name) { model.addTracks(chosen.map(\.id), toPlaylist: target.id) }
                 }
             }
-            if let devices = model.devices, !devices.connected.isEmpty {
-                Menu("Send to") {
-                    ForEach(devices.peers.filter { devices.connected.contains($0.fingerprint) }) { peer in
-                        Button(peer.name.isEmpty ? String(localized: "Unnamed device") : peer.name) {
-                            // One at a time, as the protocol has it: the first of a selection.
-                            devices.send(first, from: model.library, to: peer.fingerprint)
-                        }
-                    }
-                }
-            }
+            SendToMenu(isEmpty: chosen.isEmpty) { chosen }
             Menu("Apply Preset") {
                 ForEach(model.presetList) { preset in
                     Button(AppModel.displayName(of: preset)) {
@@ -345,6 +336,34 @@ private struct RenderStrip: View {
         case .done: return Text("Added to the library")
         case .failed(let why): return Text(why)
         case .cancelled: return Text("Cancelled")
+        }
+    }
+}
+
+/// "Send to" a paired device, for tracks or a whole playlist. Every paired device is listed,
+/// so the way to send is there to find; one not connected now is greyed rather than the menu
+/// disappearing. Nothing at all without a paired device or anything to send.
+/// The tracks are gathered only when a device is picked: a playlist's are looked up then, not
+/// every time the sidebar is drawn.
+struct SendToMenu: View {
+    @Environment(AppModel.self) private var model
+    let isEmpty: Bool
+    /// The playlist they are sent as: the other device puts them in its own.
+    var playlist: PeerPlaylist? = nil
+    let tracks: () -> [MusicLibrary.Track]
+
+    var body: some View {
+        if let devices = model.devices, !devices.peers.isEmpty, !isEmpty {
+            Menu("Send to") {
+                ForEach(devices.peers) { peer in
+                    let online = devices.connected.contains(peer.fingerprint)
+                    let name = peer.name.isEmpty ? String(localized: "Unnamed device") : peer.name
+                    Button(online ? name : String(localized: "\(name) (not connected)")) {
+                        devices.send(tracks(), to: peer.fingerprint, playlist: playlist)
+                    }
+                    .disabled(!online)
+                }
+            }
         }
     }
 }

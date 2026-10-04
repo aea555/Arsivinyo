@@ -23,6 +23,8 @@ class PairingCoordinator(
   private val onDownloadRequested: (url: String, mediaKind: String) -> Unit,
   /** A meme arrived, verified, with what the sender said about it. */
   private val onMemeReceived: (file: File, meme: org.json.JSONObject?) -> Unit = { file, _ -> file.delete() },
+  /** The music library changed from another device: a track arrived, or joined a playlist. */
+  private val onLibraryChanged: () -> Unit = {},
 ) {
 
   val identity = DeviceIdentity(context)
@@ -31,15 +33,33 @@ class PairingCoordinator(
   private val content = SoundsContent(context, store, onDownloadRequested, onMemeReceived)
   private val service = PairingService(identity, registry, content, SessionKeys::sslContext)
   private val discovery = Discovery(context)
+  /** What is coming in or going out, shown wherever the user is, not only on Devices. */
+  private val notifier = PairingNotifier(context)
 
   /** The last listing a peer sent back, so a browse screen has something to show. */
   @Volatile private var lastListing: JSONArray = JSONArray()
   @Volatile private var lastListingFrom: String = ""
+  /** The browsed device's playlists, from a second listing. */
+  @Volatile private var lastPlaylists: JSONArray = JSONArray()
   @Volatile private var lastMessage: String = ""
   @Volatile private var transferDone: Long = 0
   @Volatile private var transferTotal: Long = 0
+  /** The transfer in flight, for the app-wide bar: which way, with whom, and "3 of 12". */
+  @Volatile private var transferIncoming = false
+  @Volatile private var transferPeer = ""
+  @Volatile private var transferIndex = 0
+  @Volatile private var transferCount = 0
+
+  /** Tracks waiting to be sent, in order: the protocol moves one file at a time. */
+  private data class Outgoing(val fingerprint: String, val songId: String, val playlist: PeerPlaylist?)
+  private val outbox = ArrayDeque<Outgoing>()
+  /** Where a batch of sends is: the one being sent, of how many. 0 of 0 when none is. */
+  @Volatile private var batchIndex = 0
+  @Volatile private var batchCount = 0
 
   init {
+    content.onLibraryChanged = onLibraryChanged
+    content.onPlaylistRequested = { id, fingerprint -> sendPlaylistTo(fingerprint, id) }
     service.onRefused = { reason ->
       lastMessage = reason
       onChanged()
@@ -116,6 +136,12 @@ class PairingCoordinator(
     "message" to lastMessage,
     "transferDone" to transferDone,
     "transferTotal" to transferTotal,
+    "transferIncoming" to transferIncoming,
+    "transferPeer" to transferPeer,
+    "transferIndex" to transferIndex,
+    "transferCount" to transferCount,
+    "batchIndex" to batchIndex,
+    "batchCount" to batchCount,
     "peers" to registry.all().map {
       mapOf(
         "fingerprint" to it.fingerprint,
@@ -137,6 +163,7 @@ class PairingCoordinator(
       },
     "listingFrom" to lastListingFrom,
     "listing" to listingAsMaps(),
+    "playlistListing" to playlistsAsMaps(),
   )
 
   fun beginPairing(seconds: Int) {
@@ -169,8 +196,27 @@ class PairingCoordinator(
     onChanged()
   }
 
-  fun browsePeer(fingerprint: String): Boolean =
-    service.sessionFor(fingerprint)?.requestListing("music") ?: false
+  fun browsePeer(fingerprint: String): Boolean {
+    val session = service.sessionFor(fingerprint) ?: return false
+    lastPlaylists = JSONArray()
+    session.requestListing("playlists")
+    return session.requestListing("music")
+  }
+
+  /** Asks a paired device for a whole playlist; it sends the tracks and this phone makes it. */
+  fun fetchPlaylist(fingerprint: String, id: String): Boolean =
+    service.sessionFor(fingerprint)?.requestPlaylist(id) ?: false
+
+  /** A paired device asked for one of this phone's playlists: sent as Send sends it. */
+  private fun sendPlaylistTo(fingerprint: String, id: String) {
+    val playlist = store.listPlaylists().firstOrNull { it["id"] == id } ?: return
+    @Suppress("UNCHECKED_CAST")
+    val songIds = (playlist["songIds"] as? List<String>).orEmpty()
+    // Favorites are oldest first here, as they travel (PROTOCOL.md, "Playlists").
+    val target = if (playlist["system"] == true) PeerPlaylist("", favorites = true)
+      else PeerPlaylist(playlist["name"] as? String ?: return)
+    sendSongsToPeer(fingerprint, songIds, target)
+  }
 
   fun fetchItem(fingerprint: String, id: String): Boolean =
     service.sessionFor(fingerprint)?.requestItem(id) ?: false
@@ -179,10 +225,53 @@ class PairingCoordinator(
     service.sessionFor(fingerprint)?.requestDownload(url, mediaKind) ?: false
 
   /** Send a track from this phone's library to a paired device. */
-  fun sendItemToPeer(fingerprint: String, songId: String): Boolean {
-    val session = service.sessionFor(fingerprint) ?: return false
-    val source = content.openItem(songId) ?: return false
-    return session.send(source, "music")
+  fun sendItemToPeer(fingerprint: String, songId: String): Boolean =
+    sendSongsToPeer(fingerprint, listOf(songId), null)
+
+  /**
+   * Tracks to a paired device, one after another, as part of [playlist] when there is one:
+   * the other device puts them in its playlist of that name. More sent while a batch is going
+   * join its end.
+   */
+  fun sendSongsToPeer(fingerprint: String, songIds: List<String>, playlist: PeerPlaylist?): Boolean {
+    if (songIds.isEmpty() || service.sessionFor(fingerprint) == null) return false
+    val idle = synchronized(outbox) {
+      val idle = batchCount == 0
+      songIds.forEach { outbox.addLast(Outgoing(fingerprint, it, playlist)) }
+      batchCount += songIds.size
+      idle
+    }
+    if (idle) sendNext()
+    onChanged()
+    return true
+  }
+
+  private fun sendNext() {
+    while (true) {
+      val next = synchronized(outbox) {
+        outbox.removeFirstOrNull().also { if (it == null) { batchIndex = 0; batchCount = 0 } else batchIndex++ }
+      } ?: return
+      val session = service.sessionFor(next.fingerprint)
+      if (session == null) {
+        endBatch("The device disconnected; the rest was not sent.")
+        return
+      }
+      // A song removed since it was picked is skipped, not a failure of the rest.
+      val batch = synchronized(outbox) { if (batchCount > 1) batchIndex to batchCount else null }
+      val source = content.openItem(next.songId)?.copy(playlist = next.playlist, batch = batch) ?: continue
+      if (!session.send(source, "music")) endBatch("Wait for the transfer in progress to finish.")
+      return
+    }
+  }
+
+  private fun endBatch(message: String?) {
+    synchronized(outbox) {
+      outbox.clear()
+      batchIndex = 0
+      batchCount = 0
+    }
+    if (message != null) lastMessage = message
+    onChanged()
   }
 
   /** A meme, with its labels by name. Private memes never come here: the vault does not travel. */
@@ -192,6 +281,7 @@ class PairingCoordinator(
   }
 
   fun cancelTransfer(fingerprint: String) {
+    endBatch(null)
     service.sessionFor(fingerprint)?.cancel()
   }
 
@@ -202,23 +292,40 @@ class PairingCoordinator(
       session.onTransferProgress = { done, total ->
         transferDone = done
         transferTotal = total
+        val incoming = session.isReceiving
+        val batch = if (incoming) session.incomingBatch
+          else synchronized(outbox) { if (batchCount > 1) batchIndex to batchCount else null }
+        transferIncoming = incoming
+        transferPeer = session.link.peerName
+        transferIndex = batch?.first ?: 0
+        transferCount = batch?.second ?: 0
+        notifier.progress(incoming, session.link.peerName, done, total, batch)
         onChanged()
       }
       session.onTransferComplete = {
         transferDone = 0
         transferTotal = 0
         lastMessage = "Transfer complete"
+        val (more, count) = synchronized(outbox) { outbox.isNotEmpty() to batchCount }
+        notifier.completed(session.link.peerName, more, count)
+        // The next of a batch, if one is going.
+        if (more) sendNext() else endBatch(null)
         onChanged()
       }
       session.onTransferFailed = { reason ->
         transferDone = 0
         transferTotal = 0
-        lastMessage = reason
-        onChanged()
+        notifier.failed()
+        // The rest of a batch is not sent after a failure: what failed is said once.
+        endBatch(reason)
       }
-      session.onListing = { _, items ->
-        lastListing = items
-        lastListingFrom = Ed25519Keys.fingerprint(session.link.peerKey)
+      session.onListing = { kind, items ->
+        if (kind == "playlists") {
+          lastPlaylists = items
+        } else {
+          lastListing = items
+          lastListingFrom = Ed25519Keys.fingerprint(session.link.peerKey)
+        }
         onChanged()
       }
       session.onFileReceived = { _, _ ->
@@ -226,6 +333,19 @@ class PairingCoordinator(
         lastMessage = "A track arrived"
         onChanged()
       }
+    }
+  }
+
+  private fun playlistsAsMaps(): List<Map<String, Any?>> {
+    val items = lastPlaylists
+    return (0 until items.length()).mapNotNull { i ->
+      val item = items.optJSONObject(i) ?: return@mapNotNull null
+      mapOf(
+        "id" to item.optString("id"),
+        "name" to item.optString("name"),
+        "favorites" to item.optBoolean("favorites"),
+        "count" to item.optInt("count"),
+      )
     }
   }
 

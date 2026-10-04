@@ -5,6 +5,7 @@ import LocalDownloaderModule, {
   addPrivateVaultMigrationProgressListener,
   addPairingStateListener,
   addMemesChangedListener,
+  addSoundsChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from './LocalDownloaderModule';
@@ -18,6 +19,7 @@ export {
   addPrivateVaultMigrationProgressListener,
   addPairingStateListener,
   addMemesChangedListener,
+  addSoundsChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 };

@@ -78,6 +78,10 @@ class PeerSession(
     val artwork: ByteArray?,
     val artworkName: String,
     val meme: JSONObject?,
+    val playlist: PeerPlaylist?,
+    val batch: Pair<Int, Int>?,
+    val title: String?,
+    val artist: String?,
   ) {
     val digest: MessageDigest = MessageDigest.getInstance("SHA-256")
     val stream = partPath.outputStream()
@@ -89,6 +93,24 @@ class PeerSession(
   @Volatile private var sending: ItemSource? = null
   private var accepted = CountDownLatch(0)
   @Volatile private var cancelled = false
+  /** The other device already has what was offered: the send is done without the bytes. */
+  @Volatile private var alreadyThere = false
+
+  /** Whether a file is coming in now, and where it is in the sender's batch, if it said. */
+  val isReceiving: Boolean get() = synchronized(lock) { receiving != null }
+  val incomingBatch: Pair<Int, Int>? get() = synchronized(lock) { receiving?.batch }
+  /** Whether this side is sending now. */
+  val isSending: Boolean get() = sending != null
+
+  /** A sender's text, checked: trimmed, kept short, never empty. */
+  private fun readText(value: String?): String? = value?.trim()?.take(500)?.takeIf { it.isNotEmpty() }
+
+  /** A sender's batch, checked: 1 ≤ index ≤ count, both small. */
+  private fun readBatch(obj: JSONObject?): Pair<Int, Int>? {
+    val index = obj?.optInt("index") ?: return null
+    val count = obj.optInt("count")
+    return if (index in 1..count && count <= 100_000) index to count else null
+  }
 
   val isTransferring: Boolean
     get() = synchronized(lock) { receiving != null } || sending != null
@@ -111,6 +133,15 @@ class PeerSession(
 
   fun requestListing(kind: String): Boolean =
     whenReady { link.sendControl(JSONObject().put("t", "list").put("kind", kind)) }
+
+  /**
+   * Asks for a whole playlist; the other device sends its tracks one after another, and this
+   * one makes the playlist as they come.
+   */
+  fun requestPlaylist(id: String): Boolean {
+    if (isTransferring) return false
+    return whenReady { link.sendControl(JSONObject().put("t", "get").put("playlist", id)) }
+  }
 
   fun requestItem(id: String): Boolean {
     if (isTransferring) return false
@@ -150,6 +181,8 @@ class PeerSession(
     val offer = JSONObject()
       .put("t", "put").put("name", source.name).put("kind", kind)
       .put("sizeBytes", total).put("sha256", hex(digest))
+      // This sender understands a `have` answer, so it may be given one.
+      .put("have", true)
     // The cover rides in the offer: small, optional, and ignored by a receiver that does not
     // know it. Over the cap it is left out rather than making the offer huge.
     source.artwork?.takeIf { it.isFile && it.length() in 1..MAX_ARTWORK_BYTES }?.let { art ->
@@ -159,6 +192,10 @@ class PeerSession(
       }
     }
     source.meme?.let { offer.put("meme", it) }
+    source.playlist?.let { offer.put("playlist", it.offer()) }
+    source.batch?.let { (index, count) -> offer.put("batch", JSONObject().put("index", index).put("count", count)) }
+    source.title?.takeIf { it.isNotBlank() }?.let { offer.put("title", it.take(500)) }
+    source.artist?.takeIf { it.isNotBlank() }?.let { offer.put("artist", it.take(500)) }
     if (!link.sendControl(offer)) {
       abortSending("the connection went away")
       return
@@ -170,6 +207,13 @@ class PeerSession(
       return
     }
     if (cancelled || sending == null) return
+    // Already there: nothing to stream, and the send is done.
+    if (alreadyThere) {
+      alreadyThere = false
+      sending = null
+      onTransferComplete?.invoke()
+      return
+    }
 
     var sent = 0L
     val stream = runCatching { source.open() }.getOrNull()
@@ -216,10 +260,22 @@ class PeerSession(
       }
       "listing" -> onListing?.invoke(message.optString("kind"),
         message.optJSONArray("items") ?: JSONArray())
-      "get" -> handleGet(message)
+      "get" -> if (message.has("playlist")) {
+        if (!content.sendPlaylist(message.optString("playlist"), Ed25519Keys.fingerprint(link.peerKey))) {
+          link.sendControl(JSONObject().put("t", "error").put("code", "NOT_FOUND").put("message", "no such playlist"))
+        }
+      } else {
+        handleGet(message)
+      }
       "put" -> handlePut(message)
       "accept" -> accepted.countDown()
-      "reject" -> abortSending(message.optString("reason").ifEmpty { "refused" })
+      "reject" -> if (message.optString("reason") == "have") {
+        // Not a refusal: the other device has these bytes already.
+        alreadyThere = true
+        accepted.countDown()
+      } else {
+        abortSending(message.optString("reason").ifEmpty { "refused" })
+      }
       "complete" -> handleComplete(message)
       "cancel" -> {
         abortReceiving("the peer cancelled")
@@ -258,6 +314,15 @@ class PeerSession(
     // The receiver picks the path. A name from the peer is never joined onto a directory,
     // so a `../` or an absolute path in it cannot steer this write.
     val kind = message.optString("kind")
+    val playlist = PeerPlaylist.read(message.opt("playlist"))
+    // A track already here is not taken twice; one sent in a playlist joins it instead.
+    if (kind == "music" && message.optBoolean("have")) {
+      content.existing(size, expected, kind)?.let { id ->
+        content.reuse(id, playlist)
+        link.sendControl(JSONObject().put("t", "reject").put("reason", "have"))
+        return
+      }
+    }
     val destination = content.destinationFor(message.optString("name"), kind)
     if (destination == null) {
       link.sendControl(JSONObject().put("t", "reject").put("reason", "refused"))
@@ -275,7 +340,8 @@ class PeerSession(
       val finalPath = File(destination)
       finalPath.parentFile?.mkdirs()
       Receiving(kind, finalPath, File("$destination.part"), size, expected, artwork, "cover.$artworkExtension",
-        message.optJSONObject("meme"))
+        message.optJSONObject("meme"), playlist, readBatch(message.optJSONObject("batch")),
+        readText(message.optString("title")), readText(message.optString("artist")))
     }.getOrNull()
     if (started == null) {
       link.sendControl(JSONObject().put("t", "reject").put("reason", "unwritable"))
@@ -331,7 +397,8 @@ class PeerSession(
         File("${current.finalPath.path}.${current.artworkName}").apply { writeBytes(bytes) }.path
       }.getOrNull()
     }
-    content.accepted(current.finalPath.path, current.kind, artworkPath, current.meme)
+    content.accepted(current.finalPath.path, current.kind, artworkPath, current.meme, current.playlist,
+      current.title, current.artist)
     onFileReceived?.invoke(current.finalPath.path, current.kind)
     onTransferComplete?.invoke()
   }

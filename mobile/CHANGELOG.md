@@ -4,6 +4,55 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Fixed
+- Phone: the music library stayed as it was while tracks came in from a paired device, until
+  the screen was opened again. It updates as each one arrives, and as a playlist fills.
+- A track made with a preset (Slowed + Reverb and the like) showed its artist as unknown,
+  on both apps. On the phone, reconciling the library with MediaStore replaced a stored
+  artist with MediaStore's "<unknown>" whenever MediaStore had not read the file's tags; it
+  now only fills a blank and never takes "<unknown>". On the Mac, FLAC's tags (Vorbis
+  comments) were never read, so every FLAC came in without an artist and every render of
+  one inherited none. Both apps repair what is already in the library: a render takes its
+  source's artist, and an original reads its file again. A track sent between devices
+  carries its title and artist, used where the file has none.
+
+### Added
+- Music going to or coming from a paired device shows on every screen of both apps, not
+  only in Devices: a bar with the device, "3 of 12" for several, and how far the one in
+  flight is; clicking it opens Devices. The phone also shows it in a notification, for when
+  the app is in the background. Names of tracks are never shown. Each offer carries its
+  place in the batch (`shared/pairing/PROTOCOL.md`).
+- Mac: Send Music… offers your playlists as well as tracks.
+
+## [4.1.0] — Sending music and playlists between devices
+
+Music and whole playlists go between paired devices in both directions, a device's playlists
+can be browsed and taken, and a track the other device already has is never sent twice. Both
+apps carry 4.1.0. `versionCode` → `40100`.
+
+### Added
+- Mac: music is sent to a paired device from Devices, with Send Music…, which picks any
+  number of tracks from the library. Several go one after another, with how far it is.
+- **Sending playlists.** A whole playlist goes to a paired device, Favorites too, and the
+  device makes it: on the Mac from the playlist's menu in the sidebar (Send to), on the phone
+  from Devices, where a playlist is sent with a tap. Tracks arrive in the playlist's order and
+  join the playlist of the same name, made if there is none. A track the other device already
+  has is not sent again; it only joins the playlist. Both directions. Browsing a paired
+  device shows its playlists above its tracks, and Get takes a whole one.
+  `shared/pairing/PROTOCOL.md` has the `playlist` field, the `have` answer, the `playlists`
+  listing and `get` by playlist.
+- Phone: several tracks sent to a device go one after another, with how far it is.
+
+### Fixed
+- Mac: a playlist's menu in the sidebar showed only New Playlist…: a menu on the Playlists
+  section replaced every playlist's own, so Rename, Delete and Send to were never seen. New
+  Playlist… is in each playlist's menu now.
+- Mac: Music's Send to appeared only while a device was connected, and sent only the first
+  of the selected tracks. It lists every paired device, greys the ones not connected, and
+  sends them all.
+- Mac: Download's Video or Audio went back to Video whenever another section was opened. It
+  is kept, and remembered across launches.
+
 ## [4.0.0-beta.1] — Device pairing, memes, Watch and torrents, and the Mac app
 
 Two devices pair and send files to each other; memes are collected, tagged and grouped by

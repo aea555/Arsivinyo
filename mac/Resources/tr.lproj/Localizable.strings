@@ -1,6 +1,8 @@
 /* Turkish. Keys are the English text in the source; vocabulary follows the phone app. */
 
 "%@ %@" = "%@ %@";
+"%@ (not connected)" = "%@ (bağlı değil)";
+"%@ · %lld" = "%@ · %lld";
 "%@, downloaded" = "%@, indirilen";
 "%lld added" = "%lld eklendi";
 "%lld already here" = "%lld zaten vardı";
@@ -8,14 +10,17 @@
 "%lld could not be restored: %@" = "%lld geri yüklenemedi: %@";
 "%lld items, %@" = "%lld öğe, %@";
 "%lld memes" = "%lld mim";
+"%lld of %lld" = "%lld / %lld";
 "%lld peers · %@/s" = "%lld eş · %@/sn";
 "%lld settings and profiles applied" = "%lld ayar ve profil uygulandı";
 "%lld songs" = "%lld şarkı";
 "%lld untagged" = "%lld etiketsiz";
 "1 song" = "1 şarkı";
+"^[%lld track](inflect: true)" = "%lld parça";
 "A device that is not paired tried to connect." = "Eşleştirilmemiş bir cihaz bağlanmaya çalıştı.";
 "A downloaded version would not load, so the one fetched with the app is in use: %@" = "İndirilen sürüm yüklenemedi, bu yüzden uygulamayla gelen kullanılıyor: %@";
 "A file that opens the vault if the passphrase is forgotten. Keep it somewhere other than this Mac." = "Parola cümlesi unutulursa kasayı açan bir dosya. Bu Mac dışında bir yerde saklayın.";
+"a paired device" = "eşleştirilmiş bir cihaz";
 "A passphrase is already set." = "Parola cümlesi zaten belirlenmiş.";
 "A track arrived." = "Bir parça geldi.";
 "Action" = "Eylem";
@@ -71,6 +76,7 @@
 "Choose a preset" = "Bir ön ayar seçin";
 "Choose an .avsbck backup." = "Bir .avsbck yedeği seçin.";
 "Choose the recovery key you exported." = "Dışa aktardığınız kurtarma anahtarını seçin.";
+"Choose with ⌘ or ⇧ for more than one." = "Birden fazlası için ⌘ ya da ⇧ ile seç.";
 "Choose…" = "Seç…";
 "Clear" = "Temizle";
 "Click the heart beside a song to keep it here." = "Bir şarkıyı burada tutmak için yanındaki kalbe tıklayın.";
@@ -186,6 +192,7 @@
 "No favourites yet" = "Henüz favori yok";
 "No memes yet" = "Henüz mim yok";
 "No music on that device" = "O cihazda müzik yok";
+"No music on this Mac" = "Bu Mac'te müzik yok";
 "No music yet" = "Henüz müzik yok";
 "No other devices found. They have to be on the same network, with Arsivinyo open." = "Başka cihaz bulunamadı. Aynı ağda ve Arsivinyo açık olmalılar.";
 "No passphrase has been set yet." = "Henüz parola cümlesi belirlenmedi.";
@@ -201,6 +208,7 @@
 "Notify when a download ends in the background" = "Arka planda biten indirmeleri bildir";
 "On This Network" = "Bu Ağda";
 "One file, encrypted with this passphrase, that the phone can restore too. It is separate from the vault's passphrase; without it the backup cannot be opened." = "Bu parola cümlesiyle şifrelenmiş, telefonun da geri yükleyebileceği tek bir dosya. Kasanın parola cümlesinden ayrıdır; o olmadan yedek açılamaz.";
+"Open Devices" = "Cihazları Aç";
 "Open" = "Aç";
 "Open the post" = "Gönderiyi aç";
 "Output" = "Çıkış";
@@ -230,6 +238,8 @@
 "Profiles are encrypted with your passphrase and used only while the vault is unlocked. Locked, downloads run signed out." = "Profiller parola cümlenizle şifrelenir ve yalnızca kasanın kilidi açıkken kullanılır. Kilitliyken indirmeler oturum açılmadan yapılır.";
 "Rate" = "Hız";
 "Reaction" = "Tepki";
+"Receiving %lld of %lld…" = "%lld / %lld alınıyor…";
+"Receiving from %@" = "%@ cihazından alınıyor";
 "Recent" = "Son";
 "Recommended" = "Önerilenler";
 "Recovery key" = "Kurtarma anahtarı";
@@ -260,9 +270,14 @@
 "Search tags, people, captions" = "Etiket, kişi, açıklama ara";
 "Search the vault" = "Kasada ara";
 "Security" = "Güvenlik";
+"Send %lld Tracks" = "%lld Parçayı Gönder";
+"Send Music…" = "Müzik Gönder…";
 "Send" = "Gönder";
 "Send Link…" = "Bağlantı Gönder…";
 "Send to" = "Şuraya gönder";
+"Sending %lld of %lld…" = "%lld / %lld gönderiliyor…";
+"Sending to %@" = "%@ cihazına gönderiliyor";
+"Sends the whole playlist; the other device makes it too." = "Tüm çalma listesini gönderir; diğer cihaz da onu oluşturur.";
 "Sent." = "Gönderildi.";
 "Set Passphrase" = "Parola Cümlesini Belirle";
 "Set a Passphrase" = "Parola Cümlesi Belirleyin";
@@ -298,6 +313,7 @@
 "That meme is not in the collection." = "O mim koleksiyonda değil.";
 "That passphrase does not open this backup." = "Bu parola cümlesi bu yedeği açmıyor.";
 "That passphrase is not correct." = "Parola cümlesi doğru değil.";
+"The device disconnected; the rest was not sent." = "Cihazın bağlantısı koptu; kalanlar gönderilmedi.";
 "The Keychain refused (%d)." = "Anahtar Zinciri reddetti (%d).";
 "The backup's passphrase" = "Yedeğin parola cümlesi";
 "The backup's password" = "Yedeğin parolası";
@@ -317,6 +333,7 @@
 "The pairing could not be saved." = "Eşleştirme kaydedilemedi.";
 "The start of this Mac's fingerprint. A device it pairs with sees the same." = "Bu Mac'in parmak izinin başı. Eşleştiği cihaz da aynısını görür.";
 "The stored key is damaged: %@" = "Saklanan anahtar bozuk: %@";
+"The tracks you do not have yet come over, and the playlist is made here." = "Sende olmayan parçalar gelir ve çalma listesi burada oluşturulur.";
 "The vault and cookies are restored encrypted with your passphrase, so unlock first." = "Kasa ve cookie'ler parola cümlenizle şifrelenerek geri yüklenir, bu yüzden önce kilidi açın.";
 "The vault is locked." = "Kasa kilitli.";
 "The vault is unlocked. Lock it now." = "Kasanın kilidi açık. Şimdi kilitleyin.";
@@ -332,6 +349,7 @@
 "To pair, both devices wait for each other: tap Add device on the phone, then Pair here. Both then show six digits, which have to match." = "Eşleştirmek için iki cihaz da birbirini bekler: telefonda Cihaz ekle'ye, sonra burada Eşleştir'e dokunun. İkisi de altı rakam gösterir ve bunlar aynı olmalıdır.";
 "Tone" = "Ton";
 "Touch ID did not recognise you." = "Touch ID sizi tanımadı.";
+"Tracks" = "Parçalar";
 "Tracks, artwork, playlists and Favorites." = "Parçalar, kapak görselleri, çalma listeleri ve Favoriler.";
 "Treble" = "Tiz";
 "Treble frequency" = "Tiz frekansı";

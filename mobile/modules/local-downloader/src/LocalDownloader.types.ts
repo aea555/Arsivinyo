@@ -770,6 +770,15 @@ export interface LocalPeerItem {
  * count, which shows progress just as well and keeps a track title off a screen that may
  * be shown to whoever is standing there.
  */
+/** A playlist on a paired device, as its listing gives it. */
+export interface LocalPeerPlaylist {
+  id: string;
+  /** Empty for Favorites, which each device names in its own language. */
+  name: string;
+  favorites: boolean;
+  count: number;
+}
+
 export interface LocalPairingState {
   /** This device's own fingerprint and name. */
   fingerprint: string;
@@ -787,11 +796,22 @@ export interface LocalPairingState {
   message: string;
   transferDone: number;
   transferTotal: number;
+  /** The transfer in flight, for the app-wide bar: which way, with which device, and its
+   *  place in the sender's batch (0 of 0 for a single file). */
+  transferIncoming: boolean;
+  transferPeer: string;
+  transferIndex: number;
+  transferCount: number;
+  /** A batch of sends: the one being sent, of how many. Both 0 when none is going. */
+  batchIndex: number;
+  batchCount: number;
   peers: LocalPairedDevice[];
   discovered: LocalDiscoveredDevice[];
   /** Whose listing `listing` holds. */
   listingFrom: string;
   listing: LocalPeerItem[];
+  /** The browsed device's playlists; empty from a device too old to have them. */
+  playlistListing: LocalPeerPlaylist[];
   /** A URL a peer asked this phone to fetch. Shown for the user to accept, never started. */
   peerUrl: string;
   peerMediaKind: string;

@@ -225,6 +225,10 @@ final class AppModel {
         // With Touch ID asked for first, the remembered key waits for a fingerprint instead.
         if !askTouchID, keybox.unlockFromKeychain() { vaultDidUnlock() }
         refreshMusic()
+        // Artists lost before FLAC's tags were read: filled in once, in the background.
+        Task { [weak self] in
+            if let self, await self.library.repairArtists() > 0 { self.refreshMusic() }
+        }
         refreshSecurity()
         refreshPresets()
         refreshMemes()
@@ -236,15 +240,31 @@ final class AppModel {
                 FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
             }
             // A track from a paired device goes into the library like a download does.
-            devices.content.onTrackArrived = { [weak self] file, artwork in
+            // Tracks from a paired device are taken in one after another, new or already here
+            // alike, so a playlist sent in order arrives in order.
+            devices.content.onTrackArrived = { [weak self] file, artwork, playlist, title, artist in
                 Task { @MainActor in
-                    guard let self else { return }
-                    defer { if let artwork { try? FileManager.default.removeItem(at: artwork) } }
-                    do {
-                        try await self.library.adopt(file, artwork: artwork)
+                    self?.inOrder {
+                        guard let self else { return }
+                        defer { if let artwork { try? FileManager.default.removeItem(at: artwork) } }
+                        do {
+                            // The file's own tags first; what the sender said where it has none.
+                            let track = try await self.library.adopt(file, fallbackTitle: title, fallbackArtist: artist,
+                                                                     artwork: artwork)
+                            if let playlist { self.library.add(track.id, to: playlist) }
+                            self.refreshMusic()
+                        } catch {
+                            self.musicProblem = String(describing: error)
+                        }
+                    }
+                }
+            }
+            devices.content.onTrackReused = { [weak self] id, playlist in
+                Task { @MainActor in
+                    self?.inOrder {
+                        guard let self else { return }
+                        self.library.add(id, to: playlist)
                         self.refreshMusic()
-                    } catch {
-                        self.musicProblem = String(describing: error)
                     }
                 }
             }
@@ -595,6 +615,12 @@ final class AppModel {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
     }
 
+    /// Download's Video or Audio, kept here and saved: in the view it went back to Video
+    /// every time another section was opened.
+    var downloadAudioOnly = UserDefaults.standard.bool(forKey: "downloadAudioOnly") {
+        didSet { UserDefaults.standard.set(downloadAudioOnly, forKey: "downloadAudioOnly") }
+    }
+
     var askForMemeTags: Bool = UserDefaults.standard.object(forKey: "askForMemeTags") as? Bool ?? true {
         didSet { UserDefaults.standard.set(askForMemeTags, forKey: "askForMemeTags") }
     }
@@ -661,6 +687,17 @@ final class AppModel {
 
     /// What the user last pasted or dropped, waiting to be downloaded.
     var pendingURL: String = ""
+
+    @ObservationIgnored private var arrivals: Task<Void, Never>?
+
+    /// Runs `work` after everything chained before it.
+    private func inOrder(_ work: @escaping @MainActor () async -> Void) {
+        let previous = arrivals
+        arrivals = Task { @MainActor in
+            await previous?.value
+            await work()
+        }
+    }
 
     func pasteAndDownload() {
         section = .download

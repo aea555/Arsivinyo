@@ -29,6 +29,7 @@ import {
   isLocalSoundsSupported,
   listLocalSoundPlaylists,
   listLocalSounds,
+  listenLocalSoundsChanged,
   removeLocalSoundsFromPlaylist,
   renameLocalSoundPlaylist,
   setLocalSoundsFavorite,
@@ -343,6 +344,23 @@ export default function SoundsScreen() {
       reload();
     }, [reload])
   );
+
+  // And while it is open, when another device adds a track or fills a playlist: a playlist
+  // arriving is many of those in a row, so they are gathered into one reload.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const subscription = listenLocalSoundsChanged(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void reload();
+      }, 400);
+    });
+    return () => {
+      subscription.remove();
+      if (timer) clearTimeout(timer);
+    };
+  }, [reload]);
 
   const activePlaylist = useMemo(
     () => (openPlaylistId ? playlists.find((p) => p.id === openPlaylistId) ?? null : null),

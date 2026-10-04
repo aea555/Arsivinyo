@@ -55,7 +55,28 @@ class PeerSessionTest {
     override fun destinationFor(name: String, kind: String): String =
       File(dir, File(name).name).path
 
-    override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?) { lastAccepted = path }
+    var lastPlaylist: PeerPlaylist? = null
+    var reused: Pair<String, PeerPlaylist?>? = null
+
+    override fun accepted(path: String, kind: String, artworkPath: String?, meme: org.json.JSONObject?, playlist: PeerPlaylist?, title: String?, artist: String?) {
+      lastAccepted = path
+      lastPlaylist = playlist
+    }
+
+    /** A file already in the folder with these bytes, by its name. */
+    override fun existing(sizeBytes: Long, sha256: ByteArray, kind: String): String? =
+      dir.listFiles()?.firstOrNull { file ->
+        file.isFile && file.length() == sizeBytes &&
+          java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes()).contentEquals(sha256)
+      }?.name
+
+    override fun reuse(id: String, playlist: PeerPlaylist?) { reused = id to playlist }
+
+    @Volatile var requestedPlaylist: String? = null
+    override fun sendPlaylist(id: String, toFingerprint: String): Boolean {
+      requestedPlaylist = id
+      return true
+    }
 
     override fun download(url: String, mediaKind: String) {
       lastUrl = url
@@ -111,6 +132,41 @@ class PeerSessionTest {
       assertArrayEquals("byte for byte", bytes, received.readBytes())
       assertEquals(received.path, serverContent.lastAccepted)
       assertFalse("no partial file is left behind", File(serverDir, "track.m4a.part").exists())
+    }
+  }
+
+  @Test
+  fun aTrackSentInAPlaylistArrivesWithItAndIsNotSentTwice() {
+    sessions { server, client, serverContent, _ ->
+      val bytes = payload(300_000)
+      val file = File(clientDir, "road.mp3").apply { parentFile?.mkdirs() }
+      file.writeBytes(bytes)
+      fun source(playlist: PeerPlaylist) = ItemSource(file.name, file.length(), playlist = playlist) { file.inputStream() }
+
+      val sent = java.util.concurrent.Semaphore(0)
+      client.onTransferComplete = { sent.release() }
+      assertTrue(client.send(source(PeerPlaylist("Road trip")), "music"))
+      assertTrue("the track arrives", sent.tryAcquire(30, TimeUnit.SECONDS))
+      Thread.sleep(200)
+      assertEquals("with its playlist's name", PeerPlaylist("Road trip"), serverContent.lastPlaylist)
+
+      // The same bytes again: not sent, but the track joins the playlist, here Favorites.
+      val landedBefore = serverDir.listFiles()!!.size
+      assertTrue(client.send(source(PeerPlaylist("", favorites = true)), "music"))
+      assertTrue("the send is done", sent.tryAcquire(30, TimeUnit.SECONDS))
+      Thread.sleep(200)
+      assertEquals("nothing new lands", landedBefore, serverDir.listFiles()!!.size)
+      assertEquals("road.mp3" to PeerPlaylist("", favorites = true), serverContent.reused)
+    }
+  }
+
+  @Test
+  fun aPlaylistAskedForReachesTheOtherDevice() {
+    sessions { _, client, serverContent, _ ->
+      assertTrue(client.requestPlaylist("road-trip"))
+      val deadline = System.currentTimeMillis() + 10_000
+      while (serverContent.requestedPlaylist == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
+      assertEquals("road-trip", serverContent.requestedPlaylist)
     }
   }
 

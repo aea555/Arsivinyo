@@ -1,4 +1,5 @@
 import AVFoundation
+import CryptoKit
 import Foundation
 
 /// The music library: audio files in a folder, and an index of what they are.
@@ -145,6 +146,7 @@ public final class MusicLibrary: @unchecked Sendable {
     /// often missing or wrong on what comes off a site.
     @discardableResult
     public func adopt(_ file: URL, title: String? = nil, artist: String? = nil,
+                      fallbackTitle: String? = nil, fallbackArtist: String? = nil,
                       artwork: URL? = nil, move: Bool = true,
                       presetId: String? = nil, sourceSongId: String? = nil) async throws -> Track {
         try FileManager.default.createDirectory(at: musicFolder, withIntermediateDirectories: true)
@@ -171,9 +173,9 @@ public final class MusicLibrary: @unchecked Sendable {
         let attributes = try? FileManager.default.attributesOfItem(atPath: destination.path)
         let track = Track(
             id: id,
-            title: title?.nonEmpty ?? tags.title?.nonEmpty
+            title: title?.nonEmpty ?? tags.title?.nonEmpty ?? fallbackTitle?.nonEmpty
                 ?? destination.deletingPathExtension().lastPathComponent,
-            artist: artist?.nonEmpty ?? tags.artist ?? "",
+            artist: artist?.nonEmpty ?? tags.artist?.nonEmpty ?? fallbackArtist?.nonEmpty ?? "",
             fileName: destination.lastPathComponent,
             durationSeconds: tags.duration,
             sizeBytes: (attributes?[.size] as? NSNumber)?.int64Value ?? 0,
@@ -188,6 +190,38 @@ public final class MusicLibrary: @unchecked Sendable {
             writeIndex(tracks, playlists)
         }
         return track
+    }
+
+    /// Fills in artists the library lost: before FLAC's tags were read, every FLAC and every
+    /// render made from one came in with none. An original takes its file's, a render its
+    /// source's. Only blanks are touched. Returns how many it filled.
+    @discardableResult
+    public func repairArtists() async -> Int {
+        let tracks = load().tracks
+        var found: [String: String] = [:]
+        for track in tracks where track.artist.isEmpty && track.sourceSongId == nil {
+            if let artist = await Self.readTags(fileURL(for: track)).artist?.nonEmpty { found[track.id] = artist }
+        }
+        let byId = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for track in tracks where track.artist.isEmpty {
+            // A render of a render goes back to the first that has one.
+            var source = track.sourceSongId
+            var hops = 0
+            while let id = source, found[track.id] == nil, hops < 8 {
+                if let artist = found[id] ?? byId[id]?.artist.nonEmpty { found[track.id] = artist }
+                source = byId[id]?.sourceSongId
+                hops += 1
+            }
+        }
+        guard !found.isEmpty else { return 0 }
+        guardLock.withLock {
+            var (tracks, playlists) = readIndex()
+            for index in tracks.indices where tracks[index].artist.isEmpty {
+                if let artist = found[tracks[index].id] { tracks[index].artist = artist }
+            }
+            writeIndex(tracks, playlists)
+        }
+        return found.count
     }
 
     /// Copies audio in from elsewhere; the originals stay where they are.
@@ -280,6 +314,29 @@ public final class MusicLibrary: @unchecked Sendable {
         }
     }
 
+    /// A track a paired device sent as part of a playlist joins it here: the playlist of that
+    /// name, made if there is none, or Favorites. At the end, in the order the tracks come.
+    public func add(_ trackId: String, to peer: PeerPlaylist) {
+        if peer.favorites { return setFavorite(trackId, true) }
+        let id = load().playlists.first { !$0.isSystem && $0.name == peer.name }?.id ?? createPlaylist(named: peer.name).id
+        add([trackId], to: id)
+    }
+
+    /// The track whose file has exactly these bytes, if there is one: only files of the same
+    /// size are read and hashed, so a library is not hashed whole for each offer.
+    public func track(sizeBytes: Int64, sha256: Data) -> Track? {
+        for track in load().tracks {
+            let file = fileURL(for: track)
+            guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) == sizeBytes,
+                  let handle = try? FileHandle(forReadingFrom: file) else { continue }
+            defer { try? handle.close() }
+            var hasher = SHA256()
+            while let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+            if Data(hasher.finalize()) == sha256 { return track }
+        }
+        return nil
+    }
+
     public func remove(_ trackIds: [String], from playlistId: String) {
         guardLock.withLock {
             var (tracks, playlists) = readIndex()
@@ -353,6 +410,18 @@ public final class MusicLibrary: @unchecked Sendable {
             case .commonKeyArtist: tags.artist = try? await item.load(.stringValue)
             case .commonKeyArtwork: tags.artwork = try? await item.load(.dataValue)
             default: break
+            }
+        }
+        // A FLAC's or an Ogg's tags are Vorbis comments, which AVFoundation leaves out of the
+        // common keys: read by name from the file's own metadata instead. Without this every
+        // FLAC came in with no artist, and so did every render made from one.
+        if tags.title?.nonEmpty == nil || tags.artist?.nonEmpty == nil {
+            for format in (try? await asset.load(.availableMetadataFormats)) ?? [] {
+                for item in (try? await asset.loadMetadata(for: format)) ?? [] {
+                    let key = ((item.key as? String) ?? "").uppercased()
+                    if key == "ARTIST", tags.artist?.nonEmpty == nil { tags.artist = try? await item.load(.stringValue) }
+                    if key == "TITLE", tags.title?.nonEmpty == nil { tags.title = try? await item.load(.stringValue) }
+                }
             }
         }
         return tags

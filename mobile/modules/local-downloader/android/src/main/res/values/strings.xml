@@ -48,4 +48,18 @@
   <string name="ldl_memes_channel_description">Asks for tags when a meme finishes downloading</string>
   <string name="ldl_meme_prompt_title">A meme finished downloading</string>
   <string name="ldl_meme_prompt_text">Tap to tag it</string>
+
+  <!-- Transfers between paired devices (PairingNotifier). -->
+  <string name="ldl_pairing_channel">Transfers between devices</string>
+  <string name="ldl_pairing_channel_description">Shows music going to and coming from your paired devices</string>
+  <string name="ldl_pairing_receiving">Receiving from %1$s</string>
+  <string name="ldl_pairing_sending">Sending to %1$s</string>
+  <string name="ldl_pairing_received">Received from %1$s</string>
+  <string name="ldl_pairing_sent">Sent to %1$s</string>
+  <string name="ldl_pairing_batch">%1$d of %2$d</string>
+  <string name="ldl_pairing_device">a paired device</string>
+  <plurals name="ldl_pairing_tracks">
+    <item quantity="one">%d track</item>
+    <item quantity="other">%d tracks</item>
+  </plurals>
 </resources>

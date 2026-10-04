@@ -60,8 +60,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>4.0.0-beta.1</string>
-  <key>CFBundleVersion</key><string>40000</string>
+  <key>CFBundleShortVersionString</key><string>4.1.0</string>
+  <key>CFBundleVersion</key><string>40100</string>
   <key>LSMinimumSystemVersion</key><string>27.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <!-- A normal windowed app: dock icon, menu bar, the lot. -->

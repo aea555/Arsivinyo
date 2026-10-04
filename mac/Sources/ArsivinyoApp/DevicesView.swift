@@ -23,6 +23,7 @@ private struct DevicesList: View {
     @Bindable var devices: DevicesModel
     @State private var linkTarget: PeerRegistry.Peer?
     @State private var browsing: PeerRegistry.Peer?
+    @State private var sendingTo: PeerRegistry.Peer?
     @State private var forgetting: PeerRegistry.Peer?
 
     var body: some View {
@@ -72,6 +73,8 @@ private struct DevicesList: View {
                             devices.browse(peer.fingerprint)
                         }
                         .disabled(!online)
+                        Button("Send Music…") { sendingTo = peer }
+                            .disabled(!online)
                         Button("Send Link…") { linkTarget = peer }
                             .disabled(!online)
                         Button(role: .destructive) { forgetting = peer } label: { Image(systemName: "trash") }
@@ -112,6 +115,9 @@ private struct DevicesList: View {
             if let transfer = devices.transfer {
                 Section {
                     HStack {
+                        if let sending = devices.sending {
+                            Text("\(sending.index) of \(sending.count)").monospacedDigit().foregroundStyle(.secondary)
+                        }
                         ProgressView(value: Double(transfer.done), total: Double(max(transfer.total, 1)))
                         Button("Cancel") { devices.cancelTransfer() }
                     }
@@ -128,6 +134,11 @@ private struct DevicesList: View {
         }
         .sheet(item: $browsing) { peer in
             BrowseSheet(devices: devices, peer: peer)
+        }
+        .sheet(item: $sendingTo) { peer in
+            SendMusicSheet(tracks: model.tracks, playlists: model.playlists.filter { !$0.trackIds.isEmpty },
+                           send: { chosen in devices.send(chosen, to: peer.fingerprint) },
+                           sendPlaylist: { playlist in devices.sendPlaylist(playlist, to: peer.fingerprint) })
         }
         .sheet(item: $linkTarget) { peer in
             SendLinkSheet { url, audio in devices.sendLink(url, audio: audio, to: peer.fingerprint) }
@@ -184,21 +195,40 @@ private struct BrowseSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             if let listing = devices.listing, listing.fingerprint == peer.fingerprint {
-                if listing.items.isEmpty {
+                if listing.items.isEmpty && listing.playlists.isEmpty {
                     ContentUnavailableView("No music on that device", systemImage: "music.note")
                 } else {
-                    List(listing.items) { item in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(item.title).lineLimit(1)
-                                if !item.artist.isEmpty {
-                                    Text(item.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    List {
+                        if !listing.playlists.isEmpty {
+                            Section("Playlists") {
+                                ForEach(listing.playlists) { playlist in
+                                    HStack {
+                                        Label(playlist.favorites ? String(localized: "Favorites") : playlist.name,
+                                              systemImage: playlist.favorites ? "heart" : "music.note.list")
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text("^[\(playlist.count) track](inflect: true)").foregroundStyle(.secondary).monospacedDigit()
+                                        Button("Get") { devices.fetchPlaylist(playlist.id, from: peer.fingerprint) }
+                                            .help("The tracks you do not have yet come over, and the playlist is made here.")
+                                    }
                                 }
                             }
-                            Spacer()
-                            Text(ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file))
-                                .foregroundStyle(.secondary).monospacedDigit()
-                            Button("Get") { devices.fetch(item.id, from: peer.fingerprint) }
+                        }
+                        Section("Tracks") {
+                            ForEach(listing.items) { item in
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(item.title).lineLimit(1)
+                                        if !item.artist.isEmpty {
+                                            Text(item.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                    }
+                                    Spacer()
+                                    Text(ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file))
+                                        .foregroundStyle(.secondary).monospacedDigit()
+                                    Button("Get") { devices.fetch(item.id, from: peer.fingerprint) }
+                                }
+                            }
                         }
                     }
                 }
@@ -272,5 +302,130 @@ struct LinkRequestSheet: View {
         }
         .padding(20)
         .frame(width: 380)
+    }
+}
+
+/// Music to send to a paired device: a whole playlist, which the device makes too, or tracks
+/// from the library, searched, any number chosen.
+private struct SendMusicSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let tracks: [MusicLibrary.Track]
+    let playlists: [MusicLibrary.Playlist]
+    let send: ([MusicLibrary.Track]) -> Void
+    let sendPlaylist: (MusicLibrary.Playlist) -> Void
+    @State private var search = ""
+    @State private var selection = Set<MusicLibrary.Track.ID>()
+
+    private var shown: [MusicLibrary.Track] {
+        let query = search.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return tracks }
+        return tracks.filter { $0.title.localizedStandardContains(query) || $0.artist.localizedStandardContains(query) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !playlists.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Playlists").font(.headline)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(playlists) { playlist in
+                                Button {
+                                    sendPlaylist(playlist)
+                                    dismiss()
+                                } label: {
+                                    Label("\(AppModel.displayName(of: playlist)) · \(playlist.trackIds.count)",
+                                          systemImage: playlist.isSystem ? "heart" : "music.note.list")
+                                }
+                                .help("Sends the whole playlist; the other device makes it too.")
+                            }
+                        }
+                    }
+                }
+                .padding([.horizontal, .top], 12)
+            }
+            TextField("Search music", text: $search)
+                .textFieldStyle(.roundedBorder)
+                .padding(12)
+            if tracks.isEmpty {
+                ContentUnavailableView("No music on this Mac", systemImage: "music.note")
+            } else {
+                Table(shown, selection: $selection) {
+                    TableColumn("Title") { Text($0.title).lineLimit(1) }
+                    TableColumn("Artist") { Text($0.artist).foregroundStyle(.secondary).lineLimit(1) }
+                    TableColumn("Size") {
+                        Text(ByteCountFormatter.string(fromByteCount: $0.sizeBytes, countStyle: .file))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    .width(80)
+                }
+            }
+            HStack {
+                Text("Choose with ⌘ or ⇧ for more than one.").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(selection.count > 1 ? LocalizedStringKey("Send \(selection.count) Tracks") : LocalizedStringKey("Send")) {
+                    send(tracks.filter { selection.contains($0.id) })
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(selection.isEmpty)
+            }
+            .padding(12)
+        }
+        .frame(width: 560, height: 480)
+    }
+}
+
+/// Music going to or coming from a paired device, shown over every section: the device,
+/// "3 of 12" for several, and how far the one in flight is. Clicking it opens Devices. It used
+/// to be seen only in Devices, so a transfer the phone started ran unseen. Never what the
+/// tracks are called.
+struct TransferBar: View {
+    @Environment(AppModel.self) private var model
+    /// A batch pauses between files; the bar stays this long before it goes.
+    @State private var lingering = false
+
+    private var moving: Bool { model.devices.map { $0.transfer != nil || $0.sending != nil } ?? false }
+
+    var body: some View {
+        // Always here, though often empty, so it sees a transfer end and can wait out a pause.
+        VStack(spacing: 0) {
+            if let devices = model.devices, moving || lingering {
+                bar(devices)
+            }
+        }
+        .onChange(of: moving) { _, now in
+            guard !now else { lingering = false; return }
+            lingering = true
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                if !moving { lingering = false }
+            }
+        }
+    }
+
+    private func bar(_ devices: DevicesModel) -> some View {
+        let done = devices.transfer?.done ?? 0
+        let total = max(devices.transfer?.total ?? 1, 1)
+        let peer = devices.transferPeer.isEmpty ? String(localized: "a paired device") : devices.transferPeer
+        return Button { model.section = .devices } label: {
+            HStack(spacing: 10) {
+                Image(systemName: devices.transferIncoming ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
+                    .foregroundStyle(.tint)
+                Text(devices.transferIncoming ? "Receiving from \(peer)" : "Sending to \(peer)").lineLimit(1)
+                if let batch = devices.transferBatch {
+                    Text("\(batch.index) of \(batch.count)").foregroundStyle(.secondary).monospacedDigit()
+                }
+                ProgressView(value: Double(done), total: Double(total)).frame(maxWidth: 220)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.bar)
+        .help("Open Devices")
     }
 }

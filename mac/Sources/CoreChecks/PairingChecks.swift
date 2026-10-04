@@ -77,6 +77,10 @@ final class LoopbackContent: PeerContent, @unchecked Sendable {
     private var landed: [URL] = []
     private var covers: [Data] = []
     private var memeObjects: [[String: Any]] = []
+    private var lists: [PeerPlaylist] = []
+    private var reuses: [(String, PeerPlaylist)] = []
+    var receivedPlaylists: [PeerPlaylist] { lock.withLock { lists } }
+    var reused: [(String, PeerPlaylist)] { lock.withLock { reuses } }
     var receivedMemes: [[String: Any]] { lock.withLock { memeObjects } }
     var received: [URL] { lock.withLock { landed } }
     var receivedArtwork: [Data] { lock.withLock { covers } }
@@ -103,13 +107,33 @@ final class LoopbackContent: PeerContent, @unchecked Sendable {
         folder.appendingPathComponent("incoming-" + (name as NSString).lastPathComponent)
     }
 
-    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?) {
+    func accepted(_ file: URL, kind: String, artwork: URL?, meme: [String: Any]?, playlist: PeerPlaylist?,
+                  title: String?, artist: String?) {
         let cover = artwork.flatMap { try? Data(contentsOf: $0) }
         lock.withLock {
             landed.append(file)
             if let cover { covers.append(cover) }
             if let meme { memeObjects.append(meme) }
+            if let playlist { lists.append(playlist) }
         }
+    }
+
+    /// A landed file with these bytes, by its path.
+    func existing(sizeBytes: Int64, sha256: Data, kind: String) -> String? {
+        received.first { (try? Data(contentsOf: $0)).map { Data(SHA256.hash(data: $0)) == sha256 } ?? false }?.path
+    }
+
+    private var asked: [String] = []
+    var requestedPlaylists: [String] { lock.withLock { asked } }
+
+    func sendPlaylist(_ id: String, to fingerprint: String) -> Bool {
+        lock.withLock { asked.append(id) }
+        return true
+    }
+
+    func reuse(_ id: String, playlist: PeerPlaylist?) {
+        guard let playlist else { return }
+        lock.withLock { reuses.append((id, playlist)) }
     }
     func downloadRequested(url: String, mediaKind: String, from peerName: String) {}
 }
@@ -142,7 +166,7 @@ extension CoreChecks {
         }
 
         let (alice, aliceFiles) = try service("Alice")
-        let (bob, _) = try service("Bob", offering: track, artwork: cover)
+        let (bob, bobContent) = try service("Bob", offering: track, artwork: cover)
         try alice.start()
         try bob.start()
         defer { alice.stop(); bob.stop() }
@@ -189,6 +213,29 @@ extension CoreChecks {
         check(decoded?.tags.first?.0 == "laubalilik" && decoded?.tags.first?.1 == [.action, .vibe]
               && decoded?.people == ["Arda Turan"] && decoded?.source?.caption == "bizim laubalilik seviyesi",
               "with its tags, facets, people and caption")
+
+        // A track sent as part of a playlist lands with it; the same bytes sent again are not
+        // sent twice, and join the playlist instead.
+        let song = scratch.appendingPathComponent("road.mp3")
+        try Self.pattern(300_000, 7).write(to: song)
+        var songsSent = 0
+        bob.sessions.first?.onSent = { songsSent += 1 }
+        let landedBefore = aliceFiles.received.count
+        _ = bob.sessions.first?.send(ItemSource(name: "road.mp3", sizeBytes: 300_000, file: song,
+                                                playlist: PeerPlaylist(name: "Road trip")))
+        check(Self.waitFor(30) { songsSent == 1 && aliceFiles.receivedPlaylists.last == PeerPlaylist(name: "Road trip") },
+              "a track sent in a playlist arrives with its playlist's name")
+        _ = bob.sessions.first?.send(ItemSource(name: "road.mp3", sizeBytes: 300_000, file: song,
+                                                playlist: PeerPlaylist(name: "", favorites: true)))
+        check(Self.waitFor(30) { songsSent == 2 }
+              && aliceFiles.received.count == landedBefore + 1
+              && aliceFiles.reused.last?.1 == PeerPlaylist(name: "", favorites: true),
+              "one already there is not sent again: it joins the playlist, here Favorites")
+
+        // Alice asks Bob for a whole playlist: Bob's content is asked to send it.
+        let bobFiles = bobContent
+        _ = alice.sessions.first?.requestPlaylist(id: "road-trip")
+        check(Self.waitFor { bobFiles.requestedPlaylists == ["road-trip"] }, "a playlist asked for reaches the other device")
 
         // A restart of Bob: same identity, a fresh session certificate, no ceremony.
         bob.stop()
