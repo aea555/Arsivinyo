@@ -12,7 +12,10 @@ struct MPVVideoView: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: MPVLayerView, context: Context) {}
+    /// Attached again if the player was stopped while the view stayed: a no-op otherwise.
+    func updateNSView(_ view: MPVLayerView, context: Context) {
+        player.attach(view.metal)
+    }
 
     static func dismantleNSView(_ view: MPVLayerView, coordinator: ()) {}
 }
@@ -46,11 +49,11 @@ struct VideoPlayerScreen<Overlay: View>: View {
             Color.black
             MPVVideoView(player: player)
                 .onTapGesture(count: 2) { toggleFullScreen() }
-            if player.buffering, player.failed == nil {
-                VStack(spacing: 10) {
-                    ProgressView().controlSize(.large).tint(.white)
-                    if let torrentId { TorrentLiveText(id: torrentId).font(.callout).foregroundStyle(.white) }
-                }
+            // With the controls hidden the spinner stands alone in the middle; with them shown it
+            // takes the play button's place, so the two are never drawn over each other.
+            if player.buffering, player.failed == nil, !(controlsShown || player.paused) {
+                ProgressView().controlSize(.large).tint(.white)
+                    .overlay(alignment: .top) { torrentLine.offset(y: 56) }
             }
             if controlsShown || player.paused { controls.transition(.opacity) }
             if let failed = player.failed {
@@ -62,7 +65,17 @@ struct VideoPlayerScreen<Overlay: View>: View {
                 .background(.black.opacity(0.75), in: .rect(cornerRadius: 12))
                 .foregroundStyle(.white)
             }
-            overlay()
+            // What the screen adds, such as the next episode: in the lower corner, above the
+            // seek bar, where it covers none of the controls.
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    overlay()
+                }
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 64)
         }
         .onContinuousHover { phase in
             if case .active = phase { reveal() }
@@ -112,6 +125,11 @@ struct VideoPlayerScreen<Overlay: View>: View {
         .onKeyPress(.space) { player.togglePause(); return .handled }
         .onKeyPress(.leftArrow) { player.seek(byMs: -10_000); return .handled }
         .onKeyPress(.rightArrow) { player.seek(byMs: 10_000); return .handled }
+    }
+
+    /// A torrent's peers and speed while it loads; nothing for any other video.
+    @ViewBuilder private var torrentLine: some View {
+        if let torrentId { TorrentLiveText(id: torrentId).font(.callout).foregroundStyle(.white).fixedSize() }
     }
 
     private var canFullScreen: Bool { fullScreenWindow && window != nil }
@@ -182,14 +200,25 @@ struct VideoPlayerScreen<Overlay: View>: View {
             HStack(spacing: 48) {
                 Button { player.seek(byMs: -10_000) } label: { Image(systemName: "gobackward.10").font(.title) }
                     .help("Back 10 seconds")
-                Button { player.togglePause() } label: {
-                    Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.system(size: 44))
+                Group {
+                    if player.buffering, player.failed == nil {
+                        ProgressView().controlSize(.large).tint(.white)
+                    } else {
+                        Button { player.togglePause() } label: {
+                            Image(systemName: player.paused ? "play.fill" : "pause.fill").font(.system(size: 44))
+                        }
+                        .help(player.paused ? "Play" : "Pause")
+                    }
                 }
-                .help(player.paused ? "Play" : "Pause")
+                .frame(width: 56, height: 56)
                 Button { player.seek(byMs: 10_000) } label: { Image(systemName: "goforward.10").font(.title) }
                     .help("Forward 10 seconds")
             }
             .buttonStyle(.plain)
+            // Under the row, without moving it off the middle.
+            .overlay(alignment: .bottom) {
+                if player.buffering, player.failed == nil { torrentLine.offset(y: 40) }
+            }
 
             Spacer()
 

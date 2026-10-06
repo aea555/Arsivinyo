@@ -4,25 +4,25 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
-### Fixed
-- Phone: the music library stayed as it was while tracks came in from a paired device, until
-  the screen was opened again. It updates as each one arrives, and as a playlist fills.
-- A track made with a preset (Slowed + Reverb and the like) showed its artist as unknown,
-  on both apps. On the phone, reconciling the library with MediaStore replaced a stored
-  artist with MediaStore's "<unknown>" whenever MediaStore had not read the file's tags; it
-  now only fills a blank and never takes "<unknown>". On the Mac, FLAC's tags (Vorbis
-  comments) were never read, so every FLAC came in without an artist and every render of
-  one inherited none. Both apps repair what is already in the library: a render takes its
-  source's artist, and an original reads its file again. A track sent between devices
-  carries its title and artist, used where the file has none.
+## [Mac 4.1.1] — The player at the end of an episode
 
-### Added
-- Music going to or coming from a paired device shows on every screen of both apps, not
-  only in Devices: a bar with the device, "3 of 12" for several, and how far the one in
-  flight is; clicking it opens Devices. The phone also shows it in a notification, for when
-  the app is in the background. Names of tracks are never shown. Each offer carries its
-  place in the batch (`shared/pairing/PROTOCOL.md`).
-- Mac: Send Music… offers your playlists as well as tracks.
+Fixes to the Mac player once an episode ends. The Mac app alone moves to 4.1.1; the phone
+stays at 4.1.0.
+
+### Fixed
+- Mac player: once an episode had ended, the player was stuck on its last frame, even for
+  another episode chosen afterwards: closing the window stopped mpv, and SwiftUI keeps the
+  window's player when it opens again, so nothing was left to play with. A closed player
+  starts mpv again for the next video.
+- Mac player: Next Episode did nothing for an add-on whose streams are torrents, such as
+  Torrentio: torrents were left out of the choice. It takes the stream of the same binge
+  group, else the add-on's first, and says why when there is none. At the end of an
+  episode the next one starts by itself after eight seconds, unless cancelled.
+- Mac player: the next-episode panel sat over the play and seek buttons; it is in the lower
+  corner now. While a video loads the spinner takes the play button's place instead of
+  being drawn under it, and the seek bar no longer shows the last video's time.
+- Mac player: the next episode, or any video opened in a player already showing one, started
+  paused if the one before had ended or been paused. A new video plays.
 
 ## [4.1.0] — Sending music and playlists between devices
 
@@ -31,6 +31,12 @@ can be browsed and taken, and a track the other device already has is never sent
 apps carry 4.1.0. `versionCode` → `40100`.
 
 ### Added
+- Music going to or coming from a paired device shows on every screen of both apps, not
+  only in Devices: a bar with the device, "3 of 12" for several, and how far the one in
+  flight is; clicking it opens Devices. The phone also shows it in a notification, for when
+  the app is in the background. Names of tracks are never shown. Each offer carries its
+  place in the batch (`shared/pairing/PROTOCOL.md`).
+- Mac: Send Music… offers your playlists as well as tracks.
 - Mac: music is sent to a paired device from Devices, with Send Music…, which picks any
   number of tracks from the library. Several go one after another, with how far it is.
 - **Sending playlists.** A whole playlist goes to a paired device, Favorites too, and the
@@ -44,6 +50,16 @@ apps carry 4.1.0. `versionCode` → `40100`.
 - Phone: several tracks sent to a device go one after another, with how far it is.
 
 ### Fixed
+- Phone: the music library stayed as it was while tracks came in from a paired device, until
+  the screen was opened again. It updates as each one arrives, and as a playlist fills.
+- A track made with a preset (Slowed + Reverb and the like) showed its artist as unknown,
+  on both apps. On the phone, reconciling the library with MediaStore replaced a stored
+  artist with MediaStore's "<unknown>" whenever MediaStore had not read the file's tags; it
+  now only fills a blank and never takes "<unknown>". On the Mac, FLAC's tags (Vorbis
+  comments) were never read, so every FLAC came in without an artist and every render of
+  one inherited none. Both apps repair what is already in the library: a render takes its
+  source's artist, and an original reads its file again. A track sent between devices
+  carries its title and artist, used where the file has none.
 - Mac: a playlist's menu in the sidebar showed only New Playlist…: a menu on the Playlists
   section replaced every playlist's own, so Rename, Delete and Send to were never seen. New
   Playlist… is in each playlist's menu now.

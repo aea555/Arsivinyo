@@ -48,13 +48,20 @@ extension AppModel {
     }
 
     /// The next episode from the same add-on and binge group, as Stremio does.
-    func nextRequest(after request: WatchPlayRequest) async -> WatchPlayRequest? {
-        guard let next = request.nextVideo, let source = request.source,
-              let streams = try? await watch.streams(from: source, type: request.title.type, id: next.id),
-              let stream = streams.first(where: { $0.kind != .torrent && request.bingeGroup != nil && $0.bingeGroup == request.bingeGroup })
-                ?? streams.first(where: { $0.kind != .torrent }),
-              let prepared = try? await prepare(stream),
-              let meta = try? await watch.meta(type: request.title.type, id: request.title.id) else { return nil }
+    /// The next episode, from the same add-on: the stream of the same binge group, as Stremio
+    /// picks it, else the add-on's first that plays here. Torrents too: an add-on such as
+    /// Torrentio has nothing else, and leaving them out made Next Episode do nothing at all.
+    func nextRequest(after request: WatchPlayRequest) async throws -> WatchPlayRequest {
+        guard let next = request.nextVideo, let source = request.source else {
+            throw NextFailure(message: String(localized: "There is no next episode."))
+        }
+        let streams = try await watch.streams(from: source, type: request.title.type, id: next.id)
+        guard let stream = streams.first(where: { request.bingeGroup != nil && $0.bingeGroup == request.bingeGroup })
+                ?? streams.first(where: { $0.kind != .external }) else {
+            throw NextFailure(message: String(localized: "\(source.name) has no stream for the next episode."))
+        }
+        let prepared = try await prepare(stream)
+        let meta = try await watch.meta(type: request.title.type, id: request.title.id)
         let regular = meta.videos.filter { ($0.season ?? 1) != 0 }
         let following = regular.firstIndex(where: { $0.id == next.id }).flatMap { $0 + 1 < regular.count ? regular[$0 + 1] : nil }
         return WatchPlayRequest(url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: request.title, videoId: next.id,
@@ -62,6 +69,12 @@ extension AppModel {
                                 bingeGroup: stream.bingeGroup, startMs: 0, nextVideo: following,
                                 subtitles: stream.subtitles, filename: stream.filename, torrentId: prepared.torrentId)
     }
+}
+
+/// Why the next episode could not start, in words for the player to show.
+struct NextFailure: Error, CustomStringConvertible {
+    let message: String
+    var description: String { message }
 }
 
 /// Watch: continue watching, then every add-on's catalogs as rows, or search across them
@@ -1001,25 +1014,53 @@ struct WatchPlayerWindow: View {
     @State private var request: WatchPlayRequest?
     @State private var subtitles: [Addons.Subtitle] = []
     @State private var loadingNext = false
+    /// Seconds until the next episode starts by itself, once one has ended; nil when cancelled.
+    @State private var countdown: Int?
+    @State private var nextProblem: String?
 
     var body: some View {
         VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles, fullScreenWindow: true,
                           torrentId: request?.torrentId) {
             if player.ended, request?.nextVideo != nil {
-                Button {
-                    loadingNext = true
-                    Task {
-                        if let current = request, let next = await model.nextRequest(after: current) { start(next) }
-                        loadingNext = false
+                VStack(spacing: 10) {
+                    Button(action: playNext) {
+                        if loadingNext { ProgressView() } else { Label("Next Episode", systemImage: "forward.end.fill") }
                     }
-                } label: {
-                    if loadingNext { ProgressView() } else { Label("Next Episode", systemImage: "forward.end.fill") }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(loadingNext)
+                    if let countdown, !loadingNext {
+                        HStack(spacing: 10) {
+                            Text("Next episode in \(countdown)").monospacedDigit()
+                            Button("Cancel") { self.countdown = nil }
+                        }
+                        .foregroundStyle(.white)
+                    }
+                    if let nextProblem {
+                        Text(nextProblem).foregroundStyle(.white).frame(maxWidth: 320)
+                    }
                 }
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
+                .padding(14)
+                .background(.black.opacity(0.7), in: .rect(cornerRadius: 12))
             }
         }
         .navigationTitle(request?.videoName ?? "")
+        // At the end of an episode with a next one, it starts by itself after a moment, as
+        // Stremio does; Cancel stays on this one.
+        .task(id: player.ended) {
+            countdown = nil
+            guard player.ended, request?.nextVideo != nil, nextProblem == nil else { return }
+            countdown = 8
+            while let left = countdown, left > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                if countdown != nil { countdown = left - 1 }
+            }
+            if countdown == 0 {
+                countdown = nil
+                playNext()
+            }
+        }
         .onAppear { if let pending = model.watchPlaying { start(pending) } }
         .onChange(of: model.watchPlaying) { _, pending in if let pending, pending != request { start(pending) } }
         .task {
@@ -1035,8 +1076,29 @@ struct WatchPlayerWindow: View {
         }
     }
 
+    private func playNext() {
+        guard !loadingNext, let current = request else { return }
+        loadingNext = true
+        countdown = nil
+        nextProblem = nil
+        Task {
+            do {
+                let next = try await model.nextRequest(after: current)
+                start(next)
+                // What is playing now, so a window closed and opened again goes on with it.
+                model.watchPlaying = next
+            } catch {
+                nextProblem = (error as? NextFailure)?.message
+                    ?? String(localized: "Could not start the next episode: \(String(describing: error))")
+            }
+            loadingNext = false
+        }
+    }
+
     private func start(_ next: WatchPlayRequest) {
         save()
+        nextProblem = nil
+        countdown = nil
         request = next
         subtitles = []
         player.languages = (try? model.watch.library.languages()) ?? WatchLibrary.defaultLanguages

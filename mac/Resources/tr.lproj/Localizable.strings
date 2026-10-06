@@ -2,6 +2,7 @@
 
 "%@ %@" = "%@ %@";
 "%@ (not connected)" = "%@ (bağlı değil)";
+"%@ has no stream for the next episode." = "%@ eklentisinde sonraki bölüm için yayın yok.";
 "%@ · %lld" = "%@ · %lld";
 "%@, downloaded" = "%@, indirilen";
 "%lld added" = "%lld eklendi";
@@ -90,6 +91,7 @@
 "Could not import: %@" = "İçe aktarılamadı: %@";
 "Could not make room for an item on its way in." = "Gelen bir öğe için yer açılamadı.";
 "Could not reach that device." = "O cihaza ulaşılamadı.";
+"Could not start the next episode: %@" = "Sonraki bölüm başlatılamadı: %@";
 "Current passphrase" = "Mevcut parola cümlesi";
 "Damping" = "Sönümleme";
 "Default" = "Varsayılan";
@@ -186,6 +188,7 @@
 "New Preset" = "Yeni Ön Ayar";
 "New Tag “%@”" = "Yeni Etiket “%@”";
 "New passphrase" = "Yeni parola cümlesi";
+"Next episode in %lld" = "Sonraki bölüm %lld saniye içinde";
 "Next" = "Sonraki";
 "Nightcore" = "Nightcore";
 "No cookie profiles. A site that refuses signed-out downloads works with a cookies.txt exported from a browser where you are signed in." = "Cookie profili yok. Oturum açılmadan indirmeyi reddeden bir site, oturum açık bir tarayıcıdan dışa aktarılan cookies.txt ile çalışır.";
@@ -337,6 +340,7 @@
 "The vault and cookies are restored encrypted with your passphrase, so unlock first." = "Kasa ve cookie'ler parola cümlenizle şifrelenerek geri yüklenir, bu yüzden önce kilidi açın.";
 "The vault is locked." = "Kasa kilitli.";
 "The vault is unlocked. Lock it now." = "Kasanın kilidi açık. Şimdi kilitleyin.";
+"There is no next episode." = "Sonraki bölüm yok.";
 "There is no other copy, and this cannot be undone." = "Başka bir kopyası yok ve bu geri alınamaz.";
 "They Differ" = "Farklılar";
 "They Match" = "Aynılar";

@@ -60,6 +60,12 @@ final class MPVPlayer {
     /// What `arsivinyo-vault://` URLs read from: a vault item, decrypted as mpv asks.
     @ObservationIgnored private let vault: EncryptedReader?
     @ObservationIgnored private var refit: Task<Void, Never>?
+    /// The layer it draws in, kept so it can start again after the window closed: SwiftUI keeps
+    /// a Window scene's view, and this player with it, when the window closes and opens again.
+    @ObservationIgnored private weak var layer: CAMetalLayer?
+    /// The mpv a closed window stopped, until it is gone: a new one on the same layer waits for
+    /// it, as Vulkan allows one surface per layer.
+    @ObservationIgnored private var retired: Core?
 
     init(vault: EncryptedReader? = nil) {
         self.vault = vault
@@ -69,7 +75,10 @@ final class MPVPlayer {
 
     /// Starts mpv on the view's layer. Before this, a source waits.
     func attach(_ layer: CAMetalLayer) {
+        self.layer = layer
         guard core == nil else { return }
+        retired?.waitUntilGone()
+        retired = nil
         do {
             core = try Core(layer: layer, vault: vault.map(VaultStream.init)) { [weak self] event in
                 Task { @MainActor in self?.apply(event) }
@@ -95,10 +104,21 @@ final class MPVPlayer {
         }
     }
 
-    /// Stops mpv for good: the window is closing.
+    /// Stops mpv: the window is closing. What it was playing is forgotten, and the next `load`
+    /// starts mpv again on the same layer. It once stayed stopped: the window, reopened for
+    /// another episode, kept showing the last frame of the one before and answered nothing.
     func detach() {
+        refit?.cancel()
         core?.destroy()
+        retired = core
         core = nil
+        loaded = nil
+        ended = false
+        paused = false
+        buffering = true
+        positionMs = 0
+        durationMs = 0
+        tracks = []
     }
 
     // MARK: - What the screen tells it
@@ -106,6 +126,10 @@ final class MPVPlayer {
     func load(_ source: Source) {
         guard source != loaded else { return }
         pending = source
+        if core == nil, let layer {
+            attach(layer)
+            return
+        }
         loadPending()
     }
 
@@ -115,6 +139,9 @@ final class MPVPlayer {
         loaded = source
         failed = nil
         ended = false
+        // The last video's place and length are not this one's.
+        positionMs = 0
+        durationMs = 0
         tracksKnown = false
         tracks = []
         starting = true
@@ -132,6 +159,9 @@ final class MPVPlayer {
         if source.startMs > 0 { options.append("start=\(Double(source.startMs) / 1000)") }
         // Length-quoted, so a comma in the URL cannot end the option.
         if let audio = source.audioURL { options.append("audio-file=%\(audio.utf8.count)%\(audio)") }
+        // A new video plays. mpv pauses itself at the end of one (keep-open), and a pause, the
+        // user's or that one, would otherwise carry over to the next episode.
+        core.setFlag("pause", false)
         var args = ["loadfile", source.url, "replace", "-1"]
         if !options.isEmpty { args.append(options.joined(separator: ",")) }
         core.command(args)
@@ -365,6 +395,11 @@ final class MPVPlayer {
                 mpv_set_wakeup_callback(handle, nil, nil)
                 mpv_terminate_destroy(handle)
             }
+        }
+
+        /// Returns once `destroy` has run: its queue is serial, so this waits for it.
+        func waitUntilGone() {
+            queue.sync {}
         }
     }
 }
