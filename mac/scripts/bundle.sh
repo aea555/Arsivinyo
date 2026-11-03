@@ -18,6 +18,12 @@ APP="$ROOT/.build/Arsivinyo.app"
 "$ROOT/scripts/fetch-mpvkit.sh" >/dev/null
 # The torrent engine's libtorrent, built from pinned source; a no-op once built.
 "$ROOT/../shared/torrent/build.sh" mac
+# The download engine's Python, yt-dlp, curl_cffi and ffmpeg, fetched only when missing: run
+# fetch-engine.sh itself to take a newer yt-dlp.
+ENGINE_BUILD="$ROOT/.build/engine"
+for piece in python/bin/python3 yt-dlp site ffmpeg ffprobe; do
+  [ -e "$ENGINE_BUILD/$piece" ] || { "$ROOT/scripts/fetch-engine.sh"; break; }
+done
 swift build -c "$CONFIG" --product ArsivinyoApp
 
 BINARY="$ROOT/.build/$CONFIG/ArsivinyoApp"
@@ -37,6 +43,22 @@ cp "$FACES/MODELS.json" "$APP/Contents/Resources/faces/"
 cp "$FACES"/models/*.onnx "$FACES"/models/LICENSE-* "$APP/Contents/Resources/faces/models/"
 cp "$FACES/runtime/onnxruntime-osx-arm64-1.30.0/lib/libonnxruntime.1.30.0.dylib" \
     "$APP/Contents/Frameworks/libonnxruntime.1.dylib"
+
+# The download engine, whole, so downloads work on a Mac without Homebrew. The overrides a
+# yt-dlp update downloads are not copied: the app keeps its own in Application Support.
+# Nor is what Python carries for other uses: Tk, IDLE, pip and the like.
+ENGINE_APP="$APP/Contents/Resources/engine"
+mkdir -p "$ENGINE_APP"
+cp "$ROOT"/../shared/engine/*.py "$ENGINE_APP/"
+cp "$ENGINE_BUILD/ffmpeg" "$ENGINE_BUILD/ffprobe" "$ENGINE_APP/"
+rsync -a --exclude __pycache__ "$ENGINE_BUILD/yt-dlp" "$ENGINE_BUILD/site" "$ENGINE_APP/"
+rsync -a --exclude __pycache__ \
+  --exclude 'lib/python3.*/idlelib' --exclude 'lib/python3.*/tkinter' \
+  --exclude 'lib/python3.*/turtledemo' --exclude 'lib/python3.*/ensurepip' \
+  --exclude 'lib/python3.*/lib-dynload/_tkinter.*' --exclude 'lib/python3.*/site-packages/*' \
+  --exclude 'lib/tcl*' --exclude 'lib/tk*' --exclude 'lib/itcl*' --exclude 'lib/thread*' \
+  --exclude 'lib/libtcl*' --exclude 'lib/libtk*' --exclude 'share' --exclude 'include' \
+  "$ENGINE_BUILD/python" "$ENGINE_APP/"
 
 # The icon is vector layers (Resources/AppIcon.icon). actool renders them into the asset
 # catalog macOS draws as glass, plus an .icns for anything that reads the old format.
@@ -60,8 +82,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>4.1.1</string>
-  <key>CFBundleVersion</key><string>40101</string>
+  <key>CFBundleShortVersionString</key><string>4.1.2</string>
+  <key>CFBundleVersion</key><string>40102</string>
   <key>LSMinimumSystemVersion</key><string>27.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <!-- A normal windowed app: dock icon, menu bar, the lot. -->
@@ -135,6 +157,11 @@ sign() {
   codesign --force --sign - "$1" >/dev/null 2>&1 || true
 }
 sign "$APP/Contents/Frameworks/libonnxruntime.1.dylib"
+# Every binary of the engine on its own, before the app around them: Python, its modules,
+# curl_cffi and ffmpeg each run as code, and another Mac checks each one.
+while IFS= read -r -d '' file; do
+  if file -b "$file" | grep -q '^Mach-O'; then sign "$file"; fi
+done < <(find "$ENGINE_APP" -type f \( -perm -u+x -o -name '*.so' -o -name '*.dylib' \) -print0)
 sign "$APP"
 
 echo "$APP"

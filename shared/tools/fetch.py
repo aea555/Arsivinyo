@@ -14,6 +14,11 @@ import urllib.request
 
 PART = 2 * 1024 * 1024
 
+# Some servers (the static ffmpeg builds') refuse Python's own User-Agent.
+_opener = urllib.request.build_opener()
+_opener.addheaders = [("User-Agent", "arsivinyo-fetch/1")]
+urllib.request.install_opener(_opener)
+
 
 def fetch(url: str, sha256: str, path: str) -> None:
     with urllib.request.urlopen(urllib.request.Request(url, method="HEAD")) as r:

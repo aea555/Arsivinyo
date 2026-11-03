@@ -28,17 +28,22 @@ public final class EngineClient {
         /// Needed to merge separate video and audio streams, which most sites serve.
         /// The engine only looks beside its own executable, so it is passed explicitly.
         public var ffmpeg: URL?
+        /// Where downloaded yt-dlp versions go when they cannot sit beside the bundled one,
+        /// as inside the signed app, whose contents must not change.
+        public var overrides: URL?
 
-        /// Where yt-dlp and its downloaded overrides live together. The updater writes here
-        /// and the bootstrap reads here, so both have to be told the same place.
-        public var root: URL { ytDlp.deletingLastPathComponent() }
+        /// Where yt-dlp's downloaded overrides live. The updater writes here and the
+        /// bootstrap reads here, so both have to be told the same place.
+        public var root: URL { overrides ?? ytDlp.deletingLastPathComponent() }
 
-        public init(python: URL, engine: URL, ytDlp: URL, site: URL? = nil, ffmpeg: URL? = nil) {
+        public init(python: URL, engine: URL, ytDlp: URL, site: URL? = nil, ffmpeg: URL? = nil,
+                    overrides: URL? = nil) {
             self.python = python
             self.engine = engine
             self.ytDlp = ytDlp
             self.site = site
             self.ffmpeg = ffmpeg
+            self.overrides = overrides
         }
     }
 
@@ -114,6 +119,12 @@ public final class EngineClient {
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONPATH"] = searchPath.joined(separator: ":")
         environment["ARSIVINYO_ENGINE_ROOT"] = layout.root.path
+        environment["ARSIVINYO_BUNDLED_YTDLP"] = layout.ytDlp.path
+        if let overrides = layout.overrides {
+            // Bytecode goes beside the overrides: written into the app, it would break the
+            // app's signature.
+            environment["PYTHONPYCACHEPREFIX"] = overrides.appendingPathComponent("pycache").path
+        }
         // Otherwise the engine's own output sits in a buffer and progress arrives in bursts
         // at the end, which looks like a hang.
         environment["PYTHONUNBUFFERED"] = "1"
@@ -336,9 +347,11 @@ extension EngineClient.Layout {
         let ytDlp = build.appendingPathComponent("yt-dlp")
         let site = build.appendingPathComponent("site")
 
-        // Whichever Python is around, newest first. macOS ships 3.9, which is too old for
-        // a current yt-dlp, so the system one is deliberately last.
+        // The one fetch-engine.sh fetched, which the bundle carries too, else whichever is
+        // around, newest first. macOS ships 3.9, which is too old for a current yt-dlp, so
+        // the system one is deliberately last.
         let candidates = [
+            build.appendingPathComponent("python/bin/python3").path,
             "/opt/homebrew/opt/python@3.13/bin/python3.13",
             "/opt/homebrew/opt/python@3.12/bin/python3.12",
             "/opt/homebrew/bin/python3",
@@ -365,6 +378,26 @@ extension EngineClient.Layout {
             ytDlp: ytDlp,
             site: FileManager.default.fileExists(atPath: site.path) ? site : nil,
             ffmpeg: ffmpeg)
+    }
+
+    /// The engine bundle.sh copied into the app, under Contents/Resources/engine: Python,
+    /// the engine's scripts, yt-dlp, curl_cffi and ffmpeg, so the app needs nothing else on
+    /// the Mac. Downloaded yt-dlp versions go to `overrides`, outside the signed bundle.
+    public static func bundled(in bundle: Bundle = .main, overrides: URL) -> Self? {
+        guard let resources = bundle.resourceURL else { return nil }
+        let engine = resources.appendingPathComponent("engine")
+        let python = engine.appendingPathComponent("python/bin/python3")
+        guard FileManager.default.isExecutableFile(atPath: python.path),
+              FileManager.default.fileExists(atPath: engine.appendingPathComponent("host.py").path)
+        else { return nil }
+        try? FileManager.default.createDirectory(at: overrides, withIntermediateDirectories: true)
+        return .init(
+            python: python,
+            engine: engine,
+            ytDlp: engine.appendingPathComponent("yt-dlp"),
+            site: engine.appendingPathComponent("site"),
+            ffmpeg: engine.appendingPathComponent("ffmpeg"),
+            overrides: overrides)
     }
 
     /// Walks up from a file in the repository until it finds the root.

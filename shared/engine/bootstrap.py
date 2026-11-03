@@ -17,6 +17,10 @@ Layout beside the executable:
     yt-dlp/                     the bundled yt-dlp, importable, replaceable
     yt-dlp-overrides/           downloaded versions + manifest.json, as on Android
     ffmpeg(.exe) ffprobe(.exe)
+
+The Mac app keeps the overrides in Application Support instead, since its bundle is signed
+and read-only: ARSIVINYO_ENGINE_ROOT names that folder, ARSIVINYO_BUNDLED_YTDLP the copy
+inside the app.
 """
 
 from __future__ import annotations
@@ -47,7 +51,9 @@ def setup_yt_dlp_path(root: str) -> dict:
     Returns what happened, so the host can report it and a failure is visible rather
     than a silent fall back to an older extractor.
     """
-    bundled = os.path.join(root, "yt-dlp")
+    # Inside a signed app the bundled copy is read-only and the overrides cannot sit beside
+    # it, so the app may say where it is; otherwise it is under the root with them.
+    bundled = os.environ.get("ARSIVINYO_BUNDLED_YTDLP") or os.path.join(root, "yt-dlp")
     if os.path.isdir(bundled):
         # Appended, not prepended: an override must be able to win, and
         # yt_dlp_override_bootstrap inserts itself at position 0.

@@ -4,9 +4,10 @@ A SwiftPM package, built into an app by `scripts/bundle.sh`. It needs Xcode, not
 Command Line Tools: SwiftUI's macros and the icon compiler ship with Xcode.
 
 ```
-scripts/fetch-engine.sh      # once: yt-dlp and curl_cffi into .build/engine
+scripts/fetch-engine.sh      # Python, ffmpeg, yt-dlp and curl_cffi into .build/engine
 scripts/bundle.sh            # .build/Arsivinyo.app
 open .build/Arsivinyo.app
+scripts/dmg.sh               # .build/Arsivinyo-<version>.dmg, to give to someone else
 ```
 
 ## Layout
@@ -70,9 +71,13 @@ Fetch what it needs once:
 scripts/fetch-engine.sh
 ```
 
-That puts yt-dlp and curl_cffi under `.build/engine`. yt-dlp is not in the repository
-because it changes weekly and the app replaces it in place anyway. curl_cffi is what lets
-the engine impersonate a browser; without it most sites refuse a downloader outright.
+That puts a relocatable Python, static ffmpeg and ffprobe (pinned in `scripts/engine.json`),
+yt-dlp and curl_cffi under `.build/engine`, and `bundle.sh` copies all of it into the app,
+so downloads work on a Mac without Homebrew. Run it again to take a newer yt-dlp. yt-dlp is
+not in the repository because it changes weekly and the app replaces it in place anyway: a
+version picked in Settings goes to Application Support/Arsivinyo/engine, since the signed
+app must not change. curl_cffi is what lets the engine impersonate a browser; without it
+most sites refuse a downloader outright.
 
 ## The player and OpenSSL
 

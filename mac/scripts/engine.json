@@ -1,0 +1,23 @@
+{
+  "comment": "What scripts/fetch-engine.sh puts under the download engine, so the bundled app needs nothing from Homebrew. Python is python-build-standalone's relocatable build (https://github.com/astral-sh/python-build-standalone), checksum from its release. ffmpeg and ffprobe are Martin Riedl's static arm64 release builds (https://ffmpeg.martin-riedl.de), checksums from the .sha256 files beside them.",
+  "python": {
+    "version": "3.13.18",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18%2B20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "sha256": "8392b6ea51d94391befb2c31ebe75463f045d0b69dfcf5e1bb3234e1f5fa3405"
+  },
+  "ffmpeg": {
+    "version": "9.0.2",
+    "tools": [
+      {
+        "name": "ffmpeg",
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip",
+        "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924"
+      },
+      {
+        "name": "ffprobe",
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip",
+        "sha256": "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6"
+      }
+    ]
+  }
+}

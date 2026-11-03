@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [Mac 4.1.2] — Downloads on any Mac
+
+The Mac app carries its own download engine. The Mac app alone moves to 4.1.2; the phone
+stays at 4.1.0.
+
+### Fixed
+- Mac: downloads worked only on the Mac the app was built on. The engine was looked for in
+  the repository, with Python and ffmpeg from Homebrew; elsewhere the app said the engine
+  was not set up. The app carries its own now: Python, yt-dlp, curl_cffi, ffmpeg and
+  ffprobe, each binary signed. A yt-dlp picked in Settings is kept in Application Support.
+
+### Added
+- Mac: `scripts/dmg.sh` packages the app as a disk image to drag into Applications.
+
 ## [Mac 4.1.1] — The player at the end of an episode
 
 Fixes to the Mac player once an episode ends. The Mac app alone moves to 4.1.1; the phone

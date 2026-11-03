@@ -172,9 +172,10 @@ final class AppModel {
                 .appendingPathComponent("Downloads/Arsivinyo")
         downloadDirectory = destination
 
-        // While the app runs from the repository this finds the fetched engine; a bundled
-        // build will carry its own copy and this is where that choice will be made.
-        let layout = EngineClient.Layout.developmentFromSource()
+        // The app carries its own engine; `swift run` from the repository has no bundle and
+        // finds the one fetch-engine.sh fetched instead.
+        let layout = EngineClient.Layout.bundled(overrides: support.appendingPathComponent("engine"))
+            ?? EngineClient.Layout.developmentFromSource()
         engine = EngineClient(layout: layout ?? .init(
             python: URL(fileURLWithPath: "/usr/bin/python3"),
             engine: URL(fileURLWithPath: "/nonexistent"),
@@ -212,6 +213,7 @@ final class AppModel {
         }
 
         if layout == nil {
+            // Only a build from the repository can get here: the app carries its engine.
             engineProblem = "The download engine is not set up. Run mac/scripts/fetch-engine.sh."
         } else {
             do {
