@@ -25,8 +25,9 @@ from 4.1.2.
   kept for every video from then on. The size they had is the smallest; they are a step
   larger to begin with. A styled (ASS) subtitle is scaled as well, but keeps the weight it
   was made with.
-- Phone player: buttons for the episode before and the one after, beside the seek buttons,
-  for a series. The episode playing carries on until the other is found.
+- Both players: buttons for the episode before and the one after, beside the seek buttons,
+  for a series. The episode playing carries on until the other is found. The Mac's came a
+  commit after the phone's, in the same version.
 
 ### Fixed
 - Phone: once music had played, the app's timers went on running behind it for as long as it

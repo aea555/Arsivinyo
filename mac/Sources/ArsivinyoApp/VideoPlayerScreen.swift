@@ -34,6 +34,11 @@ struct VideoPlayerScreen<Overlay: View>: View {
     var fullScreenWindow = false
     /// A torrent being streamed: its peers and speed are shown while the player waits.
     var torrentId: String? = nil
+    /// To the episode before this one and the one after, for a series: each shows as a button
+    /// when there is such an episode. `switching` is true while one is being found.
+    var onPrevious: (() -> Void)? = nil
+    var onNext: (() -> Void)? = nil
+    var switching = false
     @ViewBuilder var overlay: () -> Overlay
 
     @State private var controlsShown = true
@@ -198,10 +203,17 @@ struct VideoPlayerScreen<Overlay: View>: View {
             Spacer()
 
             HStack(spacing: 48) {
+                // For a series, outside the seek buttons: the episode before and the one after.
+                if onPrevious != nil || onNext != nil {
+                    Button { onPrevious?() } label: { Image(systemName: "backward.end.fill").font(.title2) }
+                        .help("Previous Episode")
+                        .disabled(onPrevious == nil || switching)
+                        .opacity(onPrevious == nil ? 0 : 1)
+                }
                 Button { player.seek(byMs: -10_000) } label: { Image(systemName: "gobackward.10").font(.title) }
                     .help("Back 10 seconds")
                 Group {
-                    if player.buffering, player.failed == nil {
+                    if player.buffering || switching, player.failed == nil {
                         ProgressView().controlSize(.large).tint(.white)
                     } else {
                         Button { player.togglePause() } label: {
@@ -213,6 +225,12 @@ struct VideoPlayerScreen<Overlay: View>: View {
                 .frame(width: 56, height: 56)
                 Button { player.seek(byMs: 10_000) } label: { Image(systemName: "goforward.10").font(.title) }
                     .help("Forward 10 seconds")
+                if onPrevious != nil || onNext != nil {
+                    Button { onNext?() } label: { Image(systemName: "forward.end.fill").font(.title2) }
+                        .help("Next Episode")
+                        .disabled(onNext == nil || switching)
+                        .opacity(onNext == nil ? 0 : 1)
+                }
             }
             .buttonStyle(.plain)
             // Under the row, without moving it off the middle.

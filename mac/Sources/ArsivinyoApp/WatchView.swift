@@ -12,8 +12,9 @@ struct WatchPlayRequest: Hashable {
     var source: WatchService.Source?
     var bingeGroup: String?
     var startMs: Int64
-    /// The episode after this one, for a series.
+    /// The episode after this one, for a series, and the one before it.
     var nextVideo: Addons.Video?
+    var previousVideo: Addons.Video?
     /// False for a trailer: watching it is not watching the title.
     var record = true
     /// The stream's own subtitles, and its file name, which subtitle add-ons match on.
@@ -47,26 +48,28 @@ extension AppModel {
         return (resolved.url, resolved.audioURL, resolved.headers, nil)
     }
 
-    /// The next episode from the same add-on and binge group, as Stremio does.
-    /// The next episode, from the same add-on: the stream of the same binge group, as Stremio
-    /// picks it, else the add-on's first that plays here. Torrents too: an add-on such as
-    /// Torrentio has nothing else, and leaving them out made Next Episode do nothing at all.
-    func nextRequest(after request: WatchPlayRequest) async throws -> WatchPlayRequest {
-        guard let next = request.nextVideo, let source = request.source else {
-            throw NextFailure(message: String(localized: "There is no next episode."))
+    /// Another episode of the series a request plays, the next or the one before, from the same
+    /// add-on: the stream of the same binge group, as Stremio picks it, else the add-on's first
+    /// that plays here. Torrents too: an add-on such as Torrentio has nothing else, and leaving
+    /// them out made Next Episode do nothing at all.
+    func request(for video: Addons.Video, from request: WatchPlayRequest) async throws -> WatchPlayRequest {
+        guard let source = request.source else {
+            throw NextFailure(message: String(localized: "That episode cannot be started from here."))
         }
-        let streams = try await watch.streams(from: source, type: request.title.type, id: next.id)
+        let streams = try await watch.streams(from: source, type: request.title.type, id: video.id)
         guard let stream = streams.first(where: { request.bingeGroup != nil && $0.bingeGroup == request.bingeGroup })
                 ?? streams.first(where: { $0.kind != .external }) else {
-            throw NextFailure(message: String(localized: "\(source.name) has no stream for the next episode."))
+            throw NextFailure(message: String(localized: "\(source.name) has no stream for that episode."))
         }
         let prepared = try await prepare(stream)
         let meta = try await watch.meta(type: request.title.type, id: request.title.id)
         let regular = meta.videos.filter { ($0.season ?? 1) != 0 }
-        let following = regular.firstIndex(where: { $0.id == next.id }).flatMap { $0 + 1 < regular.count ? regular[$0 + 1] : nil }
-        return WatchPlayRequest(url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: request.title, videoId: next.id,
-                                videoName: WatchTitleView.episodeName(next), source: source,
-                                bingeGroup: stream.bingeGroup, startMs: 0, nextVideo: following,
+        let at = regular.firstIndex(where: { $0.id == video.id })
+        return WatchPlayRequest(url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: request.title, videoId: video.id,
+                                videoName: WatchTitleView.episodeName(video), source: source,
+                                bingeGroup: stream.bingeGroup, startMs: 0,
+                                nextVideo: at.flatMap { $0 + 1 < regular.count ? regular[$0 + 1] : nil },
+                                previousVideo: at.flatMap { $0 > 0 ? regular[$0 - 1] : nil },
                                 subtitles: stream.subtitles, filename: stream.filename, torrentId: prepared.torrentId)
     }
 }
@@ -426,7 +429,7 @@ struct WatchTitleView: View {
                 } else if meta != nil || (metaFailed != nil && title.type == "movie") {
                     Text("Streams").font(.title3.bold())
                     StreamList(title: known, video: .init(id: meta?.id ?? title.id, title: known.name),
-                               isSeries: false, nextVideo: nil, item: item)
+                               isSeries: false, nextVideo: nil, previousVideo: nil, item: item)
                 }
             }
             .padding(20)
@@ -453,7 +456,8 @@ struct WatchTitleView: View {
                 .padding(14)
                 Divider()
                 ScrollView {
-                    StreamList(title: known, video: video, isSeries: true, nextVideo: next(after: video), item: item)
+                    StreamList(title: known, video: video, isSeries: true, nextVideo: next(after: video),
+                               previousVideo: previous(before: video), item: item)
                         .padding(14)
                 }
             }
@@ -479,6 +483,12 @@ struct WatchTitleView: View {
         let regular = (meta?.videos ?? []).filter { ($0.season ?? 1) != 0 }
         guard let at = regular.firstIndex(where: { $0.id == video.id }), at + 1 < regular.count else { return nil }
         return regular[at + 1]
+    }
+
+    private func previous(before video: Addons.Video) -> Addons.Video? {
+        let regular = (meta?.videos ?? []).filter { ($0.season ?? 1) != 0 }
+        guard let at = regular.firstIndex(where: { $0.id == video.id }), at > 0 else { return nil }
+        return regular[at - 1]
     }
 
     static func episodeName(_ v: Addons.Video) -> String {
@@ -552,6 +562,7 @@ private struct StreamList: View {
     let video: Addons.Video
     let isSeries: Bool
     let nextVideo: Addons.Video?
+    let previousVideo: Addons.Video?
     let item: WatchLibrary.Item?
     @State private var sources: [WatchService.Source] = []
     @State private var streams: [String: [Addons.Stream]] = [:]
@@ -676,7 +687,7 @@ private struct StreamList: View {
                 model.watchPlaying = WatchPlayRequest(
                     url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: title, videoId: video.id,
                     videoName: isSeries ? WatchTitleView.episodeName(video) : title.name, source: source,
-                    bingeGroup: stream.bingeGroup, startMs: startMs, nextVideo: nextVideo,
+                    bingeGroup: stream.bingeGroup, startMs: startMs, nextVideo: nextVideo, previousVideo: previousVideo,
                     subtitles: stream.subtitles, filename: stream.filename, torrentId: prepared.torrentId)
                 openWindow(id: "watch-player")
             } catch {
@@ -1020,7 +1031,10 @@ struct WatchPlayerWindow: View {
 
     var body: some View {
         VideoPlayerScreen(player: player, title: request?.videoName ?? "", subtitles: subtitles, fullScreenWindow: true,
-                          torrentId: request?.torrentId) {
+                          torrentId: request?.torrentId,
+                          onPrevious: request?.previousVideo.map { video in { play(video) } },
+                          onNext: request?.nextVideo.map { video in { play(video) } },
+                          switching: loadingNext) {
             if player.ended, request?.nextVideo != nil {
                 VStack(spacing: 10) {
                     Button(action: playNext) {
@@ -1042,6 +1056,11 @@ struct WatchPlayerWindow: View {
                 }
                 .padding(14)
                 .background(.black.opacity(0.7), in: .rect(cornerRadius: 12))
+            } else if let nextProblem {
+                // Asked for from the controls while this episode plays on: why it did not come.
+                Text(nextProblem).foregroundStyle(.white).frame(maxWidth: 320)
+                    .padding(14)
+                    .background(.black.opacity(0.7), in: .rect(cornerRadius: 12))
             }
         }
         .navigationTitle(request?.videoName ?? "")
@@ -1077,19 +1096,24 @@ struct WatchPlayerWindow: View {
     }
 
     private func playNext() {
+        if let next = request?.nextVideo { play(next) }
+    }
+
+    /// Another episode in this same window. This one plays on until the other is found.
+    private func play(_ video: Addons.Video) {
         guard !loadingNext, let current = request else { return }
         loadingNext = true
         countdown = nil
         nextProblem = nil
         Task {
             do {
-                let next = try await model.nextRequest(after: current)
-                start(next)
+                let found = try await model.request(for: video, from: current)
+                start(found)
                 // What is playing now, so a window closed and opened again goes on with it.
-                model.watchPlaying = next
+                model.watchPlaying = found
             } catch {
                 nextProblem = (error as? NextFailure)?.message
-                    ?? String(localized: "Could not start the next episode: \(String(describing: error))")
+                    ?? String(localized: "Could not start that episode: \(String(describing: error))")
             }
             loadingNext = false
         }
