@@ -24,7 +24,7 @@ struct RootView: View {
                     row(.library)
                     row(.watch)
                     row(.torrents)
-                    row(.memes)
+                    if model.experimentalFeatures { row(.memes) }
                     row(.vault)
                 }
                 // Places you go, so they sit where places are — as in Music.app.

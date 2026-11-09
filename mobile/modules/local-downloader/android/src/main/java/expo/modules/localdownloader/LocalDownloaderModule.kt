@@ -11,6 +11,7 @@ import android.net.Uri
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
 import android.security.keystore.KeyGenParameterSpec
@@ -94,6 +95,7 @@ import expo.modules.localdownloader.memes.MemeCollection
 import expo.modules.localdownloader.torrent.TorrentService
 import expo.modules.localdownloader.watch.Addons
 import expo.modules.localdownloader.watch.MpvPlayerView
+import expo.modules.localdownloader.watch.Playback
 import expo.modules.localdownloader.watch.WatchLibrary
 import expo.modules.localdownloader.watch.WatchService
 import expo.modules.localdownloader.memes.ScannedFace
@@ -376,6 +378,15 @@ class LocalDownloaderModule : Module() {
       .getSharedPreferences("memes", android.content.Context.MODE_PRIVATE)
   }
 
+  /**
+   * The experimental features, opted into in Settings and off until then. They are the memes:
+   * without it nothing downloaded joins the collection, and nothing asks for tags. What the
+   * collection already holds stays as it is, and a paired device can still send to it.
+   */
+  private var experimentalFeatures: Boolean
+    get() = memePrefs.getBoolean("experimental", false)
+    set(value) { memePrefs.edit().putBoolean("experimental", value).apply() }
+
   /** The quick prompt after a meme download. On unless turned off. */
   private var memeAskForTags: Boolean
     get() = memePrefs.getBoolean("askForTags", true)
@@ -423,6 +434,7 @@ class LocalDownloaderModule : Module() {
 
   /** A download or an import has been saved to MediaStore: it joins the collection. */
   private fun adoptMeme(uri: String, mimeType: String, source: MemeStore.Source?, ask: Boolean) {
+    if (!experimentalFeatures) return
     runCatching {
       val item = memes.adopt(uri, mimeType, source) ?: return
       if (ask && memeAskForTags && item.isUntagged) memes.prompt(item)
@@ -433,6 +445,7 @@ class LocalDownloaderModule : Module() {
 
   /** A private download: its vault entry joins the collection as a private meme. */
   private fun adoptPrivateMeme(vaultId: String, plaintext: File, mimeType: String, source: MemeStore.Source?) {
+    if (!experimentalFeatures) return
     val kind = MemeCollection.kindOf(mimeType) ?: return
     runCatching {
       val sha = MemeCollection.hashOf { plaintext.inputStream() } ?: return
@@ -963,6 +976,9 @@ class LocalDownloaderModule : Module() {
     Thread(runnable, "watch").apply { priority = Thread.NORM_PRIORITY - 1 }
   }
 
+  /** Where a playing video is, written down in the order it was reported. */
+  private val watchPlace = java.util.concurrent.Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "watch-place") }
+
   /** Runs [work] off the module's queue and answers [promise] with its map, or a failure code. */
   private fun watchAsync(promise: Promise, work: () -> Any?) {
     watchWork.execute {
@@ -1272,10 +1288,18 @@ class LocalDownloaderModule : Module() {
       runCatching { torrents.inBackground = false }
     }
 
+    // Home or recents while the Watch player plays: into picture-in-picture. From Android 12
+    // the system does that by itself, and this finds nothing to do.
+    OnUserLeavesActivity {
+      runCatching { Playback.current?.userLeaves() }
+    }
+
     OnDestroy {
       if (activeModule === this@LocalDownloaderModule) {
         activeModule = null
       }
+      // Nothing plays on with no screen to come back to.
+      Handler(Looper.getMainLooper()).post { runCatching { Playback.current?.release() } }
       runCatching { activeMigrationCancel?.cancel() }
       runCatching { stopVaultLoopbackServer() }
       runCatching {
@@ -1752,6 +1776,33 @@ class LocalDownloaderModule : Module() {
 
       Prop("languages") { view: MpvPlayerView, languages: List<String>? -> view.languages = languages.orEmpty() }
 
+      Prop("background") { view: MpvPlayerView, background: Boolean? -> view.background = background == true }
+
+      Prop("subtitleScale") { view: MpvPlayerView, scale: Double? -> view.subtitleScale = (scale ?: 1.0).coerceIn(0.5, 3.0) }
+
+      Prop("subtitleBold") { view: MpvPlayerView, bold: Boolean? -> view.subtitleBold = bold == true }
+
+      Prop("title") { view: MpvPlayerView, title: String? -> view.title = title.orEmpty() }
+
+      // What the video is kept as in the library. The player writes its place down itself:
+      // the screen's own timers stop when the app is out of sight, where this one plays on.
+      Prop("record") { view: MpvPlayerView, record: Map<String, Any?>? ->
+        @Suppress("UNCHECKED_CAST")
+        val title = runCatching { (record?.get("title") as? Map<String, Any?>)?.let { watchTitle(it) } }.getOrNull()
+        val videoId = record?.get("videoId") as? String
+        val addonKey = record?.get("addonKey") as? String
+        val bingeGroup = record?.get("bingeGroup") as? String
+        view.subtitle = title?.name?.takeIf { it.isNotBlank() }
+        view.record = if (title == null || videoId == null) null else { positionMs, durationMs ->
+          watchPlace.execute { runCatching { watch.library.recordProgress(title, videoId, positionMs, durationMs, addonKey, bingeGroup) } }
+        }
+      }
+
+      AsyncFunction("enterPictureInPicture") { view: MpvPlayerView ->
+        view.post { view.enterPictureInPicture() }
+        Unit
+      }
+
       AsyncFunction("setPaused") { view: MpvPlayerView, paused: Boolean -> view.setPaused(paused) }
       AsyncFunction("seek") { view: MpvPlayerView, ms: Double -> view.seek(ms) }
       AsyncFunction("seekBy") { view: MpvPlayerView, ms: Double -> view.seekBy(ms) }
@@ -1911,6 +1962,12 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("setMemeAskForTags") { enabled: Boolean ->
       memeAskForTags = enabled
+    }
+
+    AsyncFunction("getExperimentalFeatures") { experimentalFeatures }
+
+    AsyncFunction("setExperimentalFeatures") { enabled: Boolean ->
+      experimentalFeatures = enabled
     }
 
     AsyncFunction("dismissMemePrompt") { id: String -> memes.dismissPrompt(id) }

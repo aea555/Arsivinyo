@@ -10,9 +10,11 @@ import {
   MpvPlayerView,
   type MpvPlayerHandle,
   type MpvProgress,
+  type MpvRecord,
   type MpvSource,
   type MpvTrack,
 } from '@/src/native/localDownloader';
+import { DEFAULT_SUBTITLE_STYLE, getSubtitleStyle, setSubtitleStyle, SUBTITLE_SCALES, type SubtitleStyle } from '@/src/services/storage';
 
 /** Controls fade after this long without a touch, while playing. */
 const HIDE_AFTER_MS = 3500;
@@ -36,7 +38,21 @@ export interface PlayerProps {
    * nothing in a language preferred as much; the rest wait in the subtitles menu.
    */
   subtitles?: WatchSubtitle[];
+  /**
+   * Plays on out of sight and in picture-in-picture (the Watch player). A vault video does
+   * not: out of sight it pauses.
+   */
+  background?: boolean;
+  /** What the video is kept as in the library; the player writes down where it is. */
+  record?: MpvRecord | null;
   onClose: () => void;
+  /**
+   * To the episode before this one and the one after, for a series: each shows as a button
+   * when there is such an episode. [switching] is true while one is being found.
+   */
+  onPrevious?: () => void;
+  onNext?: () => void;
+  switching?: boolean;
   onProgress?: (progress: MpvProgress) => void;
   onEnded?: () => void;
   /** Shown over the video: the next episode, say. */
@@ -59,7 +75,10 @@ function clock(ms: number): string {
  * player"): mpv underneath, and Arsivinyo's controls over it — play, seek, audio track,
  * subtitle track, subtitle delay and speed.
  */
-export function Player({ source, title, languages, subtitles = [], onClose, onProgress, onEnded, children, waiting }: PlayerProps) {
+export function Player({
+  source, title, languages, subtitles = [], background = false, record = null, onClose, onPrevious, onNext, switching = false,
+  onProgress, onEnded, children, waiting,
+}: PlayerProps) {
   const { t } = useTranslation();
   const player = useRef<MpvPlayerHandle>(null);
   const [progress, setProgress] = useState<MpvProgress>({ positionMs: 0, durationMs: 0, paused: false, buffering: true });
@@ -83,6 +102,19 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
   const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [backArmed, setBackArmed] = useState(false);
   const backTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The viewer's own subtitle size and weight, kept for every video from here on.
+  const [subtitleStyle, setStyle] = useState<SubtitleStyle>(DEFAULT_SUBTITLE_STYLE);
+  useEffect(() => {
+    let live = true;
+    void getSubtitleStyle().then((stored) => live && setStyle(stored));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const changeStyle = (next: SubtitleStyle) => {
+    setStyle(next);
+    void setSubtitleStyle(next);
+  };
 
   const languageName = useCallback(
     (lang?: string | null) => (lang ? t(`player.languages.${lang}`, { defaultValue: lang }) : ''),
@@ -190,12 +222,16 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
     [languages, loadSubtitle, subtitles],
   );
 
-  // A new video starts over: its own tracks, its own choice.
+  // A new video starts over: its own tracks, its own choice, and no place or subtitle delay
+  // left from the one before it in the same player.
   useEffect(() => {
     chosen.current = false;
     setLoaded(new Set());
     setFailed(null);
+    setTracks([]);
     setDelayMs(0);
+    void player.current?.setSubtitleDelay(0);
+    setProgress({ positionMs: 0, durationMs: 0, paused: false, buffering: true });
   }, [source?.url]);
 
   const seekTo = useCallback((ms: number) => void player.current?.seek(ms), []);
@@ -247,6 +283,12 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
         style={StyleSheet.absoluteFill}
         source={source}
         languages={languages}
+        background={background}
+        // For the notification of a player that plays on out of sight; a vault video is named nowhere.
+        title={background ? title : undefined}
+        record={record}
+        subtitleScale={subtitleStyle.scale}
+        subtitleBold={subtitleStyle.bold}
         onProgress={(e) => {
           if (scrubMs === null) setProgress(e.nativeEvent);
           onProgress?.(e.nativeEvent);
@@ -270,6 +312,12 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
               <Ionicons name="close" size={28} color="#fff" />
             </Pressable>
             <Text style={styles.title} numberOfLines={1}>{title}</Text>
+            {background ? (
+              <Pressable onPress={() => void player.current?.enterPictureInPicture()} hitSlop={10}
+                accessibilityRole="button" accessibilityLabel={t('player.pictureInPicture')}>
+                <MaterialCommunityIcons name="picture-in-picture-bottom-right" size={24} color="#fff" />
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => { touch(); setPanel(panel === 'audio' ? null : 'audio'); }} hitSlop={10}
               accessibilityRole="button" accessibilityLabel={t('player.audio')}>
               <Ionicons name="musical-notes-outline" size={24} color="#fff" />
@@ -304,8 +352,19 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
       ) : null}
 
       {/* The middle of the screen, whatever the bars above and below: seek back, play or pause
-          (or the spinner in its place while it waits), seek forward. */}
+          (or the spinner in its place while it waits), seek forward; and for a series, outside
+          those, the episode before and the one after. */}
       <View style={[StyleSheet.absoluteFill, styles.middle]} pointerEvents="box-none">
+        {onPrevious || onNext ? (
+          <View style={styles.side}>
+            {shown && !failed && onPrevious ? (
+              <Pressable onPress={() => { touch(); onPrevious(); }} hitSlop={16} disabled={switching}
+                accessibilityRole="button" accessibilityLabel={t('player.previousEpisode')}>
+                <Ionicons name="play-skip-back" size={30} color="#fff" />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.side}>
           {shown && !failed ? (
             <Pressable onPress={() => { touch(); seekBy(-SEEK_MS); }} hitSlop={16}
@@ -315,7 +374,7 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
           ) : jumped === -1 ? <MaterialCommunityIcons name="rewind-10" size={40} color="#fff" /> : null}
         </View>
         <View style={styles.slot} pointerEvents="box-none">
-          {progress.buffering && !failed ? (
+          {(progress.buffering || switching) && !failed ? (
             <>
               <ActivityIndicator size="large" color="#fff" />
               <View style={styles.waiting} pointerEvents="none">{waiting}</View>
@@ -339,6 +398,16 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
             </Pressable>
           ) : jumped === 1 ? <MaterialCommunityIcons name="fast-forward-10" size={40} color="#fff" /> : null}
         </View>
+        {onPrevious || onNext ? (
+          <View style={styles.side}>
+            {shown && !failed && onNext ? (
+              <Pressable onPress={() => { touch(); onNext(); }} hitSlop={16} disabled={switching}
+                accessibilityRole="button" accessibilityLabel={t('player.nextEpisode')}>
+                <Ionicons name="play-skip-forward" size={30} color="#fff" />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       {backArmed ? (
@@ -390,6 +459,20 @@ export function Player({ source, title, languages, subtitles = [], onClose, onPr
                     <Text style={styles.link}>{t('player.reset')}</Text>
                   </Pressable>
                 </View>
+                {/* How they are drawn: for whoever finds them hard to read. */}
+                <Text style={[styles.panelTitle, styles.gap]}>{t('player.textSize')}</Text>
+                <View style={styles.row}>
+                  {SUBTITLE_SCALES.map((scale, n) => (
+                    <Pressable key={scale} style={[styles.step, subtitleStyle.scale === scale && styles.stepOn]}
+                      accessibilityRole="button" accessibilityState={{ selected: subtitleStyle.scale === scale }}
+                      accessibilityLabel={t(`player.textSizes.${n}`)}
+                      onPress={() => changeStyle({ ...subtitleStyle, scale })}>
+                      <Text style={[subtitleStyle.scale === scale ? styles.black : styles.white, { fontSize: 12 + n * 3 }]}>A</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Option label={t('player.bold')} selected={subtitleStyle.bold}
+                  onPress={() => changeStyle({ ...subtitleStyle, bold: !subtitleStyle.bold })} />
                 <Text style={[styles.panelTitle, styles.gap]}>{t('player.tracks')}</Text>
                 <Option label={t('player.off')} selected={!subs.some((x) => x.selected)}
                   onPress={() => void player.current?.setTrack('subtitle', 'no')} />
@@ -450,6 +533,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
   veil: { backgroundColor: 'rgba(0,0,0,0.75)' },
   white: { color: '#fff' },
+  black: { color: '#000' },
   dim: { color: 'rgba(255,255,255,0.6)' },
   small: { fontSize: 12 },
   link: { color: '#fff', textDecorationLine: 'underline' },
@@ -458,7 +542,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   title: { color: '#fff', flex: 1, fontSize: 15 },
-  middle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 40 },
+  middle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 32 },
   side: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
   slot: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
   // Below the spinner without moving it off the middle.
@@ -484,7 +568,8 @@ const styles = StyleSheet.create({
   gap: { marginTop: 18 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 6 },
-  step: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)' },
+  step: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)' },
+  stepOn: { backgroundColor: '#fff' },
   button: { marginTop: 8, backgroundColor: '#fff', borderRadius: 22, paddingHorizontal: 20, paddingVertical: 10 },
   buttonText: { color: '#000', fontWeight: '600' },
 });

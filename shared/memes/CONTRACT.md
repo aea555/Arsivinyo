@@ -25,6 +25,12 @@ photo library, by design, and this feature does not change that.
 Each app keeps its own collection ("both, independently"). Nothing syncs; a meme sent to the
 other device, or restored from a backup, carries its labels with it.
 
+**Opted into.** All of this is an experimental feature, a setting on each app that is off
+until turned on. Off, a download does not join the collection, nothing asks for tags, and
+the app shows no way into Memes. The collection itself is left alone: what it holds is kept
+and comes back with the setting, a backup still carries it, and a meme a paired device sends
+is still taken in.
+
 ## The labels
 
 ### What it signifies: tags

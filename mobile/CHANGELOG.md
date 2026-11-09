@@ -4,6 +4,84 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [4.1.3] — Playing on out of sight, and the player's rough edges
+
+On the phone, Watch plays on with the screen off and in picture-in-picture, the player goes
+from episode to episode without leaving, and music no longer costs a tenth of a processor
+core behind the app. On both apps, subtitles' size and weight can be set, and memes are an
+experimental feature, off until turned on. Both apps are 4.1.3: the phone from 4.1.0, the Mac
+from 4.1.2.
+
+### Added
+- Watch on the phone: a video plays on with the screen off or another app in front, as sound
+  only, with a notification and the lock screen to pause and seek from; a headset's buttons
+  work too. A call or another player pauses it, as does pulling the headphones out. Vault
+  videos still pause when out of sight, and are named nowhere.
+- Watch on the phone: picture-in-picture. Leaving the app while a video plays shrinks it into
+  the small window (by itself from Android 12; the player also has a button), and closing
+  that window pauses the video.
+
+- Both players: subtitles' size (four steps) and weight (bold or not), in the subtitles menu,
+  kept for every video from then on. The size they had is the smallest; they are a step
+  larger to begin with. A styled (ASS) subtitle is scaled as well, but keeps the weight it
+  was made with.
+- Phone player: buttons for the episode before and the one after, beside the seek buttons,
+  for a series. The episode playing carries on until the other is found.
+
+### Fixed
+- Phone: once music had played, the app's timers went on running behind it for as long as it
+  lived: its main thread woke on every frame of the screen (123 times a second at 120 Hz,
+  about a tenth of a processor core, measured), and every timer in the app kept firing
+  unseen. React Native keeps timers going while a headless task runs; the music player's
+  service starts one, which is over at once, and in the new architecture React Native has
+  no module through which JavaScript can say so (it is only in the old one's list), so the
+  task counted as running for good. The app brings that module itself. "Previous" on the
+  lock screen no longer waits on a timer: one press restarts the song at once, a second
+  within a third of a second goes to the song before.
+- Phone music: left open on the full player, the app came back from the background, or from
+  the screen being off, seconds behind the song. Timers go on running behind the app while
+  music plays, so the player kept reading the position four times a second and animating
+  the bar unseen (about half a processor core, measured), and each of those updates waited
+  to be drawn until the app came back. It reads the position only while it is in front.
+- Phone music: tapping a few songs one after another could show the list's first song as
+  the one playing for a moment before the one tapped. Every tap emptied the queue, filled
+  it with the whole list and then skipped to the song, so the player was on the first song
+  in between, and taps close together ran into each other. A tap in the list that is
+  already queued only skips to the song; a new list is queued around the song tapped, which
+  plays from the start; and taps wait their turn, only the last of those waiting played.
+- Phone music: in a playlist, the bar for selected songs broke "1 selected" into a letter a
+  line. A playlist adds a button to the bar, and the count was the one part of the row that
+  could give way. The bar is two rows now, the count above the actions.
+- Phone music: the bar that shows a preset being applied covered the mini player. Both sat
+  at the same place at the bottom. A message, the preset bar and the mini player (or the
+  selection bar) are stacked now, one above the other.
+- Both players: skipping ten seconds forward near the end of a video went back instead, to
+  the last keyframe, and the end had to be watched again before the next episode could be
+  chosen. A skip was a keyframe seek, and past the end the nearest keyframe is behind. Skips
+  are exact now, so one past the end ends the video.
+- Phone player: the next episode showed the title's page for a moment, upright, before the
+  player came back. The player closed and the page opened it again. The player now finds the
+  next episode's stream and plays it itself, without closing; when it cannot (another add-on,
+  a stream that has to be chosen), the page still does.
+- Phone player: the status bar could come back over a playing video and stay there until the
+  next one. The bars were hidden once, as the player opened, and nothing hid them again when
+  the system brought them back. They are hidden again whenever the window returns or they
+  show by themselves.
+- Phone player: after "next episode" the screen could be left upright with the bars showing,
+  or the rest of the app left in landscape afterwards. Each player put back the orientation
+  it had found, and the new player can be on screen before the old one has left; the old one
+  leaving then undid the new one's fullscreen. Fullscreen is kept by count now, and only the
+  last player to leave restores the screen.
+
+### Changed
+- Memes are an experimental feature now, opted into in Settings on each app and off until
+  then. Off, a download no longer joins the collection, nothing asks for tags, and the app
+  shows no way into Memes. What the collection already holds is kept, backups still carry
+  it, and a paired device can still send to it; turning the option on shows all of it again.
+- Phone player: the position of a Watch video is written to the library by the player
+  itself, not by the screen: React Native runs no timers while the app is out of sight, where
+  the video now plays on.
+
 ## [Mac 4.1.2] — Downloads on any Mac
 
 The Mac app carries its own download engine. The Mac app alone moves to 4.1.2; the phone

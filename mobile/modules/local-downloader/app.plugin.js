@@ -1,4 +1,4 @@
-const { createRunOncePlugin, withAndroidManifest, withAppBuildGradle, withGradleProperties, withProjectBuildGradle } = require('expo/config-plugins');
+const { createRunOncePlugin, withAndroidManifest, withAppBuildGradle, withGradleProperties, withMainApplication, withProjectBuildGradle } = require('expo/config-plugins');
 
 const CHAQUOPY_VERSION = '15.0.1';
 // Python that runs ON DEVICE.
@@ -23,6 +23,8 @@ const PRIVATE_IMPORT_ACTIVITY_NAME = 'expo.modules.localdownloader.PrivateVaultI
 const SOUNDS_IMPORT_ACTIVITY_NAME = 'expo.modules.localdownloader.SoundsImportActivity';
 const BACKUP_DOCUMENT_ACTIVITY_NAME = 'expo.modules.localdownloader.BackupDocumentActivity';
 const RESTART_ACTIVITY_NAME = 'expo.modules.localdownloader.RestartActivity';
+const PLAYBACK_SERVICE_NAME = 'expo.modules.localdownloader.watch.PlaybackService';
+const HEADLESS_TASK_PACKAGE = 'expo.modules.localdownloader.HeadlessTaskSupportPackage';
 
 const TAGS = {
   buildscriptRepo: {
@@ -64,6 +66,10 @@ const TAGS = {
   cxxRuntime: {
     begin: '// @generated begin local-downloader-cxx-runtime',
     end: '// @generated end local-downloader-cxx-runtime',
+  },
+  headlessTasks: {
+    begin: '// @generated begin local-downloader-headless-tasks',
+    end: '// @generated end local-downloader-headless-tasks',
   },
 };
 
@@ -213,6 +219,19 @@ function addAppGradleChanges(contents) {
   return next;
 }
 
+// The module through which JavaScript says a headless task is done (HeadlessTaskSupport.kt
+// says why the app has to bring its own). It is a React Native package, not an Expo module,
+// so nothing links it by itself: it goes into MainApplication's list by hand.
+function addMainApplicationChanges(contents) {
+  const cleaned = stripTaggedBlock(contents, TAGS.headlessTasks);
+  const anchor = /(PackageList\(this\)\.packages\.apply \{\n)/;
+  if (!anchor.test(cleaned)) {
+    throw new Error('[local-downloader plugin] Could not find the package list in MainApplication');
+  }
+  const block = `              ${TAGS.headlessTasks.begin}\n              add(${HEADLESS_TASK_PACKAGE}())\n              ${TAGS.headlessTasks.end}\n`;
+  return cleaned.replace(anchor, `$1${block}`);
+}
+
 function ensureManifestPermission(manifest, name) {
   const existing = manifest['uses-permission'] || [];
   if (!existing.some((item) => item.$?.['android:name'] === name)) {
@@ -240,11 +259,27 @@ function ensureApplicationEntry(mainApplication, key, androidName, extra = {}) {
   mainApplication[key] = existing;
 }
 
+// The Watch player in picture-in-picture. Without smallestScreenSize among the changes the
+// activity handles itself, Android makes it again as it shrinks, and the video with it.
+function ensureMainActivityPictureInPicture(mainApplication) {
+  const main = (mainApplication.activity || []).find((item) => item.$?.['android:name'] === '.MainActivity');
+  if (!main) {
+    throw new Error('[local-downloader plugin] Could not find .MainActivity in AndroidManifest.xml');
+  }
+  main.$['android:supportsPictureInPicture'] = 'true';
+  const handled = (main.$['android:configChanges'] || '').split('|').filter(Boolean);
+  for (const change of ['orientation', 'screenSize', 'screenLayout', 'smallestScreenSize']) {
+    if (!handled.includes(change)) handled.push(change);
+  }
+  main.$['android:configChanges'] = handled.join('|');
+}
+
 function addAndroidManifestChanges(config) {
   return withAndroidManifest(config, (modConfig) => {
     const manifest = modConfig.modResults.manifest;
     ensureManifestPermission(manifest, 'android.permission.FOREGROUND_SERVICE');
     ensureManifestPermission(manifest, 'android.permission.FOREGROUND_SERVICE_DATA_SYNC');
+    ensureManifestPermission(manifest, 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK');
     ensureManifestPermission(manifest, 'android.permission.POST_NOTIFICATIONS');
     ensureManifestPermission(manifest, 'android.permission.USE_BIOMETRIC');
 
@@ -261,6 +296,15 @@ function addAndroidManifestChanges(config) {
       'android:foregroundServiceType': 'dataSync',
       'android:stopWithTask': 'false',
     });
+
+    // The Watch player out of sight (watch/Playback.kt). Not stopped with the task, so that
+    // it hears of the app being swiped away and stops the video itself.
+    ensureApplicationEntry(mainApplication, 'service', PLAYBACK_SERVICE_NAME, {
+      'android:exported': 'false',
+      'android:foregroundServiceType': 'mediaPlayback',
+      'android:stopWithTask': 'false',
+    });
+    ensureMainActivityPictureInPicture(mainApplication);
 
     ensureApplicationEntry(mainApplication, 'receiver', DOWNLOAD_RECEIVER_NAME, {
       'android:exported': 'false',
@@ -355,6 +399,11 @@ const withLocalDownloader = (config) => {
 
   config = withAppBuildGradle(config, (config) => {
     config.modResults.contents = addAppGradleChanges(config.modResults.contents);
+    return config;
+  });
+
+  config = withMainApplication(config, (config) => {
+    config.modResults.contents = addMainApplicationChanges(config.modResults.contents);
     return config;
   });
 

@@ -62,4 +62,12 @@
     <item quantity="one">%d track</item>
     <item quantity="other">%d tracks</item>
   </plurals>
+
+  <!-- The Watch player out of sight (watch/Playback.kt). -->
+  <string name="ldl_playback_channel">Playing video</string>
+  <string name="ldl_playback_channel_description">Shows what Watch is playing, with its controls</string>
+  <string name="ldl_playback_play">Play</string>
+  <string name="ldl_playback_pause">Pause</string>
+  <string name="ldl_playback_back">Back 10 seconds</string>
+  <string name="ldl_playback_forward">Forward 10 seconds</string>
 </resources>

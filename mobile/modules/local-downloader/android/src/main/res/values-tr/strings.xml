@@ -59,4 +59,12 @@
     <item quantity="one">%d parça</item>
     <item quantity="other">%d parça</item>
   </plurals>
+
+  <!-- The Watch player out of sight (watch/Playback.kt). -->
+  <string name="ldl_playback_channel">Video oynatma</string>
+  <string name="ldl_playback_channel_description">İzle\'de oynatılanı ve kontrollerini gösterir</string>
+  <string name="ldl_playback_play">Oynat</string>
+  <string name="ldl_playback_pause">Duraklat</string>
+  <string name="ldl_playback_back">10 saniye geri</string>
+  <string name="ldl_playback_forward">10 saniye ileri</string>
 </resources>

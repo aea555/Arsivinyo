@@ -84,10 +84,27 @@ enum SidebarSelection: Hashable {
 @Observable
 final class AppModel {
     /// Reopens where you left off, as a Mac app does.
-    var selection: SidebarSelection = .section(AppSection(
-        rawValue: UserDefaults.standard.string(forKey: "section") ?? "") ?? .download) {
+    var selection: SidebarSelection = {
+        let last = AppSection(rawValue: UserDefaults.standard.string(forKey: "section") ?? "") ?? .download
+        // Not into Memes while they are turned off.
+        return .section(last == .memes && !UserDefaults.standard.bool(forKey: "experimentalFeatures") ? .download : last)
+    }() {
         didSet { UserDefaults.standard.set(section.rawValue, forKey: "section") }
     }
+
+    /// The experimental features, opted into in Settings and off until then. They are the
+    /// memes: without it nothing downloaded joins the collection, nothing asks for tags, and
+    /// the app shows no way into it. What the collection already holds stays as it is, and a
+    /// paired device can still send to it.
+    var experimentalFeatures = UserDefaults.standard.bool(forKey: "experimentalFeatures") {
+        didSet {
+            UserDefaults.standard.set(experimentalFeatures, forKey: "experimentalFeatures")
+            if !experimentalFeatures, section == .memes { selection = .section(.download) }
+        }
+    }
+
+    /// The sections there is a way into: all of them, less Memes while they are turned off.
+    var sections: [AppSection] { AppSection.allCases.filter { $0 != .memes || experimentalFeatures } }
 
     /// The section the selection is in. A playlist is inside Music.
     var section: AppSection {

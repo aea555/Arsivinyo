@@ -15,11 +15,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  getLocalPrivateModeState,
   cancelTask,
   downloadMedia,
   DownloadProgress,
+  getExperimentalFeatures,
   getLocalBackgroundState,
+  getLocalPrivateModeState,
   listenBackgroundState,
   setLocalAudioModeEnabled,
   setLocalPrivateModeEnabled,
@@ -364,6 +365,20 @@ export default function HomeScreen() {
   const openMemes = useCallback(() => {
     router.push('/memes' as Href);
   }, [router]);
+  // Memes are an experimental feature, opted into in Settings: asked again each time this
+  // screen comes back, which is where the answer changes.
+  const [experimental, setExperimental] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+      void getExperimentalFeatures()
+        .then((enabled) => live && setExperimental(enabled))
+        .catch(() => undefined);
+      return () => {
+        live = false;
+      };
+    }, []),
+  );
 
   const handleSelectAudioMode = useCallback(async (next: boolean) => {
     if (next === audioModeEnabled) return;
@@ -663,7 +678,7 @@ export default function HomeScreen() {
             { label: t('home.navMusic'), icon: 'musical-notes-outline', onPress: openSounds },
             { label: t('home.navWatch'), icon: 'film-outline', onPress: openWatch },
             { label: t('home.navTorrents'), icon: 'magnet-outline', onPress: openTorrents },
-            { label: t('home.navMemes'), icon: 'happy-outline', onPress: openMemes },
+            ...(experimental ? [{ label: t('home.navMemes'), icon: 'happy-outline', onPress: openMemes } as const] : []),
             { label: t('home.navVault'), icon: 'shield-checkmark-outline', onPress: openPrivateVideos,
               hint: t('home.privateVaultHint') },
           ] as const).map((item) => (

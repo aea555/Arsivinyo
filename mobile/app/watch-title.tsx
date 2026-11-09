@@ -181,6 +181,10 @@ export default function WatchTitleScreen() {
         bingeGroup: stream.bingeGroup ?? null,
         startMs,
         nextVideoId: next?.id ?? null,
+        // What nextVideo() goes through: the player takes the next one from here by itself.
+        episodes: meta && isSeries
+          ? meta.videos.filter((v) => (v.season ?? 1) !== 0).map((v) => ({ id: v.id, name: episodeName(v) }))
+          : undefined,
         record: true,
         subtitles: stream.subtitles ?? [],
         filename: stream.filename ?? null,

@@ -75,6 +75,12 @@ export const setMemesPrivate = (ids: string[], makePrivate: boolean) =>
 export const removeMemes = (ids: string[]) => LocalDownloaderModule.removeMemes(ids);
 export const importMemes = () => LocalDownloaderModule.importMemes();
 export const setMemeAskForTags = (enabled: boolean) => LocalDownloaderModule.setMemeAskForTags(enabled);
+/**
+ * The experimental features, which are the memes: opted into, and off until then. Off, a
+ * download does not join the collection and the app shows no way into it.
+ */
+export const getExperimentalFeatures = () => LocalDownloaderModule.getExperimentalFeatures();
+export const setExperimentalFeatures = (enabled: boolean) => LocalDownloaderModule.setExperimentalFeatures(enabled);
 export const dismissMemePrompt = (id: string) => LocalDownloaderModule.dismissMemePrompt(id);
 export const sendMemeToPeer = (fingerprint: string, id: string) =>
   LocalDownloaderModule.pairingSendMeme(fingerprint, id);

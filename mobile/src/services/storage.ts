@@ -5,7 +5,36 @@ const KEYS = {
     DOWNLOAD_LOCATION: '@arsivinyo_download_location',
     PRIVATE_VAULT_SORT: '@arsivinyo_private_vault_sort_v1',
     PRIVATE_VAULT_SHOW_TAGS: '@arsivinyo_private_vault_show_tags_v1',
+    SUBTITLE_STYLE: '@arsivinyo_subtitle_style_v1',
 } as const;
+
+/** How the player draws subtitles: their size against the default, and whether in bold. */
+export interface SubtitleStyle {
+    scale: number;
+    bold: boolean;
+}
+
+/**
+ * The sizes offered, smallest first: small, normal, large, largest. 1 is the size subtitles
+ * had before there was a choice, which is the smallest now.
+ */
+export const SUBTITLE_SCALES = [1, 1.3, 1.6, 2] as const;
+const DEFAULT_SUBTITLE_SIZE = 1;
+export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = { scale: SUBTITLE_SCALES[DEFAULT_SUBTITLE_SIZE], bold: false };
+
+/** Kept as which of the sizes, not as a scale, so the sizes themselves can change. */
+export async function getSubtitleStyle(): Promise<SubtitleStyle> {
+    const stored = await getItem<{ size?: number; bold?: boolean } | null>(KEYS.SUBTITLE_STYLE, null);
+    return {
+        scale: SUBTITLE_SCALES[stored?.size as number] ?? DEFAULT_SUBTITLE_STYLE.scale,
+        bold: stored?.bold === true,
+    };
+}
+
+export async function setSubtitleStyle(style: SubtitleStyle): Promise<boolean> {
+    const size = (SUBTITLE_SCALES as readonly number[]).indexOf(style.scale);
+    return setItem(KEYS.SUBTITLE_STYLE, { size: size < 0 ? DEFAULT_SUBTITLE_SIZE : size, bold: style.bold });
+}
 
 export type PrivateVaultSortMode = 'alpha' | 'time' | 'size' | 'duration';
 export type PrivateVaultSortDirection = 'asc' | 'desc';

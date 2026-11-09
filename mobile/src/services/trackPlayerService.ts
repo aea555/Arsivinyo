@@ -62,22 +62,52 @@ export function soundToTrack(song: LocalSound): Track {
   };
 }
 
+// One playSongs at a time, and of those waiting only the last: taps on several songs in a row
+// used to run into each other, each resetting the queue the one before was still filling.
+let playChain: Promise<void> = Promise.resolve();
+let playRequests = 0;
+
 /**
- * Replace the queue with `songs` and start playing from `startIndex`. `contextId`
- * records where the queue came from ('all' for the Songs view, or a playlist id) so
- * later imports/downloads can be appended to the right queue.
+ * Play `songs` from `startIndex`. `contextId` records where the queue came from ('all' for
+ * the Songs view, or a playlist id) so later imports/downloads can be appended to the right
+ * queue.
  */
-export async function playSongs(songs: LocalSound[], startIndex: number, contextId = 'all'): Promise<void> {
+export function playSongs(songs: LocalSound[], startIndex: number, contextId = 'all'): Promise<void> {
+  const request = ++playRequests;
+  playChain = playChain
+    .catch(() => undefined)
+    .then(() => (request === playRequests ? startSongs(songs, startIndex, contextId) : undefined));
+  return playChain;
+}
+
+async function startSongs(songs: LocalSound[], startIndex: number, contextId: string): Promise<void> {
   if (songs.length === 0) return;
   await setupTrackPlayer();
-  await TrackPlayer.reset();
-  await TrackPlayer.add(songs.map(soundToTrack));
-  const safeIndex = Math.max(0, Math.min(startIndex, songs.length - 1));
-  if (safeIndex > 0) {
-    await TrackPlayer.skip(safeIndex);
+  const index = Math.max(0, Math.min(startIndex, songs.length - 1));
+  const tracks = songs.map(soundToTrack);
+
+  // The list that is queued already, which is what tapping another song in the same view
+  // gives: only the place in it changes.
+  const queue = await TrackPlayer.getQueue().catch(() => [] as Track[]);
+  const queued =
+    queue.length === tracks.length &&
+    queue.every((t, i) => String(t.id) === String(tracks[i].id) && t.url === tracks[i].url && (t.title ?? null) === (tracks[i].title ?? null) && (t.artist ?? null) === (tracks[i].artist ?? null));
+  if (queued) {
+    await TrackPlayer.skip(index);
+    queueContextId = contextId;
+    await TrackPlayer.play();
+    return;
   }
+
+  // Another list. The chosen song goes in first and alone, so it is the one playing from the
+  // start, and the songs after and before it are put around it. Queued whole and then skipped
+  // to, the player was on the list's first song for a moment, and the screen showed that.
+  await TrackPlayer.reset();
+  await TrackPlayer.add([tracks[index]]);
   queueContextId = contextId;
   await TrackPlayer.play();
+  if (index + 1 < tracks.length) await TrackPlayer.add(tracks.slice(index + 1));
+  if (index > 0) await TrackPlayer.add(tracks.slice(0, index), 0);
 }
 
 // Library song ids seen on the previous reconcile. Module-level so it survives the
@@ -125,35 +155,30 @@ export async function seekBy(deltaSeconds: number): Promise<void> {
 }
 
 // "Previous" behaves like most music apps: a single press restarts the current
-// track; a quick double press jumps to the previous track (if there is one). The
+// track; a quick second press jumps to the previous track (if there is one). The
 // state is module-level so the in-app control and the lock-screen / notification
 // RemotePrevious event share one tap-counter and behave identically. (RNTP's
 // playback service runs in the same JS runtime as the UI, so this is shared.)
-let prevTapTimer: ReturnType<typeof setTimeout> | null = null;
+//
+// By the clock, not by a timer: behind the app no timer fires, and a press on the lock
+// screen that waited for one to restart the track would wait until the app was opened.
+let prevTapAt = 0;
 const PREV_DOUBLE_TAP_MS = 350;
 
 export async function handlePrevious(): Promise<void> {
-  if (prevTapTimer) {
-    // Second tap within the window → go to the previous track if one exists.
-    clearTimeout(prevTapTimer);
-    prevTapTimer = null;
-    try {
-      const index = await TrackPlayer.getActiveTrackIndex();
-      if (typeof index === 'number' && index > 0) {
-        await TrackPlayer.skipToPrevious();
-      } else {
-        await TrackPlayer.seekTo(0);
-      }
-    } catch {
-      // ignore
+  const now = Date.now();
+  const second = now - prevTapAt < PREV_DOUBLE_TAP_MS;
+  prevTapAt = second ? 0 : now;
+  try {
+    const index = second ? await TrackPlayer.getActiveTrackIndex() : undefined;
+    if (typeof index === 'number' && index > 0) {
+      await TrackPlayer.skipToPrevious();
+    } else {
+      await TrackPlayer.seekTo(0);
     }
-    return;
+  } catch {
+    // ignore
   }
-  // First tap → wait briefly; if no second tap arrives, restart the current track.
-  prevTapTimer = setTimeout(() => {
-    prevTapTimer = null;
-    TrackPlayer.seekTo(0).catch(() => undefined);
-  }, PREV_DOUBLE_TAP_MS);
 }
 
 export async function cycleRepeatMode(current: RepeatMode): Promise<RepeatMode> {

@@ -947,96 +947,131 @@ export default function SoundsScreen() {
         />
       )}
 
-      {/* Mini player (hidden while the selection bar occupies the bottom) */}
-      {!selectionMode ? (
-        <MiniPlayer colors={colors} bottomOffset={bottomBarOffset} onOpen={() => router.push('/sound-player' as Href)} />
-      ) : null}
-
-      {/* Selection action bar */}
-      {selectionMode ? (
-        <View style={[styles.selectionBar, { backgroundColor: colors.surface, borderColor: colors.border, bottom: bottomBarOffset }]}>
-          <Pressable hitSlop={8} onPress={exitSelection} style={styles.selectionBtn}>
-            <Ionicons name="close" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.selectionCount, { color: colors.text }]}>
-            {t('sounds.selectedCount', { count: selectedIds.size })}
-          </Text>
-          <View style={styles.selectionActions}>
-            <Pressable hitSlop={8} onPress={selectAll} style={styles.selectionBtn}>
-              <Ionicons name="checkmark-done" size={22} color={colors.text} />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              onPress={onToggleFavoriteSelected}
-              style={styles.selectionBtn}
-              accessibilityLabel={t(selectionAllFavorited ? 'sounds.unfavorite' : 'sounds.favorite')}
-            >
-              <Ionicons
-                name={selectionAllFavorited ? 'heart' : 'heart-outline'}
-                size={22}
-                color={selectionAllFavorited ? colors.accent : colors.text}
-              />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              onPress={() => setPlaylistPickerTarget({ ids: Array.from(selectedIds) })}
-              style={styles.selectionBtn}
-            >
-              <Ionicons name="add-circle-outline" size={22} color={colors.text} />
-            </Pressable>
-            {/* Remove-from-playlist only for regular playlists; in Favorites the heart
-                toggle above already does the unfavorite. */}
-            {activePlaylist && !activePlaylist.system ? (
-              <Pressable
-                hitSlop={8}
-                onPress={() =>
-                  setPendingAction({ type: 'removeFromPlaylist', playlist: activePlaylist, ids: Array.from(selectedIds) })
-                }
-                style={styles.selectionBtn}
-              >
-                <Ionicons name="remove-circle-outline" size={22} color={colors.text} />
-              </Pressable>
-            ) : null}
-            {/* Info is single-track only: the sheet describes one file, and there is
-                no sensible way to show one set of metadata for a batch. */}
-            {selectedIds.size === 1 ? (
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  const id = Array.from(selectedIds)[0];
-                  const song = songs.find((s) => s.id === id) ?? null;
-                  if (song) setInfoTarget(song);
-                }}
-                style={styles.selectionBtn}
-                accessibilityLabel={t('sounds.metadata.title')}
-              >
-                <Ionicons name="information-circle-outline" size={22} color={colors.text} />
-              </Pressable>
-            ) : null}
-            <Pressable
-              hitSlop={8}
-              onPress={() => setPresetTarget({ ids: Array.from(selectedIds) })}
-              style={styles.selectionBtn}
-              accessibilityLabel={t('sounds.applyPreset')}
-            >
-              <Ionicons name="color-wand-outline" size={22} color={colors.text} />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              onPress={() => setPendingAction({ type: 'deleteBatch', ids: Array.from(selectedIds) })}
-              style={styles.selectionBtn}
-            >
-              <Ionicons name="trash-outline" size={22} color={colors.error} />
-            </Pressable>
+      {/* What sits over the bottom of the list, one above the other so none covers another:
+          a message, a preset being applied, then the mini player or, while songs are
+          selected, what to do with them. */}
+      <View pointerEvents="box-none" style={[styles.bottomStack, { bottom: bottomBarOffset }]}>
+        {toast ? (
+          <View style={[styles.toast, { backgroundColor: colors.surfaceHover, borderColor: colors.border }]}>
+            <Text style={[styles.toastText, { color: colors.text }]}>{toast}</Text>
           </View>
-        </View>
-      ) : null}
-
-      {toast ? (
-        <View style={[styles.toast, { backgroundColor: colors.surfaceHover, borderColor: colors.border, bottom: insets.bottom + 84 }]}>
-          <Text style={[styles.toastText, { color: colors.text }]}>{toast}</Text>
-        </View>
-      ) : null}
+        ) : null}
+        {renderProgress ? (
+          <View style={[styles.renderBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.renderBannerText}>
+              <Text numberOfLines={1} style={[styles.renderBannerTitle, { color: colors.text }]}>
+                {renderProgress.status === 'FINISHED'
+                  ? t('sounds.presetFinished')
+                  : renderProgress.status === 'CANCELLED'
+                    ? t('sounds.presetCancelled')
+                    : t('sounds.presetRendering', {
+                        current: Math.min(renderProgress.index + 1, renderProgress.total),
+                        total: renderProgress.total,
+                      })}
+              </Text>
+              {renderProgress.status === 'PROGRESS' && renderProgress.percent != null ? (
+                <View style={[styles.renderBarTrack, { backgroundColor: colors.borderSubtle }]}>
+                  <View
+                    style={[
+                      styles.renderBarFill,
+                      { backgroundColor: colors.accent, width: `${Math.round(renderProgress.percent)}%` },
+                    ]}
+                  />
+                </View>
+              ) : null}
+            </View>
+            {renderProgress.status !== 'FINISHED' && renderProgress.status !== 'CANCELLED' ? (
+              <Pressable hitSlop={8} onPress={handleCancelRender}>
+                <Ionicons name="close-circle-outline" size={22} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {selectionMode ? (
+          <View style={[styles.selectionBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {/* Two rows: what is selected, then what to do with it. In one row the count
+                was what gave way to the buttons, down to a letter a line. */}
+            <View style={styles.selectionHead}>
+              <Pressable hitSlop={8} onPress={exitSelection} style={styles.selectionBtn}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </Pressable>
+              <Text numberOfLines={1} style={[styles.selectionCount, { color: colors.text }]}>
+                {t('sounds.selectedCount', { count: selectedIds.size })}
+              </Text>
+              <Pressable hitSlop={8} onPress={selectAll} style={styles.selectionBtn}>
+                <Ionicons name="checkmark-done" size={22} color={colors.text} />
+              </Pressable>
+            </View>
+            <View style={styles.selectionActions}>
+              <Pressable
+                hitSlop={8}
+                onPress={onToggleFavoriteSelected}
+                style={styles.selectionBtn}
+                accessibilityLabel={t(selectionAllFavorited ? 'sounds.unfavorite' : 'sounds.favorite')}
+              >
+                <Ionicons
+                  name={selectionAllFavorited ? 'heart' : 'heart-outline'}
+                  size={22}
+                  color={selectionAllFavorited ? colors.accent : colors.text}
+                />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                onPress={() => setPlaylistPickerTarget({ ids: Array.from(selectedIds) })}
+                style={styles.selectionBtn}
+              >
+                <Ionicons name="add-circle-outline" size={22} color={colors.text} />
+              </Pressable>
+              {/* Remove-from-playlist only for regular playlists; in Favorites the heart
+                  toggle above already does the unfavorite. */}
+              {activePlaylist && !activePlaylist.system ? (
+                <Pressable
+                  hitSlop={8}
+                  onPress={() =>
+                    setPendingAction({ type: 'removeFromPlaylist', playlist: activePlaylist, ids: Array.from(selectedIds) })
+                  }
+                  style={styles.selectionBtn}
+                >
+                  <Ionicons name="remove-circle-outline" size={22} color={colors.text} />
+                </Pressable>
+              ) : null}
+              {/* Info is single-track only: the sheet describes one file, and there is
+                  no sensible way to show one set of metadata for a batch. */}
+              {selectedIds.size === 1 ? (
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => {
+                    const id = Array.from(selectedIds)[0];
+                    const song = songs.find((s) => s.id === id) ?? null;
+                    if (song) setInfoTarget(song);
+                  }}
+                  style={styles.selectionBtn}
+                  accessibilityLabel={t('sounds.metadata.title')}
+                >
+                  <Ionicons name="information-circle-outline" size={22} color={colors.text} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                hitSlop={8}
+                onPress={() => setPresetTarget({ ids: Array.from(selectedIds) })}
+                style={styles.selectionBtn}
+                accessibilityLabel={t('sounds.applyPreset')}
+              >
+                <Ionicons name="color-wand-outline" size={22} color={colors.text} />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                onPress={() => setPendingAction({ type: 'deleteBatch', ids: Array.from(selectedIds) })}
+                style={styles.selectionBtn}
+              >
+                <Ionicons name="trash-outline" size={22} color={colors.error} />
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <MiniPlayer colors={colors} onOpen={() => router.push('/sound-player' as Href)} />
+        )}
+      </View>
 
       {/* Sort menu */}
       <SimpleSheet visible={infoTarget !== null} onClose={() => setInfoTarget(null)} colors={colors}>
@@ -1207,39 +1242,6 @@ export default function SoundsScreen() {
         )}
       </SimpleSheet>
 
-      {/* Render progress. Sits above the list so a long batch stays visible. */}
-      {renderProgress ? (
-        <View style={[styles.renderBanner, { backgroundColor: colors.surface, borderColor: colors.border, bottom: bottomBarOffset }]}>
-          <View style={styles.renderBannerText}>
-            <Text numberOfLines={1} style={[styles.renderBannerTitle, { color: colors.text }]}>
-              {renderProgress.status === 'FINISHED'
-                ? t('sounds.presetFinished')
-                : renderProgress.status === 'CANCELLED'
-                  ? t('sounds.presetCancelled')
-                  : t('sounds.presetRendering', {
-                      current: Math.min(renderProgress.index + 1, renderProgress.total),
-                      total: renderProgress.total,
-                    })}
-            </Text>
-            {renderProgress.status === 'PROGRESS' && renderProgress.percent != null ? (
-              <View style={[styles.renderBarTrack, { backgroundColor: colors.borderSubtle }]}>
-                <View
-                  style={[
-                    styles.renderBarFill,
-                    { backgroundColor: colors.accent, width: `${Math.round(renderProgress.percent)}%` },
-                  ]}
-                />
-              </View>
-            ) : null}
-          </View>
-          {renderProgress.status !== 'FINISHED' && renderProgress.status !== 'CANCELLED' ? (
-            <Pressable hitSlop={8} onPress={handleCancelRender}>
-              <Ionicons name="close-circle-outline" size={22} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
-
       <SimpleSheet visible={sortMenuOpen} onClose={() => setSortMenuOpen(false)} colors={colors}>
         {(
           [
@@ -1361,13 +1363,13 @@ function Header({
   );
 }
 
-function MiniPlayer({ colors, bottomOffset, onOpen }: { colors: any; bottomOffset: number; onOpen: () => void }) {
+function MiniPlayer({ colors, onOpen }: { colors: any; onOpen: () => void }) {
   const track = useActiveTrack();
   const playback = usePlaybackState();
   const playing = playback.state === State.Playing;
   if (!track) return null;
   return (
-    <Pressable onPress={onOpen} style={[styles.miniPlayer, { backgroundColor: colors.surfaceHover, borderColor: colors.border, bottom: bottomOffset }]}>
+    <Pressable onPress={onOpen} style={[styles.miniPlayer, { backgroundColor: colors.surfaceHover, borderColor: colors.border }]}>
       <View style={[styles.miniThumb, { backgroundColor: colors.surface }]}>
         {track.artwork ? (
           <Image source={{ uri: String(track.artwork) }} style={styles.miniThumbImg} contentFit="cover" />
@@ -1749,9 +1751,6 @@ const styles = StyleSheet.create({
   presetApplyBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 10 },
   presetApplyText: { color: '#0b0b0d', fontWeight: '700', fontSize: 15 },
   renderBanner: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -1785,27 +1784,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   createRowText: { fontSize: 14, fontWeight: '600' },
-  selectionBar: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 10,
-  },
+  bottomStack: { position: 'absolute', left: 12, right: 12, gap: 8 },
+  selectionBar: { borderRadius: 16, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, gap: 2 },
+  selectionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   selectionCount: { flex: 1, fontSize: 15, fontWeight: '600' },
-  selectionActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  selectionActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   selectionBtn: { padding: 6 },
   miniPlayer: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -1820,10 +1805,7 @@ const styles = StyleSheet.create({
   miniArtist: { fontSize: 12, marginTop: 1 },
   miniBtn: { padding: 6 },
   toast: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 90,
+    marginHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 16,

@@ -68,6 +68,12 @@ private struct GeneralSettings: View {
                 }
                 Toggle("Notify when a download ends in the background", isOn: $model.notifyWhenDone)
             }
+            Section {
+                Toggle("Experimental features", isOn: $model.experimentalFeatures)
+            } footer: {
+                Text("Memes: a collection of the videos and images you download, with tags and faces. Off, downloads are not added to it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let problem {
                 Text(problem).foregroundStyle(.red)
             }

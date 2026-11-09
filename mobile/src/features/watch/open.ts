@@ -1,6 +1,6 @@
 import type { Href, useRouter } from 'expo-router';
 
-import type { WatchStream, WatchSubtitle, WatchTitle } from '@/src/api';
+import { getStreams, prepareStream, type WatchStream, type WatchSubtitle, type WatchTitle } from '@/src/api';
 
 type Router = ReturnType<typeof useRouter>;
 
@@ -31,6 +31,8 @@ export interface PlayRequest {
   startMs: number;
   /** The video after this one, for a series. */
   nextVideoId: string | null;
+  /** A series' episodes in order, specials left out, each by the name the player shows. */
+  episodes?: { id: string; name: string }[];
   /** False for a trailer: watching it is not watching the title. */
   record: boolean;
   /** The stream's own subtitles, and its file name, which subtitle add-ons match on. */
@@ -52,6 +54,50 @@ export function takePlayRequest(): PlayRequest | null {
   const request = pending;
   pending = null;
   return request;
+}
+
+/** The episodes on either side of the one [request] plays, for a series the player knows. */
+export function neighbours(request: PlayRequest): { previous: string | null; next: string | null } {
+  const episodes = request.episodes ?? [];
+  const at = episodes.findIndex((e) => e.id === request.videoId);
+  if (at < 0) return { previous: null, next: request.nextVideoId };
+  return { previous: episodes[at - 1]?.id ?? null, next: episodes[at + 1]?.id ?? null };
+}
+
+/**
+ * Another episode of [request]'s series, ready to play in the same player: from the same
+ * add-on, its stream of the same binge group, else its first, as the title page picks one.
+ * Null when there is none to take without asking (no such stream, one that does not open
+ * here, a torrent after something that was not one): the title page then shows what there is.
+ */
+export async function episodeRequest(request: PlayRequest, videoId: string): Promise<PlayRequest | null> {
+  const episodes = request.episodes ?? [];
+  const at = episodes.findIndex((e) => e.id === videoId);
+  if (at < 0 || !request.addonKey) return null;
+  const video = episodes[at];
+  const found = await getStreams(request.addonKey, request.title.type, video.id);
+  if (!found.success) return null;
+  const stream = found.streams.find((s) => request.bingeGroup && s.bingeGroup === request.bingeGroup) ?? found.streams[0];
+  if (!stream || stream.kind === 'external' || (stream.kind === 'torrent' && !request.torrentId)) return null;
+  const prepared = await prepareStream(stream);
+  if (!prepared.success) return null;
+  return {
+    url: prepared.url,
+    audioUrl: prepared.audioUrl ?? null,
+    headers: prepared.headers,
+    title: request.title,
+    videoId: video.id,
+    videoName: video.name,
+    addonKey: request.addonKey,
+    bingeGroup: stream.bingeGroup ?? null,
+    startMs: 0,
+    nextVideoId: episodes[at + 1]?.id ?? null,
+    episodes,
+    record: true,
+    subtitles: stream.subtitles ?? [],
+    filename: stream.filename ?? null,
+    torrentId: prepared.torrentId ?? null,
+  };
 }
 
 /** A stream's lines for a list: the add-on's label, then what the stream says it is. */

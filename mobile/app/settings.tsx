@@ -19,11 +19,13 @@ import {
   authenticateLocalPrivateAccess,
   cancelLocalPrivateVaultMigration,
   ensureLocalBackgroundPermission,
+  getExperimentalFeatures,
   getLocalAudioFormat,
   getLocalBackgroundState,
   getLocalYtDlpUpdateStatus,
   listenLocalPrivateVaultMigration,
   listenYtDlpUpdateProgress,
+  setExperimentalFeatures,
   setLocalAudioFormat,
   setLocalStickyNotificationEnabled,
   startLocalPrivateVaultMigration,
@@ -121,6 +123,7 @@ export default function SettingsScreen() {
   const [stickyToggleBusy, setStickyToggleBusy] = useState(false);
   const [audioFormat, setAudioFormat] = useState<LocalAudioFormat>('flac');
   const [audioFormatBusy, setAudioFormatBusy] = useState(false);
+  const [experimental, setExperimental] = useState(false);
   const [autoPresets, setAutoPresets] = useState<AutoPresetConfig>(DEFAULT_AUTO_PRESET_CONFIG);
   const [autoPresetSheetOpen, setAutoPresetSheetOpen] = useState(false);
   const [availablePresets, setAvailablePresets] = useState<AudioPreset[]>([]);
@@ -151,6 +154,11 @@ export default function SettingsScreen() {
       .then((state) => {
         if (!mounted) return;
         setAudioFormat(state.format);
+      })
+      .catch(() => undefined);
+    void getExperimentalFeatures()
+      .then((enabled) => {
+        if (mounted) setExperimental(enabled);
       })
       .catch(() => undefined);
     void getAutoPresetConfig()
@@ -215,6 +223,12 @@ export default function SettingsScreen() {
     },
     [autoPresets, showError, t]
   );
+
+  const handleToggleExperimental = useCallback(() => {
+    const next = !experimental;
+    setExperimental(next);
+    void setExperimentalFeatures(next).catch(() => setExperimental(!next));
+  }, [experimental]);
 
   const handleToggleStickyNotification = useCallback(async () => {
     if (stickyToggleBusy) return;
@@ -804,6 +818,31 @@ export default function SettingsScreen() {
                   value={audioFormat === 'flac'}
                   onValueChange={handleToggleAudioFormat}
                   disabled={audioFormatBusy}
+                  trackColor={{ false: colors.borderSubtle, true: colors.accent }}
+                  thumbColor="#f4f4f5"
+                  ios_backgroundColor={colors.borderSubtle}
+                />
+              }
+            />
+          </View>
+        </View>
+
+        {/* What is not for everyone yet, opted into: off, the app does none of it. */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
+            {t('settings.experimentalSection')}
+          </Text>
+          <View style={[styles.sectionContent, { backgroundColor: colors.surface }]}>
+            <SettingsItem
+              icon="flask-outline"
+              title={t('settings.experimentalFeatures')}
+              subtitle={t('settings.experimentalFeaturesHint')}
+              showArrow={false}
+              onPress={handleToggleExperimental}
+              rightElement={
+                <Switch
+                  value={experimental}
+                  onValueChange={handleToggleExperimental}
                   trackColor={{ false: colors.borderSubtle, true: colors.accent }}
                   thumbColor="#f4f4f5"
                   ios_backgroundColor={colors.borderSubtle}

@@ -29,6 +29,14 @@ export interface MpvSource {
   startMs?: number;
 }
 
+/** What a video is kept as in the library, so the player can write down where it is. */
+export interface MpvRecord {
+  title: { id: string; type: string; name: string; poster?: string | null };
+  videoId: string;
+  addonKey: string | null;
+  bingeGroup: string | null;
+}
+
 /** What the screen can tell the player to do. */
 export interface MpvPlayerHandle {
   setPaused(paused: boolean): Promise<void>;
@@ -40,12 +48,29 @@ export interface MpvPlayerHandle {
   addSubtitle(url: string, title: string, lang: string, select: boolean): Promise<void>;
   setSubtitleDelay(ms: number): Promise<void>;
   setSpeed(speed: number): Promise<void>;
+  /** Into the small window, for a player with `background`. */
+  enterPictureInPicture(): Promise<void>;
 }
 
 export interface MpvPlayerViewProps extends ViewProps {
   source: MpvSource | null;
   /** Subtitle and audio languages, most preferred first, as ISO 639-2 codes. */
   languages: string[];
+  /**
+   * Plays on out of sight (the screen off, another app in front) and in picture-in-picture,
+   * with a notification to pause and seek from. Without it, out of sight is paused.
+   */
+  background?: boolean;
+  /** What that notification calls the video. */
+  title?: string;
+  /**
+   * Has the player write the position to the library: as it plays, when it pauses, at the
+   * end and on the way out. The screen cannot: its timers stop when the app is out of sight.
+   */
+  record?: MpvRecord | null;
+  /** Subtitles' size against the default (1), and whether they are bold. */
+  subtitleScale?: number;
+  subtitleBold?: boolean;
   onProgress?: (event: NativeSyntheticEvent<MpvProgress>) => void;
   onTracks?: (event: NativeSyntheticEvent<{ tracks: MpvTrack[] }>) => void;
   onEnded?: (event: NativeSyntheticEvent<object>) => void;
@@ -56,7 +81,8 @@ const NativeView = requireNativeView<MpvPlayerViewProps & { ref?: React.Ref<MpvP
 
 /**
  * libmpv in a native view (`shared/watch/CONTRACT.md`, "The player"). Fullscreen in landscape
- * while it is on screen; the controls are the screen's own.
+ * while it is on screen; the controls are the screen's own. In picture-in-picture the picture
+ * is alone in the window, the controls put aside by the view itself.
  */
 export const MpvPlayerView = forwardRef<MpvPlayerHandle, MpvPlayerViewProps>(function MpvPlayerView(props, ref) {
   return <NativeView ref={ref} {...props} />;

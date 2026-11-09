@@ -42,6 +42,13 @@ final class MPVPlayer {
     private(set) var ended = false
     private(set) var speed: Double = 1
     private(set) var subtitleDelayMs: Double = 0
+    /// How large subtitles are drawn against the default, and whether in bold: the viewer's
+    /// own setting, kept for every video. A styled (ASS) subtitle keeps its own weight.
+    private(set) var subtitleScale: Double = UserDefaults.standard.object(forKey: "subtitleScale") as? Double ?? subtitleScales[1]
+    private(set) var subtitleBold = UserDefaults.standard.bool(forKey: "subtitleBold")
+    /// The sizes offered, smallest first: small, normal, large, largest. 1 is the size
+    /// subtitles had before there was a choice, which is the smallest now.
+    static let subtitleScales: [Double] = [1, 1.3, 1.6, 2]
 
     /// Subtitle and audio languages, most preferred first, as ISO 639-2 codes.
     @ObservationIgnored var languages: [String] = []
@@ -83,6 +90,8 @@ final class MPVPlayer {
             core = try Core(layer: layer, vault: vault.map(VaultStream.init)) { [weak self] event in
                 Task { @MainActor in self?.apply(event) }
             }
+            core?.setDouble("sub-scale", subtitleScale)
+            core?.setFlag("sub-bold", subtitleBold)
             loadPending()
         } catch {
             failed = "PLAYER_UNAVAILABLE"
@@ -170,7 +179,9 @@ final class MPVPlayer {
     func setPaused(_ value: Bool) { core?.setFlag("pause", value) }
     func togglePause() { setPaused(!paused) }
     func seek(toMs ms: Double) { core?.command(["seek", String(ms / 1000), "absolute"]) }
-    func seek(byMs ms: Double) { core?.command(["seek", String(ms / 1000), "relative"]) }
+    /// Exactly that far. A plain relative seek goes to a keyframe: near the end that is the last
+    /// one, some seconds back, to be watched out again, where the skip should end the video.
+    func seek(byMs ms: Double) { core?.command(["seek", String(ms / 1000), "relative+exact"]) }
 
     /// A track to show, or nil to turn subtitles off.
     func select(_ track: Track?, kind: Kind) {
@@ -185,6 +196,18 @@ final class MPVPlayer {
     func setSubtitleDelay(ms: Double) {
         subtitleDelayMs = ms
         core?.setDouble("sub-delay", ms / 1000)
+    }
+
+    func setSubtitleScale(_ value: Double) {
+        subtitleScale = value
+        UserDefaults.standard.set(value, forKey: "subtitleScale")
+        core?.setDouble("sub-scale", value)
+    }
+
+    func setSubtitleBold(_ value: Bool) {
+        subtitleBold = value
+        UserDefaults.standard.set(value, forKey: "subtitleBold")
+        core?.setFlag("sub-bold", value)
     }
 
     func setSpeed(_ value: Double) {

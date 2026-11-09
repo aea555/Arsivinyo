@@ -168,6 +168,9 @@ subtitles. mpv plays all of it.
 - On the phone, libass has no system font provider, so the app ships the fonts subtitles are
   drawn in (Noto Sans, OFL); without them text loses its spaces and Turkish letters.
 - mpv picks the file's own audio and subtitle tracks by the same languages.
+- Subtitles' size and weight are the viewer's: four sizes (1, 1.3, 1.6 and 2 times mpv's
+  own, as `sub-scale`; the second to begin with) and bold or not (`sub-bold`), set in the
+  subtitles menu and kept on the device for every video.
 - A page that goes through yt-dlp (YouTube, a trailer) is handed to mpv as two plain files,
   the best video up to 1080p and the best audio, opened together. Not as an HLS master
   playlist where there is a choice: FFmpeg opens every variant it lists, and a segment of
@@ -179,6 +182,16 @@ subtitles. mpv plays all of it.
 - The vault's own videos play through the same player, so a private MKV plays too: on the
   phone over the vault's loopback server, on the Mac through mpv's stream callbacks, which
   decrypt what mpv reads as it reads it. Neither writes plaintext.
+- On the phone a Watch video plays on out of sight: with the screen off or another app in
+  front its sound carries on (the video track is turned off until the picture is back), and
+  leaving the app while it plays puts it in picture-in-picture. A media session and its
+  notification pause and seek it from there; a call, another player or the headphones coming
+  out pause it; closing the small window pauses it. The app swiped away stops it. A vault
+  video does none of this: out of sight it pauses, and no notification names it. The Mac
+  needs none of it: its window plays on behind others as it is.
+- On the phone the player, not the screen, writes the position to the library (every ten
+  seconds while playing, at a pause, at the end, on the way out): the screen's code does not
+  run while the app is out of sight.
 - mpv is GPL/LGPL; Arsivinyo is GPL-3.0-or-later, so it ships under the GPL build.
 
 ## The library

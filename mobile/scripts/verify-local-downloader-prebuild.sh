@@ -95,6 +95,7 @@ verify_generated_files() {
   for perm in \
     'android.permission.FOREGROUND_SERVICE' \
     'android.permission.FOREGROUND_SERVICE_DATA_SYNC' \
+    'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' \
     'android.permission.POST_NOTIFICATIONS' \
     'android.permission.USE_BIOMETRIC'; do
     if ! grep -Fq "$perm" "$ANDROID_MANIFEST"; then
@@ -139,6 +140,23 @@ verify_generated_files() {
   fi
   if ! grep -Fq 'android:foregroundServiceType="dataSync"' "$ANDROID_MANIFEST"; then
     echo "[verify-local-downloader-prebuild] Foreground service type dataSync is required"
+    exit 1
+  fi
+  # Without it a headless task is never over, and React Native's timers run behind the app
+  # for good (HeadlessTaskSupport.kt).
+  assert_once 'add(expo.modules.localdownloader.HeadlessTaskSupportPackage())' "$ROOT_DIR/android/app/src/main/java/com/arsivinyo/local/MainApplication.kt"
+  # The Watch player out of sight and in picture-in-picture (watch/Playback.kt).
+  if [[ "$(grep -F 'expo.modules.localdownloader.watch.PlaybackService' "$ANDROID_MANIFEST" | wc -l | tr -d ' ')" != "1" ]]; then
+    echo "[verify-local-downloader-prebuild] PlaybackService must exist exactly once in AndroidManifest.xml"
+    exit 1
+  fi
+  if ! awk '/watch.PlaybackService/,/\/>/' "$ANDROID_MANIFEST" | grep -Fq 'android:foregroundServiceType="mediaPlayback"'; then
+    echo "[verify-local-downloader-prebuild] PlaybackService must be a mediaPlayback foreground service"
+    exit 1
+  fi
+  # Without smallestScreenSize the activity is made again as it shrinks, and the video with it.
+  if ! awk '/\.MainActivity/,/>/' "$ANDROID_MANIFEST" | grep -F 'android:supportsPictureInPicture="true"' | grep -Fq 'smallestScreenSize'; then
+    echo "[verify-local-downloader-prebuild] MainActivity must support picture-in-picture and handle smallestScreenSize itself"
     exit 1
   fi
 

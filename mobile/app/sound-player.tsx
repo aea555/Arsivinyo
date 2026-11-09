@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, AppState, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TrackPlayer, {
   RepeatMode,
@@ -25,6 +25,20 @@ import { listAllPresets, type AudioPreset } from '@/src/features/audioPresets/pr
 import { cycleRepeatMode, handlePrevious, seekBy } from '@/src/services/trackPlayerService';
 import { useTheme } from '@/src/theme';
 
+/** How often the position is read while the screen can be seen, and "not at all" while it cannot. */
+const PROGRESS_EVERY_MS = 250;
+const PROGRESS_NEVER_MS = 24 * 60 * 60 * 1000;
+
+/** Whether the app is in front: not with another app over it, nor with the screen off. */
+function useAppInFront(): boolean {
+  const [inFront, setInFront] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => setInFront(state === 'active'));
+    return () => subscription.remove();
+  }, []);
+  return inFront;
+}
+
 function fmt(seconds: number): string {
   if (!seconds || seconds < 0 || !isFinite(seconds)) return '0:00';
   const total = Math.floor(seconds);
@@ -40,7 +54,12 @@ export default function SoundPlayerScreen() {
 
   const track = useActiveTrack();
   const playback = usePlaybackState();
-  const progress = useProgress(250);
+  // Only while the app is in front. Timers still run behind it while music plays, so left
+  // open this screen went on reading the position four times a second and animating the bar
+  // for nobody: half a processor's worth, and every one of those updates waited to be drawn,
+  // so coming back replayed minutes of them before the screen caught up with the song.
+  const inFront = useAppInFront();
+  const progress = useProgress(inFront ? PROGRESS_EVERY_MS : PROGRESS_NEVER_MS);
   const [repeatMode, setRepeatMode] = React.useState<RepeatMode>(RepeatMode.Off);
   const [isFav, setIsFav] = React.useState(false);
   const trackId = track?.id != null ? String(track.id) : null;

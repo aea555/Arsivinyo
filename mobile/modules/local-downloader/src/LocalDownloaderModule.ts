@@ -238,6 +238,8 @@ type LocalDownloaderNativeModule = {
   removeMemes(ids: string[]): Promise<LocalMemeResult>;
   importMemes(): Promise<LocalMemeResult>;
   setMemeAskForTags(enabled: boolean): Promise<void>;
+  getExperimentalFeatures(): Promise<boolean>;
+  setExperimentalFeatures(enabled: boolean): Promise<void>;
   dismissMemePrompt(id: string): Promise<void>;
 
   listSounds(): Promise<LocalSoundsLibrary>;
@@ -419,6 +421,8 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       removeMemes: async () => unsupported(),
       importMemes: async () => unsupported(),
       setMemeAskForTags: async () => unsupported(),
+      getExperimentalFeatures: async () => false,
+      setExperimentalFeatures: async () => unsupported(),
       dismissMemePrompt: async () => unsupported(),
       listSounds: async () => unsupported(),
       importSounds: async () => unsupported(),

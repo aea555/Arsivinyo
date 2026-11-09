@@ -109,6 +109,7 @@ extension AppModel {
     /// A video or image download joins the collection with where it came from, and asks for
     /// tags if that is how this Mac is set up.
     func adoptMeme(_ file: URL, payload: JSONValue) {
+        guard experimentalFeatures else { return }
         let source = payload["source"]
         let meme = MemeLibrary.Source(
             platform: source?["platform"]?.string, account: source?["account"]?.string,

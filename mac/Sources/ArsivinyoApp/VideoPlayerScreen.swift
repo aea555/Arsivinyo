@@ -276,6 +276,14 @@ struct VideoPlayerScreen<Overlay: View>: View {
             Button("Later by 0.1 s") { player.setSubtitleDelay(ms: player.subtitleDelayMs + 100) }
                 .keyboardShortcut("x", modifiers: [])
             Button("Reset delay") { player.setSubtitleDelay(ms: 0) }
+            Divider()
+            Picker("Text size", selection: Binding(get: { player.subtitleScale }, set: { player.setSubtitleScale($0) })) {
+                Text("Small").tag(MPVPlayer.subtitleScales[0])
+                Text("Normal").tag(MPVPlayer.subtitleScales[1])
+                Text("Large").tag(MPVPlayer.subtitleScales[2])
+                Text("Largest").tag(MPVPlayer.subtitleScales[3])
+            }
+            Toggle("Bold", isOn: Binding(get: { player.subtitleBold }, set: { player.setSubtitleBold($0) }))
         } label: { Image(systemName: "captions.bubble") }
         .menuIndicator(.hidden)
         .fixedSize()

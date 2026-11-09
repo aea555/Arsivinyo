@@ -233,6 +233,9 @@ dependencies {
   // second provider is a known source of conflicts. R8 keeps the reachable classes only.
   implementation "org.bouncycastle:bcprov-jdk18on:1.79"
   compileOnly "com.chaquo.python.runtime:chaquopy_java:15.0.1"
+  // React Native itself, for the one React Native module this Expo module carries
+  // (HeadlessTaskSupport.kt). The version is the app's, as for every Expo module.
+  implementation "com.facebook.react:react-android"
 
   testImplementation "junit:junit:4.13.2"
   testImplementation "com.google.crypto.tink:tink:1.13.0"

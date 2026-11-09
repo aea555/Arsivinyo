@@ -1,33 +1,43 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getLanguages, getSubtitles, recordProgress, type WatchSubtitle } from '@/src/api';
+import { getLanguages, getSubtitles, type WatchSubtitle } from '@/src/api';
 import { AppText as Text } from '@/src/components';
 import { Player } from '@/src/features/player/Player';
-import { openTitle, takePlayRequest, type PlayRequest } from '@/src/features/watch/open';
+import { episodeRequest, neighbours, openTitle, takePlayRequest, type PlayRequest } from '@/src/features/watch/open';
 import { TorrentLive } from '@/src/features/watch/Torrents';
-
-/** How often the position is written down while playing. */
-const SAVE_EVERY_MS = 10_000;
 
 /**
  * An add-on's stream in the player (`shared/watch/CONTRACT.md`, "The player"). It resumes
- * where the library says the video stopped, writes the position down as it plays, brings in
- * subtitles from add-ons, and offers the next episode at the end.
+ * where the library says the video stopped, brings in subtitles from add-ons, and offers the
+ * next episode at the end. It plays on with the screen off or in picture-in-picture, so the
+ * player itself writes the position down: nothing here runs while the app is out of sight.
  */
 export default function WatchPlayerScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  // Taken once: a stream's URL is handed over in memory, never as a route parameter.
-  const [request] = useState<PlayRequest | null>(() => takePlayRequest());
+  // Taken once: a stream's URL is handed over in memory, never as a route parameter. The
+  // next episode replaces it here, in the same player.
+  const [request, setRequest] = useState<PlayRequest | null>(() => takePlayRequest());
+  const [advancing, setAdvancing] = useState(false);
+  const live = useRef(true);
+  useEffect(() => () => {
+    live.current = false;
+  }, []);
   const [languages, setLanguages] = useState<string[] | null>(null);
   const [subtitles, setSubtitles] = useState<WatchSubtitle[]>([]);
   const [ended, setEnded] = useState(false);
-  const where = useRef({ positionMs: 0, durationMs: 0 });
+  // A trailer is not the title: watching it is not kept.
+  const record = useMemo(
+    () => (request && request.record
+      ? { title: request.title, videoId: request.videoId, addonKey: request.addonKey, bingeGroup: request.bingeGroup }
+      : null),
+    [request],
+  );
 
   // The languages first: mpv picks the file's tracks by them as it opens it.
   useEffect(() => {
@@ -43,6 +53,7 @@ export default function WatchPlayerScreen() {
   // Add-ons' subtitles, which arrive while the video is already opening.
   useEffect(() => {
     // A trailer is not the title: add-ons have nothing for it.
+    setSubtitles([]);
     if (!request || !request.record) return;
     let live = true;
     getSubtitles(request.title.type, request.videoId, request.filename ?? null, request.subtitles ?? [])
@@ -50,22 +61,6 @@ export default function WatchPlayerScreen() {
       .catch(() => undefined);
     return () => {
       live = false;
-    };
-  }, [request]);
-
-  // Where it is, written down every few seconds and once more on the way out.
-  useEffect(() => {
-    if (!request || !request.record) return;
-    const save = () => {
-      const { positionMs, durationMs } = where.current;
-      if (durationMs <= 0) return;
-      void recordProgress(request.title, request.videoId, positionMs, durationMs, request.addonKey, request.bingeGroup)
-        .catch(() => undefined);
-    };
-    const timer = setInterval(save, SAVE_EVERY_MS);
-    return () => {
-      clearInterval(timer);
-      save();
     };
   }, [request]);
 
@@ -77,40 +72,44 @@ export default function WatchPlayerScreen() {
     );
   }
 
+  // Another episode in this same player: nothing of the app shows in between, and the screen
+  // stays as it is. This one plays on until the other is found. When it cannot be found from
+  // here, the title page finds it, as before.
+  const { previous, next } = neighbours(request);
+  const play = async (videoId: string) => {
+    if (advancing) return;
+    setAdvancing(true);
+    const found = await episodeRequest(request, videoId).catch(() => null);
+    if (!live.current) return;
+    setAdvancing(false);
+    if (found) {
+      setEnded(false);
+      setRequest(found);
+      return;
+    }
+    router.back();
+    openTitle(router, request.title, { videoId, bingeGroup: request.bingeGroup, addonKey: request.addonKey });
+  };
+
   return (
     <Player
       source={languages ? { url: request.url, audioUrl: request.audioUrl, headers: request.headers, startMs: request.startMs } : null}
       title={request.videoName}
       languages={languages ?? []}
       subtitles={subtitles}
+      background
+      record={record}
       onClose={() => router.back()}
+      onPrevious={previous ? () => void play(previous) : undefined}
+      onNext={next ? () => void play(next) : undefined}
+      switching={advancing}
       waiting={request.torrentId ? <TorrentLive id={request.torrentId} color="#fff" /> : null}
-      onProgress={(p) => {
-        where.current = { positionMs: p.positionMs, durationMs: p.durationMs };
-      }}
-      onEnded={() => {
-        if (request.record && where.current.durationMs > 0) {
-          where.current = { positionMs: where.current.durationMs, durationMs: where.current.durationMs };
-          void recordProgress(request.title, request.videoId, where.current.positionMs, where.current.durationMs,
-            request.addonKey, request.bingeGroup).catch(() => undefined);
-        }
-        setEnded(true);
-      }}
+      onEnded={() => setEnded(true)}
     >
-      {ended && request.nextVideoId ? (
+      {ended && next ? (
         <View style={[StyleSheet.absoluteFill, styles.center, styles.dim]}>
-          <Pressable
-            style={styles.next}
-            onPress={() => {
-              router.back();
-              openTitle(router, request.title, {
-                videoId: request.nextVideoId!,
-                bingeGroup: request.bingeGroup,
-                addonKey: request.addonKey,
-              });
-            }}
-          >
-            <Ionicons name="play-skip-forward" size={22} color="#000" />
+          <Pressable style={styles.next} onPress={() => void play(next)} disabled={advancing}>
+            {advancing ? <ActivityIndicator size="small" color="#000" /> : <Ionicons name="play-skip-forward" size={22} color="#000" />}
             <Text style={styles.nextText}>{t('watch.nextEpisode')}</Text>
           </Pressable>
           <Pressable onPress={() => router.back()} hitSlop={12}>

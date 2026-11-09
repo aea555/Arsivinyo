@@ -18,8 +18,8 @@ Licensed under **GPL-3.0-or-later**.
   continue watching. Recommended community add-ons install in one tap.
 - **Torrents.** Streamed while they download, or downloaded with the files you choose, into
   Downloads or straight into the vault.
-- **Memes.** Everything downloaded or imported, with the post it came from, searchable by
-  caption, tagged, and grouped by face.
+- **Memes** (experimental, turned on in Settings). Everything downloaded or imported, with
+  the post it came from, searchable by caption, tagged, and grouped by face.
 - **Devices.** Two devices you own pair on the local network and exchange files over an
   encrypted connection, with no relay in between.
 
@@ -46,6 +46,6 @@ Each app is self-contained, with its own dependencies and scripts:
 
 ## Status
 
-Both apps are in beta, at **4.0.0-beta.1**. The changelog is
+Both apps are at **4.1.3**. The changelog is
 [`mobile/CHANGELOG.md`](mobile/CHANGELOG.md). Arsivinyo is for personal use and is not
 published in any store.

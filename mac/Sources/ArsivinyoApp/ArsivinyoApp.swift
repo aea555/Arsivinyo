@@ -87,7 +87,7 @@ struct AppCommands: Commands {
 
         CommandGroup(after: .sidebar) {
             Divider()
-            ForEach(AppSection.allCases) { section in
+            ForEach(model.sections) { section in
                 Button(section.title) { model.section = section }
                     .keyboardShortcut(section.shortcut, modifiers: .command)
             }
