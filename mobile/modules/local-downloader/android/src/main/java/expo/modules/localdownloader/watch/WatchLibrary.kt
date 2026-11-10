@@ -20,6 +20,9 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
 
   data class Progress(val videoId: String, val positionMs: Long, val durationMs: Long, val at: Long)
 
+  /** Where one video stopped. */
+  data class Place(val positionMs: Long, val durationMs: Long, val at: Long)
+
   data class Item(
     /** The add-on's id for the title. */
     val id: String,
@@ -30,6 +33,12 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
     /** Videos finished; for a movie, its own id. */
     val watched: Set<String> = emptySet(),
     val progress: Progress? = null,
+    /**
+     * Where every video started and not finished stopped, by its id: [progress] is only the
+     * last one played, and going to another episode and back must not lose the place. As many
+     * as there are; a video leaves when it is finished.
+     */
+    val places: Map<String, Place> = emptyMap(),
     /** The add-on and binge group last played from, to pick the same source next time. */
     val addon: String? = null,
     val bingeGroup: String? = null,
@@ -127,8 +136,9 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
   data class Title(val id: String, val type: String, val name: String, val poster: String?)
 
   /**
-   * Where playback is. Near the end counts as watched: the video joins [Item.watched] and the
-   * title's progress is cleared, so it leaves "continue watching" until the next one starts.
+   * Where playback is. Near the end counts as watched: the video joins [Item.watched], its
+   * place is forgotten and the title's progress is cleared, so it leaves "continue watching"
+   * until the next one starts.
    */
   fun recordProgress(
     title: Title,
@@ -147,6 +157,7 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
       poster = title.poster ?: base.poster,
       watched = if (finished) base.watched + videoId else base.watched,
       progress = if (finished) null else Progress(videoId, positionMs, durationMs, now),
+      places = if (finished) base.places - videoId else base.places + (videoId to Place(positionMs, durationMs, now)),
       addon = addon ?: base.addon,
       bingeGroup = bingeGroup ?: base.bingeGroup,
     )
@@ -159,6 +170,7 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
     val updated = base.copy(
       watched = if (watched) base.watched + videoId else base.watched - videoId,
       progress = base.progress?.takeUnless { watched && it.videoId == videoId },
+      places = if (watched) base.places - videoId else base.places,
     )
     if (existing == null) state.items.add(updated) else state.items[state.items.indexOf(existing)] = updated
   }
@@ -230,6 +242,11 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
             .put("progress", item.progress?.let {
               JSONObject().put("videoId", it.videoId).put("positionMs", it.positionMs).put("durationMs", it.durationMs).put("at", it.at)
             } ?: JSONObject.NULL)
+            .put("places", JSONObject().apply {
+              item.places.toSortedMap().forEach { (videoId, place) ->
+                put(videoId, JSONObject().put("positionMs", place.positionMs).put("durationMs", place.durationMs).put("at", place.at))
+              }
+            })
             .put("stream", JSONObject().put("addon", item.addon ?: JSONObject.NULL).put("bingeGroup", item.bingeGroup ?: JSONObject.NULL))
             .put("saved", item.saved))
         }
@@ -262,6 +279,15 @@ class WatchLibrary(private val file: File, private val sealer: MemeStore.Sealer)
           addedAt = o.optLong("addedAt"),
           watched = o.optJSONArray("watched")?.let { w -> (0 until w.length()).map { w.optString(it) }.toSet() }.orEmpty(),
           progress = p?.let { Progress(it.optString("videoId"), it.optLong("positionMs"), it.optLong("durationMs"), it.optLong("at")) },
+          // A library written before there were places has the one in its progress.
+          places = (o.optJSONObject("places")?.let { all ->
+            all.keys().asSequence().mapNotNull { videoId ->
+              all.optJSONObject(videoId)?.let { videoId to Place(it.optLong("positionMs"), it.optLong("durationMs"), it.optLong("at")) }
+            }.toMap()
+          } ?: emptyMap()).let { places ->
+            if (p == null || places.containsKey(p.optString("videoId"))) places
+            else places + (p.optString("videoId") to Place(p.optLong("positionMs"), p.optLong("durationMs"), p.optLong("at")))
+          },
           addon = s?.takeUnless { it.isNull("addon") }?.optString("addon")?.ifBlank { null },
           bingeGroup = s?.takeUnless { it.isNull("bingeGroup") }?.optString("bingeGroup")?.ifBlank { null },
           saved = o.optBoolean("saved"),

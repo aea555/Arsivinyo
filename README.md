@@ -5,7 +5,10 @@ backend, no account, no cloud. It downloads media, keeps what is private in an e
 vault, plays films and series from Stremio add-ons and torrents, collects memes, and lets
 your own devices send files to each other directly.
 
-Licensed under **GPL-3.0-or-later**.
+The source is licensed under the **MIT License** ([`LICENSE`](LICENSE)). The built apps
+include GPLv3 components (mpv and FFmpeg, for the player), so an APK or a disk image is
+distributed under GPLv3: whoever receives one is entitled to this source on those terms.
+Versions up to 4.1.3 were released under GPL-3.0-or-later.
 
 ## What it does
 
@@ -46,6 +49,6 @@ Each app is self-contained, with its own dependencies and scripts:
 
 ## Status
 
-Both apps are at **4.1.3**. The changelog is
+Both apps are at **4.1.4**. The changelog is
 [`mobile/CHANGELOG.md`](mobile/CHANGELOG.md). Arsivinyo is for personal use and is not
 published in any store.

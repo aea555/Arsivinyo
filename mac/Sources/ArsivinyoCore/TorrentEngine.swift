@@ -6,6 +6,9 @@ import SystemConfiguration
 /// over shared/torrent, the same C++ and libtorrent the phone runs, with its state and its
 /// cache under the app's support folder. Nothing here logs a torrent's name or files.
 public final class TorrentEngine: @unchecked Sendable {
+    /// What the cache keeps whatever its limit: the stream that is playing and the three played
+    /// before it, so going back an episode does not fetch it again (CONTRACT.md).
+    static let keepRecent: Int32 = 4
 
     /// This device's rules; the phone keeps the same shape in its own settings.json.
     public struct Settings: Codable, Equatable, Sendable {
@@ -148,7 +151,7 @@ public final class TorrentEngine: @unchecked Sendable {
         guard let result = try? JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as? [String: Any],
               let id = result["id"] as? String, let file = (result["file"] as? NSNumber)?.intValue,
               let path = result["path"] as? String else { throw Failure(code: "TORRENT_FAILED") }
-        _ = at_cache_trim(session, cacheFolder.path, settings().cacheLimitBytes, id)
+        _ = at_cache_trim(session, cacheFolder.path, settings().cacheLimitBytes, id, Self.keepRecent)
         let base = try lock.withLock { () throws -> String in
             if let serverBase { return serverBase }
             guard let raw = at_server_start(session) else { throw Failure(code: "TORRENT_FAILED") }

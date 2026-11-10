@@ -129,6 +129,10 @@ private struct CookieSettings: View {
     @Environment(AppModel.self) private var model
     @State private var importing: PendingImport?
     @State private var problem: String?
+    @State private var note: String?
+    @State private var taking = false
+    /// macOS kept a browser's data from the app: the way to allow it is offered.
+    @State private var needsAccess = false
 
     struct PendingImport: Identifiable {
         let id = UUID()
@@ -170,6 +174,15 @@ private struct CookieSettings: View {
                 HStack {
                     Text("Profiles")
                     Spacer()
+                    if taking { ProgressView().controlSize(.small) }
+                    // The easy way: the cookies of a browser already signed in, read from it.
+                    Menu("From Browser") {
+                        ForEach(CookieStore.browsers, id: \.id) { browser in
+                            Button(browser.label) { take(from: browser) }
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(taking)
                     Button("Import cookies.txt…", action: pick)
                 }
             } footer: {
@@ -178,6 +191,24 @@ private struct CookieSettings: View {
             }
             if let problem {
                 Text(problem).foregroundStyle(.red)
+                if needsAccess {
+                    // There is no asking for Full Disk Access: macOS only lets the user turn it
+                    // on. This opens the page where that is done.
+                    HStack {
+                        Button("Open Privacy Settings…") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        // The app itself, selected in Finder, to drag into that list.
+                        Button("Show Arsivinyo in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                        }
+                    }
+                }
+            }
+            if let note {
+                Text(note).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -194,8 +225,28 @@ private struct CookieSettings: View {
             .sorted { $0.scope.label.localizedStandardCompare($1.scope.label) == .orderedAscending }
     }
 
+    private func take(from browser: (id: String, label: String)) {
+        problem = nil
+        note = nil
+        needsAccess = false
+        guard model.vaultUnlocked else {
+            problem = CookieStore.Failure.locked.description
+            model.showUnlockSheet = true
+            return
+        }
+        taking = true
+        Task {
+            let result = await model.takeCookies(fromBrowser: browser)
+            if result.failed { problem = result.message } else { note = result.message }
+            needsAccess = result.needsAccess
+            taking = false
+        }
+    }
+
     private func pick() {
         problem = nil
+        note = nil
+        needsAccess = false
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.plainText, .text, .data]
         panel.message = String(localized: "Choose a cookies.txt in Netscape format.")

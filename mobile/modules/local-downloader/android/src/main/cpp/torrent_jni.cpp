@@ -134,9 +134,9 @@ jstring FN(nativeStream)(JNIEnv* env, jobject, jlong handle, jstring magnet, jst
     return out;
 }
 
-jint FN(nativeCacheTrim)(JNIEnv* env, jobject, jlong handle, jstring cacheDir, jlong limitBytes, jstring keepId) {
+jint FN(nativeCacheTrim)(JNIEnv* env, jobject, jlong handle, jstring cacheDir, jlong limitBytes, jstring keepId, jint keepRecent) {
     std::string const keep = text(env, keepId);
-    return at_cache_trim(session(handle), text(env, cacheDir).c_str(), limitBytes, keep.empty() ? nullptr : keep.c_str());
+    return at_cache_trim(session(handle), text(env, cacheDir).c_str(), limitBytes, keep.empty() ? nullptr : keep.c_str(), keepRecent);
 }
 
 jstring FN(nativeServerStart)(JNIEnv* env, jobject, jlong handle) { return owned(env, at_server_start(session(handle))); }

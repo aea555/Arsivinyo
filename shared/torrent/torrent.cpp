@@ -969,7 +969,7 @@ char* at_stream(at_session* session, const char* magnet, const char* cache_dir, 
                 std::to_string(files.file_size(index)) + ",\"path\":" + json_string(files.file_path(index)) + "}");
 }
 
-int at_cache_trim(at_session* session, const char* cache_dir, int64_t limit_bytes, const char* keep_id) {
+int at_cache_trim(at_session* session, const char* cache_dir, int64_t limit_bytes, const char* keep_id, int keep_recent) {
     if (!session || !cache_dir) return 0;
     auto core = session->core;
     struct Entry {
@@ -993,8 +993,12 @@ int at_cache_trim(at_session* session, const char* cache_dir, int64_t limit_byte
         }
     }
     std::sort(cached.begin(), cached.end(), [](Entry const& a, Entry const& b) { return a.used < b.used; });
+    // Oldest first, and the newest `keep_recent` of them are not candidates at all.
+    size_t const candidates = cached.size() > static_cast<size_t>(std::max(0, keep_recent))
+                                  ? cached.size() - static_cast<size_t>(std::max(0, keep_recent)) : 0;
     int removed = 0;
-    for (auto const& entry : cached) {
+    for (size_t i = 0; i < candidates; ++i) {
+        auto const& entry = cached[i];
         if (total <= limit_bytes) break;
         if (keep_id && entry.id == keep_id) continue;
         at_remove(session, entry.id.c_str(), 1);

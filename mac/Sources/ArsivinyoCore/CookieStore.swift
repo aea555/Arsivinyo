@@ -24,6 +24,50 @@ public final class CookieStore: @unchecked Sendable {
         ("tiktok", "TikTok", ["tiktok.com", "vm.tiktok.com"]),
     ]
 
+    /// The cookie that means "signed in" on each site, by any of its names: what tells a
+    /// browser's cookies for a site worth keeping from ones left by a visit.
+    public static let sessionCookies: [String: [String]] = [
+        "youtube": ["SID", "__Secure-1PSID", "__Secure-3PSID"],
+        "twitter": ["auth_token"],
+        "instagram": ["sessionid"],
+        "facebook": ["c_user"],
+        "reddit": ["reddit_session"],
+        "tiktok": ["sessionid"],
+    ]
+
+    /// The browsers cookies can be taken from, by the name yt-dlp knows each by.
+    public static let browsers: [(id: String, label: String)] = [
+        ("chrome", "Chrome"), ("safari", "Safari"), ("firefox", "Firefox"), ("brave", "Brave"), ("edge", "Edge"),
+    ]
+
+    /// Where each browser keeps its data, under the home folder. macOS keeps one app's data
+    /// from another until the user allows it, and asks when the app itself first reaches in.
+    public static let browserFolders: [String: String] = [
+        "chrome": "Library/Application Support/Google/Chrome",
+        "brave": "Library/Application Support/BraveSoftware/Brave-Browser",
+        "edge": "Library/Application Support/Microsoft Edge",
+        "firefox": "Library/Application Support/Firefox",
+        "safari": "Library/Containers/com.apple.Safari/Data/Library/Cookies",
+    ]
+
+    /// What reaching into a browser's folder found.
+    public enum BrowserAccess: Sendable { case allowed, refused, absent }
+
+    /// Reaches into a browser's folder from this app, which is what makes macOS ask the user
+    /// whether to allow it; it waits for the answer. Call it off the main thread.
+    public static func reach(browser id: String) -> BrowserAccess {
+        guard let relative = browserFolders[id] else { return .absent }
+        let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(relative)
+        do {
+            _ = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            return .allowed
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain, error.code == NSFileReadNoSuchFileError { return .absent }
+            if error.domain == NSPOSIXErrorDomain, error.code == Int(ENOENT) { return .absent }
+            return .refused
+        }
+    }
+
     /// Sites where a refused download is not retried without cookies: signed out, they
     /// answer with a login wall that reads as success and saves the wrong thing. The phone
     /// keeps the same list.

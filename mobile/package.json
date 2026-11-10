@@ -1,8 +1,8 @@
 {
   "name": "arsivinyo-mobile",
   "main": "index.js",
-  "version": "4.1.3",
-  "license": "GPL-3.0-or-later",
+  "version": "4.1.4",
+  "license": "MIT",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",

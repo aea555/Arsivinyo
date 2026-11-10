@@ -256,6 +256,7 @@ type LocalDownloaderNativeModule = {
   removeSoundsFromPlaylist(input: { playlistId: string; songIds: string[] }): Promise<LocalSoundPlaylist>;
   setSoundsFavorite(input: { songIds: string[]; favorite: boolean }): Promise<LocalSoundPlaylist>;
   importCookie(input: { platform: LocalPlatform; uri: string; profileName: string }): Promise<{ profileName: string; path: string }>;
+  signInForCookies(platform: LocalPlatform): Promise<{ saved: boolean; profileName?: string; code?: string }>;
   listCookieProfiles(platform: LocalPlatform): Promise<LocalCookieProfile[]>;
   setCookieDefault(input: { platform: LocalPlatform; profileName: string }): Promise<{ success: boolean }>;
   deleteCookieProfile(input: { platform: LocalPlatform; profileName: string }): Promise<{ success: boolean }>;
@@ -438,6 +439,7 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       removeSoundsFromPlaylist: async () => unsupported(),
       setSoundsFavorite: async () => unsupported(),
       importCookie: async () => unsupported(),
+      signInForCookies: async () => ({ saved: false, code: 'COOKIE_SIGNIN_UNAVAILABLE' }),
       listCookieProfiles: async () => unsupported(),
       setCookieDefault: async () => unsupported(),
       deleteCookieProfile: async () => unsupported(),

@@ -547,6 +547,68 @@ final class AppModel {
         do { try cookies.importFile(url, into: scope, name: name); return nil } catch { return String(describing: error) }
     }
 
+    /// Takes the cookies of every known site a browser on this Mac is signed in to, each as
+    /// that site's profile, named after the browser and made the default. The engine reads
+    /// the browser's store and hands back only those sites. Returns what to tell the user,
+    /// and whether it is a problem.
+    ///
+    /// `needsAccess` is true when macOS kept the browser's data from the app: the user has to
+    /// allow it in System Settings, which the view offers to open.
+    func takeCookies(fromBrowser browser: (id: String, label: String)) async -> (message: String, failed: Bool, needsAccess: Bool) {
+        let outcome = await takeCookiesAllowed(fromBrowser: browser)
+        return (outcome.message, outcome.failed, outcome.needsAccess)
+    }
+
+    private func takeCookiesAllowed(fromBrowser browser: (id: String, label: String)) async -> (message: String, failed: Bool, needsAccess: Bool) {
+        guard vaultUnlocked else { return (CookieStore.Failure.locked.description, true, false) }
+        // The app reaches in first, itself: that is when macOS asks the user to allow it. The
+        // engine, a helper, would only be refused without a question.
+        let id = browser.id
+        switch await Task.detached(operation: { CookieStore.reach(browser: id) }).value {
+        case .absent:
+            return (String(localized: "\(browser.label) has no data on this Mac."), true, false)
+        case .refused:
+            return (String(localized: "macOS keeps \(browser.label)'s data from other apps, and has no way for Arsivinyo to ask. Add Arsivinyo to Full Disk Access yourself: open the settings below, drag Arsivinyo into the list (or press + and choose it), switch it on, then open Arsivinyo again."), true, true)
+        case .allowed:
+            break
+        }
+        let sites = CookieStore.platforms.map {
+            ["id": $0.id, "domains": $0.domains, "session": CookieStore.sessionCookies[$0.id] ?? []] as [String: Any]
+        }
+        var outcome: Result<JSONValue, EngineClient.Event.EngineError>?
+        for await event in engine.perform("browserCookies", ["browser": browser.id, "sites": sites]).events {
+            if case .finished(let result) = event { outcome = result }
+        }
+        defer { refreshSecurity() }
+        switch outcome {
+        case .success(let payload):
+            var taken: [String] = []
+            for site in CookieStore.platforms {
+                guard let text = payload["sites"]?[site.id]?.string else { continue }
+                do {
+                    try cookies.store(.platform(site.id), name: browser.id, plaintext: Data(text.utf8), makeDefault: true)
+                    taken.append(site.label)
+                } catch {
+                    return (String(describing: error), true, false)
+                }
+            }
+            if taken.isEmpty {
+                return (String(localized: "\(browser.label) is not signed in to any of the sites."), true, false)
+            }
+            return (String(localized: "Took cookies from \(browser.label) for: \(taken.joined(separator: ", "))."), false, false)
+        case .failure(let error):
+            // macOS keeps one app's data from another: a browser's folder reads as empty, or as
+            // forbidden, until the user lets this app in. yt-dlp then says it found no cookies.
+            let text = error.description
+            if text.contains("could not find") || text.contains("not permitted") || text.contains("PermissionError") {
+                return (String(localized: "macOS keeps \(browser.label)'s data from other apps, and has no way for Arsivinyo to ask. Add Arsivinyo to Full Disk Access yourself: open the settings below, drag Arsivinyo into the list (or press + and choose it), switch it on, then open Arsivinyo again."), true, true)
+            }
+            return (String(localized: "\(browser.label)'s cookies could not be read: \(error.description)"), true, false)
+        case nil:
+            return (String(localized: "The download engine is not running."), true, false)
+        }
+    }
+
     func setDefaultCookies(_ profile: CookieStore.Profile) {
         try? cookies.setDefault(profile.scope, name: profile.name)
         refreshSecurity()

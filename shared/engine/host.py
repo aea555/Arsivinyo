@@ -209,6 +209,48 @@ def _run_resolve(request_id: str, req: Dict[str, Any]) -> None:
         emit({"id": request_id, "type": "result", "ok": False, "error": str(exc)})
 
 
+def _run_browser_cookies(request_id: str, req: Dict[str, Any]) -> None:
+    """The cookies of the sites asked for, read out of a browser on this machine.
+
+    yt-dlp reads a browser's own cookie store (Chrome's through the Keychain, Safari's with
+    Full Disk Access, Firefox's as it is). Only the sites named come back, each as Netscape
+    cookie text, and only those the browser is signed in to: one whose session cookie is
+    there. Everything else in the browser's store is dropped here and goes nowhere.
+    """
+    try:
+        from yt_dlp.cookies import extract_cookies_from_browser
+
+        jar = extract_cookies_from_browser(str(req["browser"]))
+        found: Dict[str, str] = {}
+        for site in req.get("sites") or []:
+            domains = [str(d).lower() for d in site.get("domains") or []]
+            session = set(site.get("session") or [])
+            lines = []
+            signed_in = False
+            for cookie in jar:
+                host = (cookie.domain or "").lstrip(".").lower()
+                if not any(host == d or host.endswith("." + d) for d in domains):
+                    continue
+                if cookie.value is None or "\t" in cookie.name or "\t" in cookie.value:
+                    continue
+                if cookie.name in session and cookie.value:
+                    signed_in = True
+                lines.append("\t".join([
+                    cookie.domain,
+                    "TRUE" if cookie.domain.startswith(".") else "FALSE",
+                    cookie.path or "/",
+                    "TRUE" if cookie.secure else "FALSE",
+                    str(int(cookie.expires or 0)),
+                    cookie.name,
+                    cookie.value,
+                ]))
+            if signed_in:
+                found[str(site["id"])] = "# Netscape HTTP Cookie File\n" + "\n".join(lines) + "\n"
+        emit({"id": request_id, "type": "result", "ok": True, "result": {"sites": found}})
+    except Exception as exc:
+        emit({"id": request_id, "type": "result", "ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
 def _bundle_root() -> str:
     """Where yt-dlp lives: beside the executable when frozen, beside this file otherwise."""
     if getattr(sys, "frozen", False):
@@ -226,6 +268,8 @@ def _handle(req: Dict[str, Any]) -> None:
         _spawn(_run_preflight, request_id, req)
     elif op == "resolve":
         _spawn(_run_resolve, request_id, req)
+    elif op == "browserCookies":
+        _spawn(_run_browser_cookies, request_id, req)
     elif op == "cancel":
         with _cancel_lock:
             path = _cancel_flags.get(request_id)

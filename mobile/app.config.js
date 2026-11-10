@@ -3,7 +3,7 @@ export default ({ config }) => {
     ...config,
     name: "Arsivinyo",
     slug: "arsivinyo",
-    version: "4.1.3",
+    version: "4.1.4",
     orientation: "portrait",
     icon: "./assets/images/play_store_512.png",
     scheme: "arsivinyo",
@@ -31,7 +31,7 @@ export default ({ config }) => {
           data: [{ scheme: "content", mimeType: "application/x-bittorrent" }],
         },
       ],
-      versionCode: 40103,
+      versionCode: 40104,
       adaptiveIcon: {
         backgroundColor: "#09090B",
         foregroundImage: "./assets/images/ic_launcher_foreground.png",

@@ -82,13 +82,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>4.1.3</string>
-  <key>CFBundleVersion</key><string>40103</string>
+  <key>CFBundleShortVersionString</key><string>4.1.4</string>
+  <key>CFBundleVersion</key><string>40104</string>
   <key>LSMinimumSystemVersion</key><string>27.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <!-- A normal windowed app: dock icon, menu bar, the lot. -->
   <key>LSUIElement</key><false/>
-  <key>NSHumanReadableCopyright</key><string>GPL-3.0-or-later</string>
+  <key>NSHumanReadableCopyright</key><string>MIT License. Includes mpv and FFmpeg under GPLv3.</string>
   <!-- Pairing finds the phone over Bonjour and talks to it directly. Without these, macOS
        refuses both silently. -->
   <key>NSLocalNetworkUsageDescription</key>

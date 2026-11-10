@@ -67,4 +67,10 @@
   <string name="ldl_playback_pause">Duraklat</string>
   <string name="ldl_playback_back">10 saniye geri</string>
   <string name="ldl_playback_forward">10 saniye ileri</string>
+
+  <!-- Signing in to a site for its cookies (CookieSignIn.kt). -->
+  <string name="ldl_cookie_signin_title">Giriş yap, sonra Bitti\'ye bas</string>
+  <string name="ldl_cookie_signin_done">Bitti</string>
+  <string name="ldl_cookie_signin_cancel">Vazgeç</string>
+  <string name="ldl_cookie_signin_not_yet">Henüz giriş yapmadın. Önce giriş yap, sonra Bitti\'ye bas.</string>
 </resources>

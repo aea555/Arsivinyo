@@ -99,9 +99,10 @@ int64_t at_read(at_session* session, const char* id, int file, int64_t offset, v
 char* at_stream(at_session* session, const char* magnet, const char* cache_dir, int file, const char* name_hint,
                 int timeout_ms, int* code);
 /// Removes torrents streamed into `cache_dir`, least recently used first, with their files,
-/// until what the cache holds is at most `limit_bytes`. Never `keep_id` (what is playing).
-/// Returns how many it removed.
-int at_cache_trim(at_session* session, const char* cache_dir, int64_t limit_bytes, const char* keep_id);
+/// until what the cache holds is at most `limit_bytes`. Never `keep_id` (what is playing), nor
+/// the `keep_recent` most recently played, which stay whatever the limit: going back to the
+/// episode before must not fetch it again. Returns how many it removed.
+int at_cache_trim(at_session* session, const char* cache_dir, int64_t limit_bytes, const char* keep_id, int keep_recent);
 
 /// Starts the loopback server streams are read through, on 127.0.0.1 with a random port and
 /// a random path token. Returns the base URL ("http://127.0.0.1:PORT/TOKEN"); a file is

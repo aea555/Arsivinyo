@@ -38,7 +38,7 @@ object TorrentNative {
   /** JSON {id, file, size, path}, or null with the engine's code in `code[0]`. */
   external fun nativeStream(handle: Long, magnet: String, cacheDir: String, file: Int, nameHint: String?, timeoutMs: Int,
                             code: IntArray): String?
-  external fun nativeCacheTrim(handle: Long, cacheDir: String, limitBytes: Long, keepId: String?): Int
+  external fun nativeCacheTrim(handle: Long, cacheDir: String, limitBytes: Long, keepId: String?, keepRecent: Int): Int
 
   /** shared/torrent/torrent.h's codes. */
   const val NO_METADATA = -3

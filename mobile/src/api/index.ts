@@ -48,7 +48,9 @@ export {
     startLocalPrivateVaultMigration,
     startQuickLocalDownloadFromClipboard,
     startQuickLocalDownloadWithUrl,
-    updateLocalYtDlp
+    updateLocalYtDlp,
+    COOKIE_SIGNIN_PLATFORMS,
+    signInForLocalCookies,
 } from './localDownloader';
 export {
     addLocalSoundsToPlaylists,

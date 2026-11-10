@@ -168,7 +168,7 @@ export default function WatchTitleScreen() {
         setMessage(code === 'TORRENT_NO_METADATA' ? t('torrents.noMetadata') : t('watch.playFailed', { code }));
         return;
       }
-      const startMs = item?.progress?.videoId === video.id ? item.progress.positionMs : 0;
+      const startMs = item?.places?.[video.id]?.positionMs ?? 0;
       const next = meta && isSeries ? nextVideo(meta.videos, video.id) : null;
       openPlayer(router, {
         url: prepared.url,
@@ -311,7 +311,7 @@ export default function WatchTitleScreen() {
             </ScrollView>
             {episodes.map((v) => {
               const watched = item?.watched.includes(v.id) ?? false;
-              const inProgress = item?.progress?.videoId === v.id;
+              const place = item?.places?.[v.id];
               return (
                 <Pressable
                   key={v.id}
@@ -328,12 +328,12 @@ export default function WatchTitleScreen() {
                     {v.released ? (
                       <Text style={[styles.small, { color: colors.textMuted }]}>{v.released.slice(0, 10)}</Text>
                     ) : null}
-                    {inProgress && item?.progress ? (
+                    {place ? (
                       <View style={[styles.track, { backgroundColor: colors.surface }]}>
                         <View
                           style={[styles.trackFill, {
                             backgroundColor: colors.accent,
-                            width: `${Math.min(100, (item.progress.positionMs / Math.max(1, item.progress.durationMs)) * 100)}%`,
+                            width: `${Math.min(100, (place.positionMs / Math.max(1, place.durationMs)) * 100)}%`,
                           }]}
                         />
                       </View>

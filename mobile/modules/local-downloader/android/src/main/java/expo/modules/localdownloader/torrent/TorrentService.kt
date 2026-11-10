@@ -19,6 +19,12 @@ class TorrentService private constructor(private val context: Context) {
   companion object {
     @Volatile private var instance: TorrentService? = null
 
+    /**
+     * What the cache keeps whatever its limit: the stream that is playing and the three
+     * played before it, so going back an episode does not fetch it again (CONTRACT.md).
+     */
+    private const val KEEP_RECENT = 4
+
     /** One per process: downloads go on under the service while the screens come and go. */
     fun get(context: Context): TorrentService =
       instance ?: synchronized(this) { instance ?: TorrentService(context.applicationContext).also { instance = it } }
@@ -153,7 +159,7 @@ class TorrentService private constructor(private val context: Context) {
       ?: throw Failure(if (code[0] == TorrentNative.NO_METADATA) "TORRENT_NO_METADATA" else "TORRENT_FAILED")
     val result = JSONObject(json)
     val id = result.getString("id")
-    TorrentNative.nativeCacheTrim(session, cacheDir.path, settings().cacheLimitBytes, id)
+    TorrentNative.nativeCacheTrim(session, cacheDir.path, settings().cacheLimitBytes, id, KEEP_RECENT)
     val base = synchronized(lock) {
       serverBase ?: TorrentNative.nativeServerStart(session)?.also { serverBase = it }
     } ?: throw Failure("TORRENT_FAILED")

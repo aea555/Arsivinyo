@@ -86,6 +86,15 @@ extension CoreChecks {
         check(try lib.continueWatching().isEmpty && lib.item(show.id)?.watched == ["tt0944947:1:1"],
               "near the end it counts as watched and leaves continue watching")
         check(try lib.item(show.id)?.bingeGroup == "g1", "and the source is remembered for the next episode")
+        // Two episodes started, one after the other: each keeps where it stopped.
+        try lib.recordProgress(show, videoId: "tt0944947:1:2", positionMs: 700_000, durationMs: 3_600_000, addon: nil, bingeGroup: nil, now: 3)
+        try lib.recordProgress(show, videoId: "tt0944947:1:3", positionMs: 5_000, durationMs: 3_600_000, addon: nil, bingeGroup: nil, now: 4)
+        check(try library().item(show.id)?.places["tt0944947:1:2"]?.positionMs == 700_000
+                && library().item(show.id)?.progress?.videoId == "tt0944947:1:3",
+              "going to another episode keeps the place in the one before, and it is still there after a restart")
+        try lib.recordProgress(show, videoId: "tt0944947:1:2", positionMs: 3_500_000, durationMs: 3_600_000, addon: nil, bingeGroup: nil, now: 5)
+        check(try lib.item(show.id)?.places["tt0944947:1:2"] == nil && lib.item(show.id)?.places["tt0944947:1:3"] != nil,
+              "a finished episode's place is forgotten, the others' are not")
 
         try lib.install(base: "https://a", manifest: ["id": "a", "version": "1"])
         try lib.install(base: "https://b", manifest: ["id": "b"])
@@ -106,7 +115,7 @@ extension CoreChecks {
         let back = try library().torrent("abc")
         check(back?.wanted == [0, 2] && back?.taken == [2] && back?.destination == "private",
               "a torrent is kept with what was chosen and what was taken")
-        check(try reopened.addons().map(\.enabled) == [true, true, false] && reopened.item(show.id)?.watched.count == 1,
+        check(try reopened.addons().map(\.enabled) == [true, true, false] && reopened.item(show.id)?.watched == ["tt0944947:1:1", "tt0944947:1:2"],
               "the library survives reopening")
         // Opened with another key (its own was lost): it starts empty instead of failing every
         // call, and the old file is kept beside it, in case its key turns up.

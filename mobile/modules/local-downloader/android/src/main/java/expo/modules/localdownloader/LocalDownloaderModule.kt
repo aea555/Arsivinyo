@@ -1040,6 +1040,9 @@ class LocalDownloaderModule : Module() {
     "progress" to item.progress?.let {
       mapOf("videoId" to it.videoId, "positionMs" to it.positionMs, "durationMs" to it.durationMs, "at" to it.at)
     },
+    "places" to item.places.mapValues { (_, place) ->
+      mapOf("positionMs" to place.positionMs, "durationMs" to place.durationMs, "at" to place.at)
+    },
   )
 
   private fun watchTitle(map: Map<String, Any?>) = WatchLibrary.Title(
@@ -2804,6 +2807,36 @@ class LocalDownloaderModule : Module() {
         "profileName" to profileName,
         "path" to dest.absolutePath
       )
+    }
+
+    // The easy way to a cookie profile: sign in to the site in a window of the app, and its
+    // session is taken as one (CookieSignIn.kt). Kept under one name per platform, so signing
+    // in again replaces it; and made the default, as it is the one just asked for.
+    AsyncFunction("signInForCookies") { platform: String, promise: Promise ->
+      val normalized = platform.trim().lowercase()
+      val activity = appContext.currentActivity
+      if (activity == null || !CookieSignIn.sites.containsKey(normalized)) {
+        promise.resolve(mapOf("saved" to false, "code" to "COOKIE_SIGNIN_UNAVAILABLE"))
+        return@AsyncFunction
+      }
+      activity.runOnUiThread {
+        runCatching {
+          CookieSignIn.show(activity, normalized) { text ->
+            if (text == null) {
+              promise.resolve(mapOf("saved" to false))
+              return@show
+            }
+            runCatching {
+              val platformDir = secureCookiePlatformDir(normalized, create = true)
+              writeEncryptedCookieFile(File(platformDir, "$COOKIE_SIGNIN_PROFILE.enc"), text.toByteArray(Charsets.UTF_8))
+              writeDefaultProfile(platformDir, COOKIE_SIGNIN_PROFILE)
+            }.fold(
+              { promise.resolve(mapOf("saved" to true, "profileName" to COOKIE_SIGNIN_PROFILE)) },
+              { promise.resolve(mapOf("saved" to false, "code" to "COOKIE_SIGNIN_FAILED")) },
+            )
+          }
+        }.onFailure { promise.resolve(mapOf("saved" to false, "code" to "COOKIE_SIGNIN_UNAVAILABLE")) }
+      }
     }
 
     AsyncFunction("listCookieProfiles") { platform: String ->
@@ -10760,6 +10793,8 @@ class LocalDownloaderModule : Module() {
     private const val PRIVATE_PUBLIC_COPY_RELATIVE_PATH = "DCIM/Arsivinyo"
     private const val MB_IN_BYTES = 1024.0 * 1024.0
     private val SUPPORTED_PLATFORMS = setOf("youtube", "instagram", "facebook", "twitter", "reddit", "tiktok")
+    /** The profile a sign-in in the app is kept as, one per platform. */
+    private const val COOKIE_SIGNIN_PROFILE = "signed-in"
     private val PLATFORM_HOSTS = mapOf(
       "youtube" to listOf("youtube.com", "youtu.be"),
       "instagram" to listOf("instagram.com"),

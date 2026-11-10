@@ -4,6 +4,43 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [4.1.4] — A place in every episode, and cookies the easy way
+
+Every episode keeps where it stopped, and the stream cache keeps the last few played. Cookies
+come from a sign-in on the phone and from a browser on the Mac. The source is under the MIT
+License. Both apps are 4.1.4.
+
+### Added
+- Mac: cookies from a browser. In Settings › Cookies, "From Browser" reads the cookies of
+  Chrome, Safari, Firefox, Brave or Edge on this Mac and keeps, for every known site the
+  browser is signed in to, a profile named after the browser, made the default. Only those
+  sites' cookies are taken. macOS keeps a browser's data from other apps and gives no way to
+  ask for it, so Arsivinyo has to be added to Full Disk Access once, by hand: when it is
+  refused, the app says so and offers to open that page and to show itself in Finder, to be
+  dragged into the list. Chrome then asks for the Keychain once.
+- Phone: signing in for cookies. In the cookie settings a platform has "Sign in": its site
+  opens in a window of the app, and once signed in the session is kept as that platform's
+  cookie profile, encrypted like an imported file and made the default. Signing in again
+  replaces it. The window's own copy of the session is wiped as it closes. For Instagram,
+  Facebook, X, Reddit and TikTok; not YouTube, where Google refuses a sign-in from inside an
+  app, and a cookie file is still the way.
+
+### Changed
+- The source is licensed under the MIT License, where it was GPL-3.0-or-later; versions up to
+  4.1.3 stay as they were released. The built apps still include mpv and FFmpeg under GPLv3,
+  so an APK or a disk image is distributed on GPLv3's terms.
+
+### Fixed
+- Both players: going to another episode and back lost the place in the first. The library
+  kept one position for a whole series, the last episode's, and an episode reached by the
+  player's buttons started from the beginning. Every episode started and not finished keeps
+  its own place now, as many as there are, and is resumed from it however it is reached.
+  The phone's player also writes the place down as it leaves an episode for another.
+
+### Changed
+- Both apps: the stream cache keeps the torrent that is playing and the three played before
+  it whatever its size limit, so going back an episode does not fetch it again.
+
 ## [4.1.3] — Playing on out of sight, and the player's rough edges
 
 On the phone, Watch plays on with the screen off and in picture-in-picture, the player goes

@@ -19,6 +19,7 @@ import {
   authenticateLocalPrivateAccess,
   cancelLocalPrivateVaultMigration,
   ensureLocalBackgroundPermission,
+  COOKIE_SIGNIN_PLATFORMS,
   getExperimentalFeatures,
   getLocalAudioFormat,
   getLocalBackgroundState,
@@ -27,6 +28,7 @@ import {
   listenYtDlpUpdateProgress,
   setExperimentalFeatures,
   setLocalAudioFormat,
+  signInForLocalCookies,
   setLocalStickyNotificationEnabled,
   startLocalPrivateVaultMigration,
   updateLocalYtDlp,
@@ -354,6 +356,26 @@ export default function SettingsScreen() {
   const closeCookieActionModal = useCallback(() => {
     setCookieActionPlatform(null);
   }, []);
+
+  // Sign in to the site in a window of the app, and its session becomes the profile.
+  const handleCookieActionSignIn = useCallback(() => {
+    if (!cookieActionPlatform) return;
+    const platform = cookieActionPlatform;
+    closeCookieActionModal();
+    void (async () => {
+      try {
+        const result = await signInForLocalCookies(platform);
+        if (result.saved) {
+          await refreshCookieData();
+          showSuccess(t('settings.cookieSignInSuccess', { platform }));
+        } else if (result.code) {
+          showError(t('settings.cookieSignInFailed'));
+        }
+      } catch {
+        showError(t('settings.cookieSignInFailed'));
+      }
+    })();
+  }, [closeCookieActionModal, cookieActionPlatform, refreshCookieData, showError, showSuccess, t]);
 
   const handleCookieActionImport = useCallback(() => {
     if (!cookieActionPlatform) return;
@@ -1185,6 +1207,17 @@ export default function SettingsScreen() {
               {t('settings.cookieActionPrompt')}
             </Text>
             <View style={styles.modalActionsColumn}>
+              {cookieActionPlatform && COOKIE_SIGNIN_PLATFORMS.includes(cookieActionPlatform) ? (
+                <Pressable
+                  onPress={handleCookieActionSignIn}
+                  style={({ pressed }) => [
+                    styles.modalActionRow,
+                    { backgroundColor: pressed ? colors.surfaceHover : colors.background, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.modalActionText, { color: colors.text }]}>{t('settings.cookieSignInAction')}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={handleCookieActionImport}
                 style={({ pressed }) => [

@@ -1080,7 +1080,10 @@ export interface WatchItem {
   saved: boolean;
   addonKey?: string | null;
   bingeGroup?: string | null;
+  /** The video last played and where it stopped: what "continue watching" goes by. */
   progress?: WatchProgress | null;
+  /** Where every video started and not finished stopped, by its id. */
+  places?: Record<string, { positionMs: number; durationMs: number; at: number }>;
 }
 
 /** A title as the library remembers it. */

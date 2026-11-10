@@ -186,6 +186,21 @@ class WatchTest {
   }
 
   @Test
+  fun everyEpisodeKeepsWhereItStopped() {
+    val lib = library()
+    lib.recordProgress(show, "tt0944947:1:2", 700_000, 3_600_000, null, null, now = 1)
+    lib.recordProgress(show, "tt0944947:1:3", 5_000, 3_600_000, null, null, now = 2)
+    // Another episode was started: the one before still has its place, also after a restart.
+    val again = library().item(show.id)!!
+    assertEquals(700_000, again.places.getValue("tt0944947:1:2").positionMs)
+    assertEquals("tt0944947:1:3", again.progress!!.videoId)
+    lib.recordProgress(show, "tt0944947:1:2", 3_500_000, 3_600_000, null, null, now = 3)
+    assertEquals("a finished episode's place is forgotten", setOf("tt0944947:1:3"), lib.item(show.id)!!.places.keys)
+    lib.setWatched(show, "tt0944947:1:3", true)
+    assertTrue(lib.item(show.id)!!.places.isEmpty())
+  }
+
+  @Test
   fun continueWatchingIsNewestFirst() {
     val lib = library()
     val film = WatchLibrary.Title("tt0111161", "movie", "A Film", null)

@@ -65,9 +65,12 @@ extension AppModel {
         let meta = try await watch.meta(type: request.title.type, id: request.title.id)
         let regular = meta.videos.filter { ($0.season ?? 1) != 0 }
         let at = regular.firstIndex(where: { $0.id == video.id })
+        // Where it stopped, if it was started and not finished: going to another episode and
+        // back carries on.
+        let startMs = (try? watch.library.item(request.title.id))?.places[video.id]?.positionMs ?? 0
         return WatchPlayRequest(url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: request.title, videoId: video.id,
                                 videoName: WatchTitleView.episodeName(video), source: source,
-                                bingeGroup: stream.bingeGroup, startMs: 0,
+                                bingeGroup: stream.bingeGroup, startMs: startMs,
                                 nextVideo: at.flatMap { $0 + 1 < regular.count ? regular[$0 + 1] : nil },
                                 previousVideo: at.flatMap { $0 > 0 ? regular[$0 - 1] : nil },
                                 subtitles: stream.subtitles, filename: stream.filename, torrentId: prepared.torrentId)
@@ -532,7 +535,7 @@ struct WatchTitleView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(Self.episodeName(video)).lineLimit(1)
                             if let released = video.released { Text(released.prefix(10)).font(.caption).foregroundStyle(.secondary) }
-                            if item?.progress?.videoId == video.id, let p = item?.progress {
+                            if let p = item?.places[video.id] {
                                 ProgressView(value: Double(p.positionMs), total: Double(max(1, p.durationMs))).frame(maxWidth: 200)
                             }
                         }
@@ -683,7 +686,7 @@ private struct StreamList: View {
             defer { preparing = nil }
             do {
                 let prepared = try await model.prepare(stream)
-                let startMs = item?.progress?.videoId == video.id ? item?.progress?.positionMs ?? 0 : 0
+                let startMs = item?.places[video.id]?.positionMs ?? 0
                 model.watchPlaying = WatchPlayRequest(
                     url: prepared.url, audioURL: prepared.audioURL, headers: prepared.headers, title: title, videoId: video.id,
                     videoName: isSeries ? WatchTitleView.episodeName(video) : title.name, source: source,

@@ -70,4 +70,10 @@
   <string name="ldl_playback_pause">Pause</string>
   <string name="ldl_playback_back">Back 10 seconds</string>
   <string name="ldl_playback_forward">Forward 10 seconds</string>
+
+  <!-- Signing in to a site for its cookies (CookieSignIn.kt). -->
+  <string name="ldl_cookie_signin_title">Sign in, then press Done</string>
+  <string name="ldl_cookie_signin_done">Done</string>
+  <string name="ldl_cookie_signin_cancel">Cancel</string>
+  <string name="ldl_cookie_signin_not_yet">You are not signed in yet. Sign in first, then press Done.</string>
 </resources>

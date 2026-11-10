@@ -21,6 +21,13 @@ public final class WatchLibrary: @unchecked Sendable {
         public var at: Int64
     }
 
+    /// Where one video stopped.
+    public struct Place: Hashable, Sendable {
+        public var positionMs: Int64
+        public var durationMs: Int64
+        public var at: Int64
+    }
+
     public struct Item: Hashable, Sendable, Identifiable {
         /// The add-on's id for the title.
         public var id: String
@@ -31,6 +38,10 @@ public final class WatchLibrary: @unchecked Sendable {
         /// Videos finished; for a film, its own id.
         public var watched: Set<String> = []
         public var progress: Progress?
+        /// Where every video started and not finished stopped, by its id: `progress` is only
+        /// the last one played, and going to another episode and back must not lose the place.
+        /// As many as there are; a video leaves when it is finished.
+        public var places: [String: Place] = [:]
         /// The add-on and binge group last played from, to pick the same source next time.
         public var addon: String?
         public var bingeGroup: String?
@@ -153,8 +164,9 @@ public final class WatchLibrary: @unchecked Sendable {
 
     // MARK: - The library
 
-    /// Where playback is. Near the end counts as watched: the video joins `watched` and the
-    /// title's progress is cleared, so it leaves "continue watching" until the next one starts.
+    /// Where playback is. Near the end counts as watched: the video joins `watched`, its place
+    /// is forgotten and the title's progress is cleared, so it leaves "continue watching" until
+    /// the next one starts.
     public func recordProgress(_ title: Title, videoId: String, positionMs: Int64, durationMs: Int64,
                                addon: String?, bingeGroup: String?,
                                now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) throws {
@@ -167,8 +179,10 @@ public final class WatchLibrary: @unchecked Sendable {
             if finished {
                 item.watched.insert(videoId)
                 item.progress = nil
+                item.places[videoId] = nil
             } else {
                 item.progress = Progress(videoId: videoId, positionMs: positionMs, durationMs: durationMs, at: now)
+                item.places[videoId] = Place(positionMs: positionMs, durationMs: durationMs, at: now)
             }
             item.addon = addon ?? item.addon
             item.bingeGroup = bingeGroup ?? item.bingeGroup
@@ -184,6 +198,7 @@ public final class WatchLibrary: @unchecked Sendable {
             if watched {
                 item.watched.insert(videoId)
                 if item.progress?.videoId == videoId { item.progress = nil }
+                item.places[videoId] = nil
             } else {
                 item.watched.remove(videoId)
             }
@@ -289,6 +304,9 @@ public final class WatchLibrary: @unchecked Sendable {
                 out["progress"] = item.progress.map {
                     ["videoId": $0.videoId, "positionMs": $0.positionMs, "durationMs": $0.durationMs, "at": $0.at] as [String: Any]
                 } ?? NSNull()
+                out["places"] = item.places.mapValues {
+                    ["positionMs": $0.positionMs, "durationMs": $0.durationMs, "at": $0.at] as [String: Any]
+                }
                 return out
             },
             "languages": state.languages,
@@ -313,6 +331,15 @@ public final class WatchLibrary: @unchecked Sendable {
                 item.progress = Progress(videoId: videoId, positionMs: (p["positionMs"] as? NSNumber)?.int64Value ?? 0,
                                          durationMs: (p["durationMs"] as? NSNumber)?.int64Value ?? 0,
                                          at: (p["at"] as? NSNumber)?.int64Value ?? 0)
+            }
+            for (videoId, raw) in o["places"] as? [String: [String: Any]] ?? [:] {
+                item.places[videoId] = Place(positionMs: (raw["positionMs"] as? NSNumber)?.int64Value ?? 0,
+                                             durationMs: (raw["durationMs"] as? NSNumber)?.int64Value ?? 0,
+                                             at: (raw["at"] as? NSNumber)?.int64Value ?? 0)
+            }
+            // A library written before there were places has the one in its progress.
+            if let p = item.progress, item.places[p.videoId] == nil {
+                item.places[p.videoId] = Place(positionMs: p.positionMs, durationMs: p.durationMs, at: p.at)
             }
             let stream = o["stream"] as? [String: Any]
             item.addon = stream?["addon"] as? String

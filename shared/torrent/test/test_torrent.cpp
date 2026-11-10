@@ -224,8 +224,9 @@ int main(int argc, char** argv) {
     check(wait_for([&] { return std::atof(field(streamer, "done").c_str()) >= double(movie_size); }, 60) &&
               std::atof(field(streamer, "wanted").c_str()) < double(movie_size + (256 << 10) + 1),
           "and it fetches only that file, the pieces it shares with the next one aside");
-    check(at_cache_trim(streamer, cache.c_str(), 0, hash_text.str().c_str()) == 0, "the cache never drops what is playing");
-    check(at_cache_trim(streamer, cache.c_str(), 1 << 20, nullptr) == 1, "but drops the least recently played to fit");
+    check(at_cache_trim(streamer, cache.c_str(), 0, hash_text.str().c_str(), 0) == 0, "the cache never drops what is playing");
+    check(at_cache_trim(streamer, cache.c_str(), 0, nullptr, 1) == 0, "nor the most recently played, whatever the limit");
+    check(at_cache_trim(streamer, cache.c_str(), 1 << 20, nullptr, 0) == 1, "but drops the least recently played to fit");
     check(field(streamer, "id").empty(), "so it is gone");
     check(wait_for([&] { return read_all(cache + "/show/movie.mkv").empty(); }, 10), "with its files");
     at_session_destroy(streamer);

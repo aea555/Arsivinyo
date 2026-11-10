@@ -6,7 +6,7 @@ The vault is the centerpiece: downloads can be routed into an authenticated, AES
 
 This repo is designed for engineers who need to build, modify, and ship their own version from scratch.
 
-Licensed under **GPL-3.0-or-later** (see [License](#license)).
+Licensed under the **MIT License** (see [License](#license)).
 
 ## Table of Contents
 
@@ -435,12 +435,13 @@ When you change version pins, update all together:
 
 ## License
 
-This project is licensed under **GPL-3.0-or-later** — see the [`LICENSE`](LICENSE) file for the full text.
+This project's source is licensed under the **MIT License** — see the [`LICENSE`](../LICENSE) file for the full text. Versions up to 4.1.3 were released under GPL-3.0-or-later.
 
 The gist (not legal advice):
 - You may use, study, modify, and redistribute this software.
-- If you **distribute** the app or a derivative (e.g. handing out APKs, publishing a fork), you must release your **complete corresponding source** under GPL-3.0-or-later as well, and preserve the license/copyright notices.
+- Keep the copyright and license notice with copies of the source.
+- A **built app** is another matter: the player's libmpv is linked with an FFmpeg built `--enable-gpl --enable-version3`, so an APK is a GPLv3 work as a whole. If you **distribute** one, you must offer its complete corresponding source under GPLv3.
 - There is **no warranty**.
 - Running it privately on your own device imposes no obligation to share anything.
 
-Bundled and depended-on third-party components keep their own licenses — notably `yt-dlp` (Unlicense), Google Tink (Apache-2.0), NanoHTTPD (BSD-3-Clause), the Expo/React Native stack (MIT), and any **FFmpeg** binaries you supply (LGPL/GPL depending on how they were built — review your build's flags before redistributing). Their terms govern those components; GPL-3.0-or-later governs this project's own code.
+Bundled and depended-on third-party components keep their own licenses — notably `yt-dlp` (Unlicense), Google Tink (Apache-2.0), NanoHTTPD (BSD-3-Clause), the Expo/React Native stack (MIT), and any **FFmpeg** binaries you supply (LGPL/GPL depending on how they were built — review your build's flags before redistributing). Their terms govern those components; The MIT License governs this project's own code.

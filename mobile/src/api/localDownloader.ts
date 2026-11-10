@@ -358,6 +358,17 @@ export async function importLocalCookie(input: {
   return LocalDownloaderModule.importCookie(input);
 }
 
+/**
+ * Signs in to the platform's site in a window of the app and keeps the session as its cookie
+ * profile, the default one. `saved` is false when the window was closed without signing in.
+ */
+export async function signInForLocalCookies(platform: LocalPlatform): Promise<{ saved: boolean; profileName?: string; code?: string }> {
+  return LocalDownloaderModule.signInForCookies(platform);
+}
+
+/** The platforms a sign-in is offered for. Not YouTube: Google refuses one from inside an app. */
+export const COOKIE_SIGNIN_PLATFORMS: readonly LocalPlatform[] = ['instagram', 'facebook', 'twitter', 'reddit', 'tiktok'];
+
 export async function listLocalCookieProfiles(platform: LocalPlatform): Promise<LocalCookieProfile[]> {
   ensureAndroid();
   return LocalDownloaderModule.listCookieProfiles(platform);

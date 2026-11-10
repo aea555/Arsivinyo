@@ -92,6 +92,8 @@ against them with the defines libtorrent was built with (`build/<platform>/defin
   largest video. A stream's magnet carries the trackers among its `sources`.
 - A torrent that was only streamed is **kept in a cache** with a size limit (default 10 GB
   on the Mac, 4 GB on the phone), oldest first out. Watching it again starts from the cache.
+  The stream that is playing and the three played before it stay whatever the limit, so
+  going back an episode, or back and forth, does not fetch it again.
 - **Keep it**: a streamed file can be kept, finishing the download, then filed like any
   download, or into the vault.
 
@@ -192,7 +194,8 @@ subtitles. mpv plays all of it.
 - On the phone the player, not the screen, writes the position to the library (every ten
   seconds while playing, at a pause, at the end, on the way out): the screen's code does not
   run while the app is out of sight.
-- mpv is GPL/LGPL; Arsivinyo is GPL-3.0-or-later, so it ships under the GPL build.
+- mpv is GPL/LGPL, and both apps ship its GPL build, FFmpeg's GPLv3 one with it. Arsivinyo's
+  own source is MIT, which the GPL admits; an app built with these is GPLv3 as a whole.
 
 ## The library
 
@@ -209,6 +212,7 @@ What has been watched, and where it stopped.
     "addedAt": 0,
     "watched": ["tt0944947:1:1"],      // finished videos
     "progress": {"videoId": "tt0944947:1:2", "positionMs": 0, "durationMs": 0, "at": 0},
+    "places": {"tt0944947:1:2": {"positionMs": 0, "durationMs": 0, "at": 0}},
     "stream": {"addon": "…", "bingeGroup": "…"}   // to pick the same source for the next one
   }],
   "languages": ["tur", "eng"],         // subtitles and audio, most preferred first
@@ -223,6 +227,12 @@ What has been watched, and where it stopped.
 Encrypted at rest under a device key, as the memes index is: what someone watches is as
 private as what they save. Nothing in it reaches a log or a notification. A notification
 says "Downloading 2 torrents, 45%", never a name.
+
+`progress` is the video last played, which is what continue watching goes by. `places` is
+where every video started and not finished stopped, by its id, as many as there are: going to
+another episode and back, by the player's buttons or from the title's page, carries on where
+that one was. A video's place goes when it is finished or marked watched. A library written
+before there were places has the one in its `progress`.
 
 **Continue watching** is items with progress, newest first. When a video ends, the next
 episode is offered from the same add-on and `bingeGroup`, so a series keeps its source.

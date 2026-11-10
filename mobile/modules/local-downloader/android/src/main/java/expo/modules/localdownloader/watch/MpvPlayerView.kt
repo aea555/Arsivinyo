@@ -85,6 +85,8 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
    * end and on the way out. Null for a video that is not kept (a trailer, the vault's).
    */
   var record: ((positionMs: Long, durationMs: Long) -> Unit)? = null
+  /** [record] as it was when the video now loaded was: a new video's arrives before it does. */
+  private var recordLoaded: ((positionMs: Long, durationMs: Long) -> Unit)? = null
   private var recordedAt = 0L
 
   /** The video track, while it is off because nothing shows it. */
@@ -207,6 +209,8 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
 
   fun setSource(source: Source?) {
     if (source == null || source == loaded) return
+    // Where the video it replaces is, before that one goes: coming back to it starts there.
+    keepPlace()
     pending = source
     // After the rest of this batch of props, so the languages are in place first.
     post { if (surfaceReady) loadPending() }
@@ -217,6 +221,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     val mpv = mpv ?: return
     pending = null
     loaded = source
+    recordLoaded = record
     starting = true
     // Each preferred language by every code a file may use for it.
     val codes = languages.flatMap { code -> Addons.languages.firstOrNull { it.code == code }?.codes.orEmpty().sortedBy { it != code } }
@@ -501,14 +506,14 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   }
 
   /**
-   * Not before the first frame: until then the position is not where the video resumes. Nor
-   * with another video on its way in: [record] is that one's already, the position still this
-   * one's, and the end of this one would be written down as the end of the next.
+   * Not before the first frame: until then the position is not where the video resumes.
+   * Written as the video that is loaded, not as one on its way in, whose [record] is already
+   * here while the position is still this one's.
    */
   private fun keepPlace(finished: Boolean = false) {
-    val record = record ?: return
+    val record = recordLoaded ?: return
     val mpv = mpv ?: return
-    if (starting || loaded == null || pending != null) return
+    if (starting || loaded == null) return
     val durationMs = ((mpv.getPropertyDouble("duration") ?: 0.0) * 1000).toLong()
     if (durationMs <= 0) return
     recordedAt = System.currentTimeMillis()

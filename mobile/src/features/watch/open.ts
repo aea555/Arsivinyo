@@ -1,6 +1,6 @@
 import type { Href, useRouter } from 'expo-router';
 
-import { getStreams, prepareStream, type WatchStream, type WatchSubtitle, type WatchTitle } from '@/src/api';
+import { getLibraryItem, getStreams, prepareStream, type WatchStream, type WatchSubtitle, type WatchTitle } from '@/src/api';
 
 type Router = ReturnType<typeof useRouter>;
 
@@ -81,6 +81,9 @@ export async function episodeRequest(request: PlayRequest, videoId: string): Pro
   if (!stream || stream.kind === 'external' || (stream.kind === 'torrent' && !request.torrentId)) return null;
   const prepared = await prepareStream(stream);
   if (!prepared.success) return null;
+  // Where it stopped, if it was started and not finished: going to another episode and back
+  // carries on.
+  const item = await getLibraryItem(request.title.id).catch(() => null);
   return {
     url: prepared.url,
     audioUrl: prepared.audioUrl ?? null,
@@ -90,7 +93,7 @@ export async function episodeRequest(request: PlayRequest, videoId: string): Pro
     videoName: video.name,
     addonKey: request.addonKey,
     bingeGroup: stream.bingeGroup ?? null,
-    startMs: 0,
+    startMs: item?.places?.[video.id]?.positionMs ?? 0,
     nextVideoId: episodes[at + 1]?.id ?? null,
     episodes,
     record: true,
