@@ -22,6 +22,7 @@ export interface MpvTrack {
 }
 
 export interface MpvSource {
+  /** A stream's address, or a video of the phone's own (`content://`). */
   url: string;
   /** The audio as a separate file, played with the video. */
   audioUrl?: string | null;
@@ -30,12 +31,15 @@ export interface MpvSource {
 }
 
 /** What a video is kept as in the library, so the player can write down where it is. */
-export interface MpvRecord {
-  title: { id: string; type: string; name: string; poster?: string | null };
-  videoId: string;
-  addonKey: string | null;
-  bingeGroup: string | null;
-}
+export type MpvRecord =
+  | {
+      title: { id: string; type: string; name: string; poster?: string | null };
+      videoId: string;
+      addonKey: string | null;
+      bingeGroup: string | null;
+    }
+  /** A video of the app's own library, by its id there. */
+  | { video: string; uploader?: string | null };
 
 /** What the screen can tell the player to do. */
 export interface MpvPlayerHandle {
@@ -63,6 +67,8 @@ export interface MpvPlayerViewProps extends ViewProps {
   background?: boolean;
   /** What that notification calls the video. */
   title?: string;
+  /** The video is taller than it is wide: the screen stays upright for it, not in landscape. */
+  upright?: boolean;
   /**
    * Has the player write the position to the library: as it plays, when it pauses, at the
    * end and on the way out. The screen cannot: its timers stop when the app is out of sight.

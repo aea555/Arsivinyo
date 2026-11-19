@@ -7,6 +7,7 @@ export {
   addPairingStateListener,
   addMemesChangedListener,
   addSoundsChangedListener,
+  addVideosChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from '../../modules/local-downloader/src';
@@ -98,6 +99,7 @@ export type {
   LocalPlatform,
   LocalQuickDownloadResult,
   LocalSound,
+  LocalVideo,
   LocalSoundPlaylist,
   LocalSoundsImportResult,
   LocalSoundsLibrary,

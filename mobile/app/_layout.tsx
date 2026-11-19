@@ -108,6 +108,8 @@ function AppContent() {
             headerShown: false,
           }}
         />
+        <Stack.Screen name="videos" options={{ presentation: 'card', headerShown: false }} />
+        <Stack.Screen name="video-player" options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="watch" options={{ presentation: 'card', headerShown: false }} />
         <Stack.Screen name="watch-title" options={{ presentation: 'card', headerShown: false }} />
         <Stack.Screen name="watch-addons" options={{ presentation: 'card', headerShown: false }} />

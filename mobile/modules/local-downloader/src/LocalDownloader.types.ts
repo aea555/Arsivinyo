@@ -11,6 +11,25 @@ export interface LocalDownloadStartInput {
   mediaKind?: 'video' | 'audio';
 }
 
+/** A video in the on-device video library (public Movies/Arsivinyo folder). */
+export interface LocalVideo {
+  id: string;
+  /** The file, as `content://`: the player opens it. */
+  uri: string;
+  title: string;
+  uploader?: string | null;
+  sourceUrl?: string | null;
+  platform?: string | null;
+  durationMs: number;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  addedAt: number;
+  /** Where it was stopped; 0 from the start. */
+  positionMs: number;
+  playedAt: number;
+}
+
 /** A track in the on-device music library (public Music/Arsivinyo folder). */
 export interface LocalSound {
   id: string;

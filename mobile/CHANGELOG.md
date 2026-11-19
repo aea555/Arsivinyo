@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Added
+- Phone: a video library. "Videos" on the home screen lists every video the app saved, newest
+  first, each with a picture, its length, who posted it and how far it was watched. A tap
+  plays it in the same player as Watch's: it plays on with the screen off and in
+  picture-in-picture, and resumes where it stopped. The list as shown is the queue: the
+  player's buttons go to the video before and after, and at the end of one the next begins,
+  while the app is on screen. A video taller than it is wide plays upright. A long press
+  selects, to rename a video or delete it from the phone.
+
+### Changed
+- Phone: a downloaded video is saved to `Movies/Arsivinyo`, where it went to `DCIM`. The
+  videos already in `DCIM` stay there, and are in the library as well.
+
 ## [4.1.4] — A place in every episode, and cookies the easy way
 
 Every episode keeps where it stopped, and the stream cache keeps the last few played. Cookies

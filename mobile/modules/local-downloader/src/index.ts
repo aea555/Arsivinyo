@@ -6,6 +6,7 @@ import LocalDownloaderModule, {
   addPairingStateListener,
   addMemesChangedListener,
   addSoundsChangedListener,
+  addVideosChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from './LocalDownloaderModule';
@@ -20,6 +21,7 @@ export {
   addPairingStateListener,
   addMemesChangedListener,
   addSoundsChangedListener,
+  addVideosChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 };

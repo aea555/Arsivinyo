@@ -77,7 +77,8 @@
     "savedToMusic": "Müzik kitaplığına kaydedildi.",
     "navMemes": "Mimler",
     "navWatch": "İzle",
-    "navTorrents": "Torrent"
+    "navTorrents": "Torrent",
+    "navVideos": "Videolar"
   },
   "privateVault": {
     "title": "Gizli Kasa",
@@ -896,7 +897,12 @@
     "nextEpisode": "Sonraki bölüm",
     "textSize": "Yazı boyutu",
     "bold": "Kalın",
-    "textSizes": { "0": "Küçük", "1": "Normal", "2": "Büyük", "3": "En büyük" },
+    "textSizes": {
+      "0": "Küçük",
+      "1": "Normal",
+      "2": "Büyük",
+      "3": "En büyük"
+    },
     "close": "Kapat",
     "audio": "Ses",
     "subtitles": "Altyazı",
@@ -984,5 +990,20 @@
       "hint": "İzlediğin şey burada tutulur, tekrar izlemek hemen başlar; dolunca en eski izlenen önce gider."
     },
     "encrypting": "Kasaya şifreleniyor…"
+  },
+  "videos": {
+    "title": "Videolar",
+    "empty": "Henüz video yok",
+    "emptyHint": "İndirdiğin videolar burada durur; telefonda Movies/Arsivinyo klasörüne kaydedilir.",
+    "unsupported": "Video kitaplığı için Android 10 veya üstü gerekir.",
+    "search": "Videolarda ara",
+    "noMatch": "Eşleşen video yok.",
+    "selected": "{{count}} seçildi",
+    "rename": "Yeniden adlandır",
+    "renameTitle": "Videoyu yeniden adlandır",
+    "deleteTitle_one": "Bu video silinsin mi?",
+    "deleteTitle_other": "{{count}} video silinsin mi?",
+    "deleteMessage": "Dosya telefondan ve galeriden silinir. Bu işlem geri alınamaz.",
+    "playFailed": "Bu video açılamadı."
   }
 }

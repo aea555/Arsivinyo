@@ -43,6 +43,8 @@ export interface PlayerProps {
    * not: out of sight it pauses.
    */
   background?: boolean;
+  /** The video is taller than it is wide: played upright, not in landscape. */
+  upright?: boolean;
   /** What the video is kept as in the library; the player writes down where it is. */
   record?: MpvRecord | null;
   onClose: () => void;
@@ -76,7 +78,7 @@ function clock(ms: number): string {
  * subtitle track, subtitle delay and speed.
  */
 export function Player({
-  source, title, languages, subtitles = [], background = false, record = null, onClose, onPrevious, onNext, switching = false,
+  source, title, languages, subtitles = [], background = false, upright = false, record = null, onClose, onPrevious, onNext, switching = false,
   onProgress, onEnded, children, waiting,
 }: PlayerProps) {
   const { t } = useTranslation();
@@ -284,6 +286,7 @@ export function Player({
         source={source}
         languages={languages}
         background={background}
+        upright={upright}
         // For the notification of a player that plays on out of sight; a vault video is named nowhere.
         title={background ? title : undefined}
         record={record}

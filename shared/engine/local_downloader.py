@@ -3355,6 +3355,8 @@ def run_download(
             preflight_strategy=preflight_strategy,
             strategy=download_strategy,
             extractor_key=info.get("extractor_key"),
+            # As the site wrote it: the file's name keeps only ASCII of it. Never logged.
+            title=str(info.get("title") or "")[:300] or None,
             source=_source_of(info, _detect_cookie_platform(url)),
         )
     except Exception as exc:

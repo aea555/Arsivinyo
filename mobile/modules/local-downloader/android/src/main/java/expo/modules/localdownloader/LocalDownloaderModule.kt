@@ -33,6 +33,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.localdownloader.audio.AudioPresetRenderer
 import expo.modules.localdownloader.pairing.PairingCoordinator
 import expo.modules.localdownloader.sounds.SoundsStore
+import expo.modules.localdownloader.videos.VideosStore
 import expo.modules.localdownloader.vault.ThumbnailGenerator
 import expo.modules.localdownloader.vault.VaultLoopbackProvider
 import expo.modules.localdownloader.vault.VaultLoopbackServer
@@ -317,6 +318,22 @@ class LocalDownloaderModule : Module() {
   private val soundsStore: SoundsStore by lazy {
     SoundsStore(requireNotNull(appContext.reactContext).applicationContext)
   }
+  private val videos: VideosStore by lazy {
+    VideosStore(requireNotNull(appContext.reactContext).applicationContext)
+  }
+
+  /** The title the site gave a download, when it gave one. */
+  private fun videoTitleOf(result: JSONObject): String? =
+    if (result.isNull("title")) null else result.optString("title").trim().ifBlank { null }
+
+  /** A download was saved to MediaStore: a video among them joins the video library. */
+  private fun adoptVideo(uri: String, fileName: String, mimeType: String, title: String?, source: MemeStore.Source?) {
+    if (!mimeType.startsWith("video/")) return
+    runCatching {
+      videos.register(uri, fileName, title, VideosStore.Origin(source?.accountName ?: source?.account, source?.url, source?.platform))
+      sendEvent("videosChanged", emptyMap<String, Any?>())
+    }.onFailure { addError("VIDEO_ADD_FAILED: ${it.javaClass.simpleName}") }
+  }
 
   /**
    * Created on first use, not at startup. An install that never opens the pairing screen
@@ -372,6 +389,8 @@ class LocalDownloaderModule : Module() {
    * saves it. The engine reports the source with the result; the save comes later, from TS.
    */
   private val pendingMemeSources = ConcurrentHashMap<String, MemeStore.Source>()
+  /** The same wait, for a video's title as the site wrote it: its file name keeps only ASCII. */
+  private val pendingVideoTitles = ConcurrentHashMap<String, String>()
 
   private val memePrefs by lazy {
     requireNotNull(appContext.reactContext).applicationContext
@@ -1205,6 +1224,7 @@ class LocalDownloaderModule : Module() {
       "pairingStateChanged",
       "memesChanged",
       "soundsChanged",
+      "videosChanged",
     )
 
     OnCreate {
@@ -1787,6 +1807,8 @@ class LocalDownloaderModule : Module() {
 
       Prop("title") { view: MpvPlayerView, title: String? -> view.title = title.orEmpty() }
 
+      Prop("upright") { view: MpvPlayerView, upright: Boolean? -> view.upright = upright == true }
+
       // What the video is kept as in the library. The player writes its place down itself:
       // the screen's own timers stop when the app is out of sight, where this one plays on.
       Prop("record") { view: MpvPlayerView, record: Map<String, Any?>? ->
@@ -1795,8 +1817,17 @@ class LocalDownloaderModule : Module() {
         val videoId = record?.get("videoId") as? String
         val addonKey = record?.get("addonKey") as? String
         val bingeGroup = record?.get("bingeGroup") as? String
-        view.subtitle = title?.name?.takeIf { it.isNotBlank() }
-        view.record = if (title == null || videoId == null) null else { positionMs, durationMs ->
+        // Or a video of the app's own library, kept by its id there.
+        val video = record?.get("video") as? String
+        view.subtitle = if (video != null) (record?.get("uploader") as? String)?.takeIf { it.isNotBlank() } else title?.name?.takeIf { it.isNotBlank() }
+        view.record = if (video != null) { positionMs, durationMs ->
+          watchPlace.execute {
+            runCatching {
+              videos.setPlace(video, positionMs, durationMs)
+              sendEvent("videosChanged", emptyMap<String, Any?>())
+            }
+          }
+        } else if (title == null || videoId == null) null else { positionMs, durationMs ->
           watchPlace.execute { runCatching { watch.library.recordProgress(title, videoId, positionMs, durationMs, addonKey, bingeGroup) } }
         }
       }
@@ -2098,6 +2129,21 @@ class LocalDownloaderModule : Module() {
       val file = java.io.File(requireNotNull(appContext.reactContext).filesDir, "pairing/peers.json")
       file.isFile && runCatching { org.json.JSONArray(file.readText()).length() > 0 }.getOrDefault(false)
     }
+
+    Function("isVideosSupported") { videos.isSupported() }
+
+    AsyncFunction("listVideos") { videos.list() }
+
+    AsyncFunction("getVideoThumbnail") { id: String -> videos.thumbnail(id) }
+
+    // Answered behind the places still being written, so one just left is the one read.
+    AsyncFunction("getVideoPlace") { id: String, promise: Promise ->
+      watchPlace.execute { promise.resolve(runCatching { videos.place(id) }.getOrDefault(0L).toDouble()) }
+    }
+
+    AsyncFunction("renameVideo") { id: String, title: String -> videos.rename(id, title) }
+
+    AsyncFunction("deleteVideos") { ids: List<String> -> videos.delete(ids) }
 
     AsyncFunction("listSounds") {
       soundsStore.listLibrary()
@@ -3153,7 +3199,11 @@ class LocalDownloaderModule : Module() {
       val dateTakenMs = (input["dateTakenMs"] as? Number)?.toLong() ?: System.currentTimeMillis()
       val saved = saveToMediaStoreInternal(filePath, filename, mimeType, dateTakenMs)
       // Only downloads come through here, so a video or an image is a meme.
-      (saved["uri"] as? String)?.let { adoptMeme(it, mimeType, pendingMemeSources.remove(filePath), ask = true) }
+      (saved["uri"] as? String)?.let {
+        val source = pendingMemeSources.remove(filePath)
+        adoptVideo(it, filename, mimeType, pendingVideoTitles.remove(filePath), source)
+        adoptMeme(it, mimeType, source, ask = true)
+      }
       saved
     }
 
@@ -3792,7 +3842,9 @@ class LocalDownloaderModule : Module() {
                 )
                 debug("Task[$taskId] background save success uri=${saveResult["uri"]}")
                 (saveResult["uri"] as? String)?.let {
-                  adoptMeme(it, guessMimeType(filename), memeSourceOf(result, url), ask = true)
+                  val from = memeSourceOf(result, url)
+                  adoptVideo(it, filename, guessMimeType(filename), videoTitleOf(result), from)
+                  adoptMeme(it, guessMimeType(filename), from, ask = true)
                 }
               }.onFailure { saveError ->
                 val saveMessage = "Failed to save media to gallery: ${saveError.message ?: "unknown error"}"
@@ -3804,6 +3856,7 @@ class LocalDownloaderModule : Module() {
             } else if (filename != null && filePath != null) {
               // The screen saves this one itself, later; the source waits for it.
               pendingMemeSources[filePath] = memeSourceOf(result, url)
+              videoTitleOf(result)?.let { pendingVideoTitles[filePath] = it }
             }
           }
 
@@ -6350,7 +6403,7 @@ class LocalDownloaderModule : Module() {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val targetRelativePath = relativePath?.trim().takeUnless { it.isNullOrBlank() }
           ?: when {
-            isVideo -> Environment.DIRECTORY_DCIM
+            isVideo -> VideosStore.FOLDER
             isAudio -> Environment.DIRECTORY_MUSIC
             else -> Environment.DIRECTORY_PICTURES
           }

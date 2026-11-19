@@ -5,6 +5,7 @@ import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Build
 import android.util.Rational
 import android.view.SurfaceHolder
@@ -74,6 +75,15 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     set(value) {
       field = value
       mpv?.setPropertyString("sub-bold", if (value) "yes" else "no")
+    }
+
+  /** The video is taller than it is wide, and the screen stays upright for it. */
+  var upright = false
+    set(value) {
+      field = value
+      if (!isAttachedToWindow) return
+      PlayerWindow.upright = value
+      appContext.currentActivity?.let { PlayerWindow.keep(it) }
     }
 
   /** What the notification calls the video, and what it puts under that: the series. */
@@ -236,7 +246,8 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
       // Length-quoted, so a comma in the URL cannot end the option.
       source.audioUrl?.let { "audio-file=%${it.toByteArray().size}%$it" },
     ).joinToString(",")
-    mpv.command(if (options.isEmpty()) arrayOf("loadfile", source.url) else arrayOf("loadfile", source.url, "replace", "-1", options))
+    val url = opened(source.url)
+    mpv.command(if (options.isEmpty()) arrayOf("loadfile", url) else arrayOf("loadfile", url, "replace", "-1", options))
     // A new video plays. mpv pauses itself at the end of one (keep-open), and that would carry
     // over to the next episode. After the load, not before: unpaused at the end, it pauses again.
     mpv.setPropertyBoolean("pause", false)
@@ -244,6 +255,16 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
       Playback.begin(this, state(mpv))
       offerPictureInPicture()
     }
+  }
+
+  /**
+   * A video of the phone's own (`content://`) as mpv can open it: mpv knows nothing of
+   * Android's content providers, so it is handed the open file, which it closes itself.
+   */
+  private fun opened(url: String): String {
+    if (!url.startsWith("content://")) return url
+    val fd = runCatching { context.contentResolver.openFileDescriptor(Uri.parse(url), "r")?.detachFd() }.getOrNull()
+    return if (fd == null) url else "fdclose://$fd"
   }
 
   fun setPaused(paused: Boolean) = mpv?.setPropertyBoolean("pause", paused)
@@ -309,6 +330,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     val activity = appContext.currentActivity ?: return
+    PlayerWindow.upright = upright
     PlayerWindow.enter(this, activity)
     (activity as? ComponentActivity)?.addOnPictureInPictureModeChangedListener(pictureInPicture)
     viewTreeObserver.addOnPreDrawListener(alone)

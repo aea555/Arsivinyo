@@ -8,7 +8,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * Fullscreen in landscape for as long as a player is on screen, as a film is watched.
+ * Fullscreen in landscape for as long as a player is on screen, as a film is watched; or
+ * upright, for a video made that way.
  *
  * Kept by count, not by each player for itself. At the next episode the new player can be on
  * screen before the old one has left it; each used to put back what it had found, so the old
@@ -20,6 +21,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 internal object PlayerWindow {
   private val players = LinkedHashSet<View>()
   private var orientationBefore: Int? = null
+
+  /** The video is taller than it is wide: the screen stays upright for it. */
+  var upright = false
 
   fun enter(player: View, activity: Activity) {
     if (players.isEmpty()) orientationBefore = activity.requestedOrientation
@@ -35,6 +39,7 @@ internal object PlayerWindow {
     }
     val before = orientationBefore
     orientationBefore = null
+    upright = false
     activity ?: return
     before?.let { activity.requestedOrientation = it }
     WindowCompat.getInsetsController(activity.window, activity.window.decorView).show(WindowInsetsCompat.Type.systemBars())
@@ -47,9 +52,8 @@ internal object PlayerWindow {
    */
   fun keep(activity: Activity) {
     if (players.isEmpty() || activity.isInPictureInPictureMode) return
-    if (activity.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
-      activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-    }
+    val wanted = if (upright) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    if (activity.requestedOrientation != wanted) activity.requestedOrientation = wanted
     WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
       systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
       hide(WindowInsetsCompat.Type.systemBars())

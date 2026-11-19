@@ -81,6 +81,7 @@ import type {
   LocalSoundPlaylist,
   LocalSoundsImportResult,
   LocalSoundsLibrary,
+  LocalVideo,
   LocalTaskStatusResult,
   LocalVaultDiagnostics,
   LocalYtDlpUpdateCheckResult,
@@ -241,6 +242,13 @@ type LocalDownloaderNativeModule = {
   getExperimentalFeatures(): Promise<boolean>;
   setExperimentalFeatures(enabled: boolean): Promise<void>;
   dismissMemePrompt(id: string): Promise<void>;
+
+  isVideosSupported(): boolean;
+  listVideos(): Promise<LocalVideo[]>;
+  getVideoThumbnail(id: string): Promise<string | null>;
+  getVideoPlace(id: string): Promise<number>;
+  renameVideo(id: string, title: string): Promise<LocalVideo>;
+  deleteVideos(ids: string[]): Promise<number>;
 
   listSounds(): Promise<LocalSoundsLibrary>;
   importSounds(): Promise<LocalSoundsImportResult>;
@@ -425,6 +433,12 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       getExperimentalFeatures: async () => false,
       setExperimentalFeatures: async () => unsupported(),
       dismissMemePrompt: async () => unsupported(),
+      isVideosSupported: () => false,
+      listVideos: async () => unsupported(),
+      getVideoThumbnail: async () => unsupported(),
+      getVideoPlace: async () => 0,
+      renameVideo: async () => unsupported(),
+      deleteVideos: async () => unsupported(),
       listSounds: async () => unsupported(),
       importSounds: async () => unsupported(),
       deleteSounds: async () => unsupported(),
@@ -524,6 +538,14 @@ export function addSoundsChangedListener(listener: () => void): EventSubscriptio
     return { remove: () => undefined };
   }
   return emitter.addListener('soundsChanged', listener);
+}
+
+/** The video library changed: a download landed. */
+export function addVideosChangedListener(listener: () => void): EventSubscription {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+  return emitter.addListener('videosChanged', listener);
 }
 
 export function addMemesChangedListener(listener: () => void): EventSubscription {

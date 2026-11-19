@@ -354,6 +354,10 @@ export default function HomeScreen() {
     router.push('/sounds' as Href);
   }, [router]);
 
+  const openVideos = useCallback(() => {
+    router.push('/videos' as Href);
+  }, [router]);
+
   const openWatch = useCallback(() => {
     router.push('/watch' as Href);
   }, [router]);
@@ -676,6 +680,7 @@ export default function HomeScreen() {
         <View style={[styles.bottomNav, { borderTopColor: colors.border, backgroundColor: colors.surface + 'E6' }]}>
           {([
             { label: t('home.navMusic'), icon: 'musical-notes-outline', onPress: openSounds },
+            { label: t('home.navVideos'), icon: 'videocam-outline', onPress: openVideos },
             { label: t('home.navWatch'), icon: 'film-outline', onPress: openWatch },
             { label: t('home.navTorrents'), icon: 'magnet-outline', onPress: openTorrents },
             ...(experimental ? [{ label: t('home.navMemes'), icon: 'happy-outline', onPress: openMemes } as const] : []),

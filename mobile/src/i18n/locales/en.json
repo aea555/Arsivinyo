@@ -77,7 +77,8 @@
     "savedToMusic": "Saved to music library.",
     "navMemes": "Memes",
     "navWatch": "Watch",
-    "navTorrents": "Torrents"
+    "navTorrents": "Torrents",
+    "navVideos": "Videos"
   },
   "privateVault": {
     "title": "Private Vault",
@@ -896,7 +897,12 @@
     "nextEpisode": "Next episode",
     "textSize": "Text size",
     "bold": "Bold",
-    "textSizes": { "0": "Small", "1": "Normal", "2": "Large", "3": "Largest" },
+    "textSizes": {
+      "0": "Small",
+      "1": "Normal",
+      "2": "Large",
+      "3": "Largest"
+    },
     "close": "Close",
     "audio": "Audio",
     "subtitles": "Subtitles",
@@ -984,5 +990,20 @@
       "hint": "What you stream is kept here so watching it again starts at once; the least recently watched goes first when it is full."
     },
     "encrypting": "Encrypting into the vault…"
+  },
+  "videos": {
+    "title": "Videos",
+    "empty": "No videos yet",
+    "emptyHint": "A video you download is kept here, and saved to Movies/Arsivinyo on the phone.",
+    "unsupported": "The video library needs Android 10 or newer.",
+    "search": "Search videos",
+    "noMatch": "No video matches.",
+    "selected": "{{count}} selected",
+    "rename": "Rename",
+    "renameTitle": "Rename video",
+    "deleteTitle_one": "Delete this video?",
+    "deleteTitle_other": "Delete {{count}} videos?",
+    "deleteMessage": "The file is deleted from the phone, from the gallery too. This cannot be undone.",
+    "playFailed": "This video could not be opened."
   }
 }
