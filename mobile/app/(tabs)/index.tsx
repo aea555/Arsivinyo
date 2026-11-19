@@ -21,9 +21,11 @@ import {
   getExperimentalFeatures,
   getLocalBackgroundState,
   getLocalPrivateModeState,
+  getLocalPrivateVaultLockState,
   listenBackgroundState,
   setLocalAudioModeEnabled,
   setLocalPrivateModeEnabled,
+  unlockLocalPrivateVault,
 } from '@/src/api';
 import type { DownloadState } from '@/src/api/types';
 import { AppText as Text, DownloadButton, DOWNLOAD_BUTTON_SIZE } from '@/src/components';
@@ -213,6 +215,22 @@ export default function HomeScreen() {
           host: hostOf(url),
         },
       }));
+
+      // A private download writes into the vault when it is done, so the vault is opened
+      // now, while there is a screen to ask on. The download then holds it open.
+      if (!audioModeEnabled && privateModeEnabled) {
+        const lock = await getLocalPrivateVaultLockState().catch(() => null);
+        if (!lock?.unlocked) {
+          const opened = await unlockLocalPrivateVault('import').catch(() => null);
+          if (!opened?.granted) {
+            dropEntry();
+            setLastOutcome('error');
+            setStatusMessage(t('home.vaultLockedForDownload'));
+            setTimeout(() => setLastOutcome('idle'), 3000);
+            return;
+          }
+        }
+      }
 
       // Start download via API
       const result = await downloadMedia(url, (progress: DownloadProgress) => {

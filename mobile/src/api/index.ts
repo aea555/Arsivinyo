@@ -48,6 +48,8 @@ export {
     startLocalPrivateVaultMigration,
     startQuickLocalDownloadFromClipboard,
     startQuickLocalDownloadWithUrl,
+    getLocalPrivateVaultLockState,
+    unlockLocalPrivateVault,
     updateLocalYtDlp,
     COOKIE_SIGNIN_PLATFORMS,
     signInForLocalCookies,

@@ -98,8 +98,14 @@ Cross-cutting things to know before editing:
   the Mac's is `FacesVectorsInstrumentedTest`, which needs the phone:
   `./gradlew :local-downloader:connectedDebugAndroidTest`.
 
-- **The video player is libmpv** (`watch/MpvPlayerView.kt`, an Expo view, with the controls
-  in `src/features/player/Player.tsx`), for add-on streams and vault videos alike; it comes
+- **The video player is libmpv**, in two halves. `watch/MpvEngine.kt` is mpv and what it
+  plays: a queue of one item or many, the place in each, the next begun when one ends; it
+  draws into whatever surface it is handed and plays on with none. `watch/MpvPlayerView.kt`
+  (an Expo view, with the controls in `src/features/player/Player.tsx`) is the screen's
+  side: the surface, the window, picture-in-picture. A `source` plays in an engine of the
+  view's own, gone with it (add-on streams, vault videos); a `queue` plays in the process's
+  shared engine (`MpvEngine.shared`), which outlives its views and is where music is to
+  move. For add-on streams and vault videos alike; it comes
   from the `dev.jdtech.mpv:libmpv` AAR, which needs minSdk 26. That AAR's libmpv needs a
   newer `libc++_shared.so` than React Native builds with, and every native build in the app
   brings React Native's copy, which always wins the merge. So `useMpvCxxRuntime` in the
@@ -133,12 +139,12 @@ Cross-cutting things to know before editing:
   `saveToMediaStoreWithWriter` for a video; older ones stay in `DCIM`), found again through
   MediaStore with no storage permission (API 29+), and what MediaStore cannot hold (the
   uploader, the source, where it stopped) is `videos/index.json`, reconciled on every
-  listing. Both download save sites call `adoptVideo`. It plays through the Watch player:
-  mpv cannot open `content://`, so `MpvPlayerView.opened` hands it the open file as
-  `fdclose://`; the `record` prop takes `{ video: id }` to keep the place in the index, and
-  `upright` holds the screen in portrait for a video made that way. The queue is the
-  screen's (`app/video-player.tsx`), so the next video does not begin while the app is out of
-  sight: that waits for the queue to move into Kotlin.
+  listing. Both download save sites call `adoptVideo`. It plays through the Watch player's
+  view, given a `queue` in place of a `source`: the queue is the engine's, so each video
+  resumes from the index, has its place written there, and is followed by the next while
+  the app is out of sight; the screen (`app/video-player.tsx`) is only told which plays
+  (`onItem`). mpv cannot open `content://`, so `MpvEngine.opened` hands it the open file as
+  `fdclose://`. `upright` holds the screen in portrait for a video made that way.
 
 - **Music library (in-app audio player)** is a separate subsystem from the vault. Audio downloads (`mediaKind: 'audio'`) go through yt-dlp's `bestaudio` + `FFmpegExtractAudio` path (Python) and are saved by `sounds/SoundsStore.kt` into the **public `Music/Arsivinyo`** folder via the MediaStore **owner model** — readable/writable with **no `READ_MEDIA_*` / `WRITE_EXTERNAL_STORAGE` permission** (those stay blocked), but this requires **API 29+** (`SoundsStore.isSupported()` gates it). **Output format is M4A/AAC, not MP3:** the bundled FFmpeg (ffmpeg-kit 6.0) has no MP3 encoder (`libmp3lame`), so `_apply_audio_postprocessing` targets `preferredcodec="m4a"` (lossless remux when the source is already AAC; 256k AAC otherwise). **Cover art is NOT embedded** — that same FFmpeg also has no image encoder, so `EmbedThumbnail` (which transcodes the YouTube `.webp` cover) fails with `Error selecting an encoder`. Instead `writethumbnail` downloads the cover file, Python returns its path (`_resolve_thumbnail_file` → `thumbnail_path`), and `SoundsStore.storeThumbFromFile` copies it verbatim into the sidecar thumbnail store (`expo-image` renders WebP/JPEG/PNG from a path directly). Track title/artist tags are written into the file via `FFmpegMetadata` (stream copy, no encoder). Imports still pull art from the file's embedded cover via `MediaMetadataRetriever`. Tracks are plaintext (no vault/encryption). `sounds/index.json` caches metadata and owns playlists; it is reconciled against MediaStore on every list. **Favorites** is a reserved system playlist (id `favorites`, `system: true`) — `ensureFavoritesLocked` lazily creates it so it always exists, `deletePlaylist`/`renamePlaylist` reject it, and `setSoundsFavorite(ids, favorite)` adds/removes membership; the UI pins it to the top and exposes a smart heart toggle (Songs tab + player). Playback uses **`react-native-track-player` 5.x (the New-Architecture/TurboModule nightly)** — the 4.1.2 stable starts audio but its commands/remote events don't reach the player under bridgeless mode, so it's effectively uncontrollable; the old `patches/react-native-track-player+4.1.2.patch` is gone. The service is registered in the custom `index.js` entry before expo-router. RNTP's Android notification opens the app with a `notification.click` deep link; `app/+native-intent.ts` rewrites that to `/sound-player` so it doesn't 404. UI: `app/sounds.tsx` (library) + `app/sound-player.tsx` (the currently-playing row gets an accent outline; tapping a row just plays — the full player opens via the mini-player or notification). Public API via `src/api/sounds.ts` → re-exported from `src/api/index.ts`. Do not auth-gate music — it is intentionally non-private. **Nothing in JS may count on a timer firing while the app is in the background** (a `setTimeout` behind a lock-screen button, a poll): timers pause there, as React Native means them to. They used not to, by a bug: RNTP's service starts a headless task, and under the new architecture React Native 0.81 has no `HeadlessJsTaskSupport` module, so JS could never report the task finished and timers ran behind the app forever (a tenth of a core on the main thread, at the screen's refresh rate). `HeadlessTaskSupport.kt` supplies the module and `app.plugin.js` adds its package to `MainApplication`; drop both when React Native registers its own. Heads-up: a JS-only reload (Fast Refresh) leaves RNTP's notification controls inert until a fresh app launch (`registerPlaybackService` only runs at startup) — a dev-only quirk, fine in release.
 

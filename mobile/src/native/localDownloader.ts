@@ -120,4 +120,4 @@ export type {
   LocalYtDlpUpdateStatus,
 } from '../../modules/local-downloader/src';
 export { MpvPlayerView } from '../../modules/local-downloader/src';
-export type { MpvPlayerHandle, MpvProgress, MpvRecord, MpvSource, MpvTrack } from '../../modules/local-downloader/src';
+export type { MpvPlayerHandle, MpvProgress, MpvQueue, MpvRecord, MpvSource, MpvTrack } from '../../modules/local-downloader/src';

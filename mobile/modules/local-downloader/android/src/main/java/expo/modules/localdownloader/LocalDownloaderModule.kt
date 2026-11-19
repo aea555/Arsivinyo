@@ -95,6 +95,7 @@ import expo.modules.localdownloader.memes.KeystoreSealer
 import expo.modules.localdownloader.memes.MemeCollection
 import expo.modules.localdownloader.torrent.TorrentService
 import expo.modules.localdownloader.watch.Addons
+import expo.modules.localdownloader.watch.MpvEngine
 import expo.modules.localdownloader.watch.MpvPlayerView
 import expo.modules.localdownloader.watch.Playback
 import expo.modules.localdownloader.watch.WatchLibrary
@@ -1314,7 +1315,7 @@ class LocalDownloaderModule : Module() {
     // Home or recents while the Watch player plays: into picture-in-picture. From Android 12
     // the system does that by itself, and this finds nothing to do.
     OnUserLeavesActivity {
-      runCatching { Playback.current?.userLeaves() }
+      runCatching { (Playback.current?.listener as? MpvPlayerView)?.userLeaves() }
     }
 
     OnDestroy {
@@ -1322,7 +1323,7 @@ class LocalDownloaderModule : Module() {
         activeModule = null
       }
       // Nothing plays on with no screen to come back to.
-      Handler(Looper.getMainLooper()).post { runCatching { Playback.current?.release() } }
+      Handler(Looper.getMainLooper()).post { runCatching { Playback.current?.close() } }
       runCatching { activeMigrationCancel?.cancel() }
       runCatching { stopVaultLoopbackServer() }
       runCatching {
@@ -1784,7 +1785,7 @@ class LocalDownloaderModule : Module() {
     AsyncFunction("watchSetLanguages") { codes: List<String> -> watch.library.setLanguages(codes) }
 
     View(MpvPlayerView::class) {
-      Events("onProgress", "onTracks", "onEnded", "onFailed")
+      Events("onProgress", "onTracks", "onEnded", "onFailed", "onItem")
 
       OnViewDestroys { view: MpvPlayerView -> view.release() }
 
@@ -1817,20 +1818,41 @@ class LocalDownloaderModule : Module() {
         val videoId = record?.get("videoId") as? String
         val addonKey = record?.get("addonKey") as? String
         val bingeGroup = record?.get("bingeGroup") as? String
-        // Or a video of the app's own library, kept by its id there.
-        val video = record?.get("video") as? String
-        view.subtitle = if (video != null) (record?.get("uploader") as? String)?.takeIf { it.isNotBlank() } else title?.name?.takeIf { it.isNotBlank() }
-        view.record = if (video != null) { positionMs, durationMs ->
-          watchPlace.execute {
-            runCatching {
-              videos.setPlace(video, positionMs, durationMs)
-              sendEvent("videosChanged", emptyMap<String, Any?>())
-            }
-          }
-        } else if (title == null || videoId == null) null else { positionMs, durationMs ->
+        view.subtitle = title?.name?.takeIf { it.isNotBlank() }
+        view.record = if (title == null || videoId == null) null else { positionMs, durationMs ->
           watchPlace.execute { runCatching { watch.library.recordProgress(title, videoId, positionMs, durationMs, addonKey, bingeGroup) } }
         }
       }
+
+      // Videos of the app's own library, as a queue: it is the engine's from here, so the
+      // next begins while the app is out of sight. Each resumes where the library says it
+      // stopped, asked as it opens, and has its place written there.
+      Prop("queue") { view: MpvPlayerView, queue: Map<String, Any?>? ->
+        @Suppress("UNCHECKED_CAST")
+        val entries = (queue?.get("items") as? List<Map<String, Any?>>).orEmpty()
+          .filter { it["id"] is String && it["uri"] is String }
+        val index = (queue?.get("index") as? Number)?.toInt() ?: 0
+        val items = entries.map { entry ->
+          val id = entry["id"] as String
+          MpvEngine.Item(
+            url = entry["uri"] as String,
+            title = (entry["title"] as? String).orEmpty(),
+            subtitle = (entry["uploader"] as? String)?.takeIf { it.isNotBlank() },
+            record = { positionMs, durationMs ->
+              watchPlace.execute {
+                runCatching {
+                  videos.setPlace(id, positionMs, durationMs)
+                  sendEvent("videosChanged", emptyMap<String, Any?>())
+                }
+              }
+            },
+            place = { videos.place(id) },
+          )
+        }
+        if (items.isNotEmpty()) view.setQueue(entries.joinToString(",") { it["id"] as String } + "#$index", items, index)
+      }
+
+      AsyncFunction("skipTo") { view: MpvPlayerView, index: Int -> view.skipTo(index) }
 
       AsyncFunction("enterPictureInPicture") { view: MpvPlayerView ->
         view.post { view.enterPictureInPicture() }
@@ -2135,11 +2157,6 @@ class LocalDownloaderModule : Module() {
     AsyncFunction("listVideos") { videos.list() }
 
     AsyncFunction("getVideoThumbnail") { id: String -> videos.thumbnail(id) }
-
-    // Answered behind the places still being written, so one just left is the one read.
-    AsyncFunction("getVideoPlace") { id: String, promise: Promise ->
-      watchPlace.execute { promise.resolve(runCatching { videos.place(id) }.getOrDefault(0L).toDouble()) }
-    }
 
     AsyncFunction("renameVideo") { id: String, title: String -> videos.rename(id, title) }
 
@@ -3503,6 +3520,17 @@ class LocalDownloaderModule : Module() {
       throw IllegalStateException("DOWNLOAD_ALREADY_IN_PROGRESS")
     }
 
+    // A private download writes into the vault when its bytes land, which can be long after
+    // the vault's window has closed. So it takes its permission now, when it is asked for,
+    // and holds the vault open until it is done. One started from the app is refused while
+    // the vault is locked: the screen opens the vault and asks again. One from the share
+    // sheet has no screen to ask with, and goes on as it did.
+    val ingest = if (visibility == "private") {
+      val open = runCatching { requireVaultDek(VaultAuthPolicy.OP_INGEST) }
+      if (open.isFailure && source == "manual") throw IllegalStateException("PRIVATE_VAULT_LOCKED")
+      if (open.isSuccess) vaultSession.beginLease("ingest") else null
+    } else null
+
     val taskId = UUID.randomUUID().toString()
     ignoredTaskResults.remove(taskId)
 
@@ -3913,6 +3941,7 @@ class LocalDownloaderModule : Module() {
     // Registered before it is allowed to run: the body asks the table whether its own
     // task is still live, and a job that started first would not find itself there.
     activeDownloads[taskId] = ActiveDownload(taskId, url, job)
+    job.invokeOnCompletion { vaultSession.endLease(ingest) }
     job.start()
 
     return mapOf(

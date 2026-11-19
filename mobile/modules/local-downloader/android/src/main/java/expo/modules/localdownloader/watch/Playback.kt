@@ -27,7 +27,7 @@ import androidx.core.content.ContextCompat
 import expo.modules.localdownloader.R
 
 /**
- * The Watch player out of sight: the screen off, another app in front, or the small window of
+ * A player out of sight: the screen off, another app in front, or the small window of
  * picture-in-picture. It is a media session, so the lock screen, a headset and the small
  * window can pause and seek; the notification that goes with one; the foreground service
  * without which Android stops an app it cannot see; and the audio focus, so a call or another
@@ -46,6 +46,9 @@ internal object Playback {
     val positionMs: Long,
     val durationMs: Long,
     val speed: Float,
+    /** The queue has an item before this one, and one after. */
+    val hasPrevious: Boolean = false,
+    val hasNext: Boolean = false,
   )
 
   const val SEEK_MS = 10_000.0
@@ -55,7 +58,7 @@ internal object Playback {
   const val ACTION_BACK = "expo.modules.localdownloader.watch.BACK"
   const val ACTION_FORWARD = "expo.modules.localdownloader.watch.FORWARD"
 
-  var current: MpvPlayerView? = null
+  var current: MpvEngine? = null
     private set
   private var state: State? = null
   private var session: MediaSession? = null
@@ -65,7 +68,7 @@ internal object Playback {
   private var listening = false
 
   /** [player] began a video: from here it is the one the session speaks for. */
-  fun begin(player: MpvPlayerView, state: State) {
+  fun begin(player: MpvEngine, state: State) {
     val context = player.context.applicationContext
     current?.takeIf { it !== player }?.let { end(it) }
     current = player
@@ -87,7 +90,7 @@ internal object Playback {
     }
   }
 
-  fun update(player: MpvPlayerView, state: State) {
+  fun update(player: MpvEngine, state: State) {
     if (current !== player) return
     val before = this.state
     this.state = state
@@ -105,7 +108,9 @@ internal object Playback {
       PlaybackState.Builder()
         .setActions(
           PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or
-            PlaybackState.ACTION_SEEK_TO or PlaybackState.ACTION_REWIND or PlaybackState.ACTION_FAST_FORWARD,
+            PlaybackState.ACTION_SEEK_TO or PlaybackState.ACTION_REWIND or PlaybackState.ACTION_FAST_FORWARD or
+            (if (state.hasPrevious) PlaybackState.ACTION_SKIP_TO_PREVIOUS else 0L) or
+            (if (state.hasNext) PlaybackState.ACTION_SKIP_TO_NEXT else 0L),
         )
         .setState(
           if (state.paused) PlaybackState.STATE_PAUSED else if (state.buffering) PlaybackState.STATE_BUFFERING else PlaybackState.STATE_PLAYING,
@@ -124,7 +129,7 @@ internal object Playback {
   }
 
   /** [player] is gone, or its video closed. */
-  fun end(player: MpvPlayerView) {
+  fun end(player: MpvEngine) {
     if (current !== player) return
     val context = player.context.applicationContext
     current = null
@@ -156,6 +161,8 @@ internal object Playback {
     override fun onSeekTo(pos: Long) { current?.seek(pos.toDouble()) }
     override fun onRewind() { current?.seekBy(-SEEK_MS) }
     override fun onFastForward() { current?.seekBy(SEEK_MS) }
+    override fun onSkipToNext() { current?.next() }
+    override fun onSkipToPrevious() { current?.previous() }
   }
 
   // ---- audio focus -----------------------------------------------------------------------------

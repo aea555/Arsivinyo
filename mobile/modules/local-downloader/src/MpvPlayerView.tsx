@@ -31,15 +31,22 @@ export interface MpvSource {
 }
 
 /** What a video is kept as in the library, so the player can write down where it is. */
-export type MpvRecord =
-  | {
-      title: { id: string; type: string; name: string; poster?: string | null };
-      videoId: string;
-      addonKey: string | null;
-      bingeGroup: string | null;
-    }
-  /** A video of the app's own library, by its id there. */
-  | { video: string; uploader?: string | null };
+export interface MpvRecord {
+  title: { id: string; type: string; name: string; poster?: string | null };
+  videoId: string;
+  addonKey: string | null;
+  bingeGroup: string | null;
+}
+
+/**
+ * Videos of the app's own library to play one after another, from the one at `index`. The
+ * player keeps the queue itself: each video resumes where it stopped, has its place written
+ * down, and is followed by the next, also while the app is out of sight.
+ */
+export interface MpvQueue {
+  items: { id: string; uri: string; title: string; uploader?: string | null }[];
+  index: number;
+}
 
 /** What the screen can tell the player to do. */
 export interface MpvPlayerHandle {
@@ -52,12 +59,16 @@ export interface MpvPlayerHandle {
   addSubtitle(url: string, title: string, lang: string, select: boolean): Promise<void>;
   setSubtitleDelay(ms: number): Promise<void>;
   setSpeed(speed: number): Promise<void>;
+  /** To another item of the `queue`. */
+  skipTo(index: number): Promise<void>;
   /** Into the small window, for a player with `background`. */
   enterPictureInPicture(): Promise<void>;
 }
 
 export interface MpvPlayerViewProps extends ViewProps {
+  /** One video, in a player of its own. Null where a `queue` plays. */
   source: MpvSource | null;
+  queue?: MpvQueue | null;
   /** Subtitle and audio languages, most preferred first, as ISO 639-2 codes. */
   languages: string[];
   /**
@@ -79,7 +90,10 @@ export interface MpvPlayerViewProps extends ViewProps {
   subtitleBold?: boolean;
   onProgress?: (event: NativeSyntheticEvent<MpvProgress>) => void;
   onTracks?: (event: NativeSyntheticEvent<{ tracks: MpvTrack[] }>) => void;
+  /** The last video ended: of the queue, where there is one. */
   onEnded?: (event: NativeSyntheticEvent<object>) => void;
+  /** Another item of the queue is the one playing. */
+  onItem?: (event: NativeSyntheticEvent<{ index: number }>) => void;
   onFailed?: (event: NativeSyntheticEvent<{ code: string }>) => void;
 }
 

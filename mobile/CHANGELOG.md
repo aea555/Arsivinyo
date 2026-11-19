@@ -10,12 +10,19 @@ All notable changes to this project are documented here. Format based on [Keep a
   plays it in the same player as Watch's: it plays on with the screen off and in
   picture-in-picture, and resumes where it stopped. The list as shown is the queue: the
   player's buttons go to the video before and after, and at the end of one the next begins,
-  while the app is on screen. A video taller than it is wide plays upright. A long press
+  with the screen off and in picture-in-picture too. A headset's and the lock screen's
+  previous and next buttons work on it. A video taller than it is wide plays upright. A long press
   selects, to rename a video or delete it from the phone.
 
 ### Changed
 - Phone: a downloaded video is saved to `Movies/Arsivinyo`, where it went to `DCIM`. The
   videos already in `DCIM` stay there, and are in the library as well.
+
+### Fixed
+- Phone: a private download failed at its end with `PRIVATE_STORAGE_WRITE_FAILED` when the
+  vault had locked by then. The vault is asked for as the download starts, and the download
+  holds it open until it is done. One started from the share sheet has no screen to ask on,
+  and still needs the vault open.
 
 ## [4.1.4] — A place in every episode, and cookies the easy way
 

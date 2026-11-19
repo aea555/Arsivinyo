@@ -28,11 +28,6 @@ export function getLocalVideoThumbnail(id: string): Promise<string | null> {
   return LocalDownloaderModule.getVideoThumbnail(id);
 }
 
-/** Where the video was stopped, in milliseconds, as of now: the list's copy can be older. */
-export function getLocalVideoPlace(id: string): Promise<number> {
-  return LocalDownloaderModule.getVideoPlace(id);
-}
-
 export function renameLocalVideo(id: string, title: string): Promise<LocalVideo> {
   return LocalDownloaderModule.renameVideo(id, title);
 }

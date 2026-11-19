@@ -78,7 +78,8 @@
     "navMemes": "Mimler",
     "navWatch": "İzle",
     "navTorrents": "Torrent",
-    "navVideos": "Videolar"
+    "navVideos": "Videolar",
+    "vaultLockedForDownload": "Kasa kilitli olduğu için indirme başlatılmadı."
   },
   "privateVault": {
     "title": "Gizli Kasa",

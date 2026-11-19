@@ -78,7 +78,8 @@
     "navMemes": "Memes",
     "navWatch": "Watch",
     "navTorrents": "Torrents",
-    "navVideos": "Videos"
+    "navVideos": "Videos",
+    "vaultLockedForDownload": "The vault is locked, so the download was not started."
   },
   "privateVault": {
     "title": "Private Vault",

@@ -246,7 +246,6 @@ type LocalDownloaderNativeModule = {
   isVideosSupported(): boolean;
   listVideos(): Promise<LocalVideo[]>;
   getVideoThumbnail(id: string): Promise<string | null>;
-  getVideoPlace(id: string): Promise<number>;
   renameVideo(id: string, title: string): Promise<LocalVideo>;
   deleteVideos(ids: string[]): Promise<number>;
 
@@ -436,7 +435,6 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       isVideosSupported: () => false,
       listVideos: async () => unsupported(),
       getVideoThumbnail: async () => unsupported(),
-      getVideoPlace: async () => 0,
       renameVideo: async () => unsupported(),
       deleteVideos: async () => unsupported(),
       listSounds: async () => unsupported(),

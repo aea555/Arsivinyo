@@ -10,6 +10,7 @@ import {
   MpvPlayerView,
   type MpvPlayerHandle,
   type MpvProgress,
+  type MpvQueue,
   type MpvRecord,
   type MpvSource,
   type MpvTrack,
@@ -30,6 +31,14 @@ type Panel = 'audio' | 'subtitles' | 'speed' | null;
 
 export interface PlayerProps {
   source: MpvSource | null;
+  /**
+   * Videos of the app's own library, in place of [source]: the player keeps the queue, and
+   * says through [onItem] which of them plays. [item] is that one, as the screen knows it:
+   * the buttons go to the one before it and the one after.
+   */
+  queue?: MpvQueue | null;
+  item?: number;
+  onItem?: (index: number) => void;
   title: string;
   /** Subtitle and audio languages, most preferred first, as ISO 639-2 codes. */
   languages: string[];
@@ -78,7 +87,8 @@ function clock(ms: number): string {
  * subtitle track, subtitle delay and speed.
  */
 export function Player({
-  source, title, languages, subtitles = [], background = false, upright = false, record = null, onClose, onPrevious, onNext, switching = false,
+  source, queue = null, item = 0, onItem, title, languages, subtitles = [], background = false, upright = false, record = null,
+  onClose, onPrevious: toPrevious, onNext: toNext, switching = false,
   onProgress, onEnded, children, waiting,
 }: PlayerProps) {
   const { t } = useTranslation();
@@ -234,7 +244,11 @@ export function Player({
     setDelayMs(0);
     void player.current?.setSubtitleDelay(0);
     setProgress({ positionMs: 0, durationMs: 0, paused: false, buffering: true });
-  }, [source?.url]);
+  }, [source?.url, item]);
+
+  const count = queue?.items.length ?? 0;
+  const onPrevious = queue ? (item > 0 ? () => void player.current?.skipTo(item - 1) : undefined) : toPrevious;
+  const onNext = queue ? (item < count - 1 ? () => void player.current?.skipTo(item + 1) : undefined) : toNext;
 
   const seekTo = useCallback((ms: number) => void player.current?.seek(ms), []);
 
@@ -284,6 +298,8 @@ export function Player({
         ref={player}
         style={StyleSheet.absoluteFill}
         source={source}
+        queue={queue}
+        onItem={(e) => onItem?.(e.nativeEvent.index)}
         languages={languages}
         background={background}
         upright={upright}
