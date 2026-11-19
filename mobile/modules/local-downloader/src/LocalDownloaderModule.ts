@@ -81,6 +81,7 @@ import type {
   LocalSoundPlaylist,
   LocalSoundsImportResult,
   LocalSoundsLibrary,
+  LocalPlayerState,
   LocalVideo,
   LocalTaskStatusResult,
   LocalVaultDiagnostics,
@@ -243,6 +244,12 @@ type LocalDownloaderNativeModule = {
   setExperimentalFeatures(enabled: boolean): Promise<void>;
   dismissMemePrompt(id: string): Promise<void>;
 
+  playerState(): Promise<LocalPlayerState>;
+  playerSetPaused(paused: boolean): Promise<void>;
+  playerSeek(ms: number): Promise<void>;
+  playerSeekBy(ms: number): Promise<void>;
+  playerSkipTo(index: number): Promise<void>;
+  playerStop(): Promise<void>;
   isVideosSupported(): boolean;
   listVideos(): Promise<LocalVideo[]>;
   getVideoThumbnail(id: string): Promise<string | null>;
@@ -432,6 +439,12 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       getExperimentalFeatures: async () => false,
       setExperimentalFeatures: async () => unsupported(),
       dismissMemePrompt: async () => unsupported(),
+      playerState: async () => ({ active: false }),
+      playerSetPaused: async () => undefined,
+      playerSeek: async () => undefined,
+      playerSeekBy: async () => undefined,
+      playerSkipTo: async () => undefined,
+      playerStop: async () => undefined,
       isVideosSupported: () => false,
       listVideos: async () => unsupported(),
       getVideoThumbnail: async () => unsupported(),
@@ -536,6 +549,14 @@ export function addSoundsChangedListener(listener: () => void): EventSubscriptio
     return { remove: () => undefined };
   }
   return emitter.addListener('soundsChanged', listener);
+}
+
+/** What plays with no player on screen changed: another item, paused, stopped. */
+export function addPlayerChangedListener(listener: (state: LocalPlayerState) => void): EventSubscription {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+  return emitter.addListener('playerChanged', listener);
 }
 
 /** The video library changed: a download landed. */

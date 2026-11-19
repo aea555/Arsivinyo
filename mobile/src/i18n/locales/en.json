@@ -937,6 +937,11 @@
       "kor": "Korean",
       "chi": "Chinese",
       "aze": "Azerbaijani"
+    },
+    "repeat": {
+      "off": "Repeat: off",
+      "all": "Repeat: the queue",
+      "one": "Repeat: this video"
     }
   },
   "torrents": {
@@ -1005,6 +1010,8 @@
     "deleteTitle_one": "Delete this video?",
     "deleteTitle_other": "Delete {{count}} videos?",
     "deleteMessage": "The file is deleted from the phone, from the gallery too. This cannot be undone.",
-    "playFailed": "This video could not be opened."
+    "playFailed": "This video could not be opened.",
+    "next": "Next video",
+    "stop": "Stop"
   }
 }

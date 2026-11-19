@@ -88,13 +88,44 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
       engine?.subtitleBold = value
     }
 
+  /** "off", "one" (this video again and again) or "all" (the queue from its start again). */
+  var repeat = "off"
+    set(value) {
+      field = value
+      // Not set again when it is what the engine has: it may have come from the engine.
+      if (engine?.repeat != value) engine?.repeat = value
+    }
+
   /** The video is taller than it is wide, and the screen stays upright for it. */
   var upright = false
     set(value) {
       field = value
-      if (!isAttachedToWindow) return
+      if (!isAttachedToWindow || mini) return
       PlayerWindow.upright = value
       appContext.currentActivity?.let { PlayerWindow.keep(it) }
+    }
+
+  /**
+   * Small, in the app's bar, not the whole screen: the picture and nothing of the window.
+   * The screen stays as it is, awake or not, and there is no picture-in-picture from here.
+   * Going between the two only resizes the surface, so the video does not stop.
+   */
+  var mini = false
+    set(value) {
+      if (field == value) return
+      field = value
+      engine?.fill = value
+      surface.keepScreenOn = !value
+      val activity = appContext.currentActivity
+      if (!isAttachedToWindow || activity == null) return
+      if (value) {
+        offerPictureInPicture()
+        PlayerWindow.leave(this, activity)
+      } else {
+        PlayerWindow.upright = upright
+        PlayerWindow.enter(this, activity)
+        offerPictureInPicture()
+      }
     }
 
   /** What the notification calls the video, and what it puts under that: the series. */
@@ -122,7 +153,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
    */
   private val alone = ViewTreeObserver.OnPreDrawListener {
     val activity = appContext.currentActivity
-    if (!background || activity == null) return@OnPreDrawListener true
+    if (!background || mini || activity == null) return@OnPreDrawListener true
     if (!activity.isInPictureInPictureMode) {
       showAside()
       return@OnPreDrawListener true
@@ -164,7 +195,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   init {
     addView(surface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     surface.holder.addCallback(this)
-    surface.keepScreenOn = true
+    surface.keepScreenOn = !mini
     // The bars back by themselves (not by a swipe, which never gets here): hidden again.
     ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
       if (insets.isVisible(WindowInsetsCompat.Type.statusBars())) {
@@ -194,6 +225,8 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     made.background = background
     made.subtitleScale = subtitleScale
     made.subtitleBold = subtitleBold
+    made.fill = mini
+    made.repeat = repeat
     if (surfaceLive) {
       made.attach(surface.holder.surface)
       if (surface.width > 0 && surface.height > 0) made.resize(surface.width, surface.height)
@@ -201,14 +234,18 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     return made
   }
 
-  /** Done with the engine: its own is gone with it, the shared one plays nothing more. */
+  /**
+   * Done with the engine. Its own is gone with it. The shared one plays on with no screen,
+   * as it does with the app out of sight: the app's small player is what stops it.
+   */
   private fun leaveEngine() {
     val engine = engine ?: return
     this.engine = null
-    // Another view may have taken the shared engine since: then it is that view's to end.
+    // This view's surface is no longer the engine's, whoever the engine listens to now: it
+    // may already have been stopped, or taken by another view.
+    if (shared && surfaceLive) engine.detach(surface.holder.surface)
     if (engine.listener !== this) return
-    if (shared && surfaceLive) engine.detach()
-    engine.close()
+    if (shared) engine.listener = null else engine.close()
   }
 
   // ---- what the screen sets ----------------------------------------------------------------
@@ -236,7 +273,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     source = null
     post {
       if (released || queueKey != key) return@post
-      engine(shared = true)?.play(items, index)
+      engine(shared = true)?.play(items, index, key)
     }
   }
 
@@ -283,7 +320,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
 
   override fun surfaceDestroyed(holder: SurfaceHolder) {
     surfaceLive = false
-    engine?.detach()
+    engine?.detach(holder.surface)
   }
 
   // ---- the window --------------------------------------------------------------------------
@@ -291,8 +328,10 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     val activity = appContext.currentActivity ?: return
-    PlayerWindow.upright = upright
-    PlayerWindow.enter(this, activity)
+    if (!mini) {
+      PlayerWindow.upright = upright
+      PlayerWindow.enter(this, activity)
+    }
     (activity as? ComponentActivity)?.addOnPictureInPictureModeChangedListener(pictureInPicture)
     viewTreeObserver.addOnPreDrawListener(alone)
     offerPictureInPicture()
@@ -303,8 +342,9 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     removeCallbacks(keepWindow)
     viewTreeObserver.removeOnPreDrawListener(alone)
     showAside()
-    // The player's own screen gone, not the app out of sight: nothing plays on from there.
-    if (background) engine?.setPaused(true)
+    // The player's own screen gone, not the app out of sight: nothing of its own plays on
+    // from there. The shared engine does, as sound, for the app's small player.
+    if (background && !shared) engine?.setPaused(true)
     val activity = appContext.currentActivity
     (activity as? ComponentActivity)?.removeOnPictureInPictureModeChangedListener(pictureInPicture)
     offerPictureInPicture(onScreen = false)
@@ -346,14 +386,14 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
   private fun offerPictureInPicture(onScreen: Boolean = isAttachedToWindow) {
     val activity = appContext.currentActivity ?: return
     if (!canPictureInPicture(activity)) return
-    val playing = onScreen && engine?.playing == true
+    val playing = onScreen && !mini && engine?.playing == true
     runCatching { activity.setPictureInPictureParams(pictureInPictureParams(auto = playing)) }
   }
 
   /** Into the small window now: the player's own button. */
   fun enterPictureInPicture() {
     val activity = appContext.currentActivity ?: return
-    if (!canPictureInPicture(activity) || activity.isInPictureInPictureMode) return
+    if (mini || !canPictureInPicture(activity) || activity.isInPictureInPictureMode) return
     runCatching { activity.enterPictureInPictureMode(pictureInPictureParams(auto = true)) }
   }
 

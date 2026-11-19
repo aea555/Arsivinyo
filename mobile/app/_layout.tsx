@@ -11,12 +11,13 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import '@/global.css';
 import { AnimatedSplash, PeerLinkPrompt, PeerTransferBar } from '@/src/components';
+import { VideoBarSpace, VideoPlayer } from '@/src/features/videos/VideoPlayer';
 import i18n from '@/src/i18n';
 import { appHeaderTitleFontFamily } from '@/src/components';
 import { ThemeProvider, useTheme } from '@/src/theme';
@@ -34,6 +35,7 @@ function AppContent() {
 
   return (
     <>
+      <View style={styles.root}>
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.background },
@@ -109,7 +111,6 @@ function AppContent() {
           }}
         />
         <Stack.Screen name="videos" options={{ presentation: 'card', headerShown: false }} />
-        <Stack.Screen name="video-player" options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="watch" options={{ presentation: 'card', headerShown: false }} />
         <Stack.Screen name="watch-title" options={{ presentation: 'card', headerShown: false }} />
         <Stack.Screen name="watch-addons" options={{ presentation: 'card', headerShown: false }} />
@@ -130,6 +131,9 @@ function AppContent() {
           }}
         />
       </Stack>
+      </View>
+      <VideoBarSpace />
+      <VideoPlayer />
       <PeerTransferBar />
       <PeerLinkPrompt />
       <StatusBar style={isDark ? 'light' : 'dark'} />

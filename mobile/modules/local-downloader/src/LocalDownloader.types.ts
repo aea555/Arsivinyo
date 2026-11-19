@@ -30,6 +30,20 @@ export interface LocalVideo {
   playedAt: number;
 }
 
+/** What plays with no player on screen: a queue of the library, and which item of it. */
+export interface LocalPlayerState {
+  /** False when nothing is loaded; the other fields are then absent. */
+  active: boolean;
+  /** The queue, by the library's ids. */
+  ids?: string[];
+  index?: number;
+  title?: string;
+  subtitle?: string | null;
+  paused?: boolean;
+  positionMs?: number;
+  durationMs?: number;
+}
+
 /** A track in the on-device music library (public Music/Arsivinyo folder). */
 export interface LocalSound {
   id: string;

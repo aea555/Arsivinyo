@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ten seconds back, for the system's media control: a turning arrow round a 10, which cannot be
+     taken for the previous and next buttons beside it, as the system's own double arrows were. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+  <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.9" android:strokeLineCap="round" android:pathData="M12,6 A7,7 0 1 1 5,13" />
+  <path android:fillColor="#FFFFFFFF" android:pathData="M12,2.4 L7.4,6 L12,9.6 z" />
+  <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.3" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M9.4,10.7 L9.4,15.5" />
+  <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.3" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M8.3,11.6 L9.4,10.7" />
+  <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M12.1,11.9 a1.45,1.45 0 0 1 2.9,0 v2.4 a1.45,1.45 0 0 1 -2.9,0 z" />
+</vector>

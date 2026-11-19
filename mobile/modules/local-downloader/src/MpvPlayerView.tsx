@@ -8,6 +8,8 @@ export interface MpvProgress {
   durationMs: number;
   paused: boolean;
   buffering: boolean;
+  /** As the player has it: it can be changed from Android's own media control. */
+  repeat?: MpvRepeat;
 }
 
 /** An audio or subtitle track, from the file or added from an add-on. */
@@ -48,6 +50,9 @@ export interface MpvQueue {
   index: number;
 }
 
+/** At the end: stop, play this video again, or go round the queue. */
+export type MpvRepeat = 'off' | 'one' | 'all';
+
 /** What the screen can tell the player to do. */
 export interface MpvPlayerHandle {
   setPaused(paused: boolean): Promise<void>;
@@ -80,6 +85,12 @@ export interface MpvPlayerViewProps extends ViewProps {
   title?: string;
   /** The video is taller than it is wide: the screen stays upright for it, not in landscape. */
   upright?: boolean;
+  repeat?: MpvRepeat;
+  /**
+   * Small, in the app's bar: the picture only. The screen is not turned or made fullscreen
+   * for it, and there is no picture-in-picture from it.
+   */
+  mini?: boolean;
   /**
    * Has the player write the position to the library: as it plays, when it pauses, at the
    * end and on the way out. The screen cannot: its timers stop when the app is out of sight.

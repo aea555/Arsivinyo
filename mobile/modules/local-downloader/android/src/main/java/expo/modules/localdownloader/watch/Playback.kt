@@ -49,6 +49,8 @@ internal object Playback {
     /** The queue has an item before this one, and one after. */
     val hasPrevious: Boolean = false,
     val hasNext: Boolean = false,
+    /** "off", "one" or "all": what happens at the end. */
+    val repeat: String = "off",
   )
 
   const val SEEK_MS = 10_000.0
@@ -57,6 +59,7 @@ internal object Playback {
   const val ACTION_TOGGLE = "expo.modules.localdownloader.watch.TOGGLE"
   const val ACTION_BACK = "expo.modules.localdownloader.watch.BACK"
   const val ACTION_FORWARD = "expo.modules.localdownloader.watch.FORWARD"
+  const val ACTION_REPEAT = "expo.modules.localdownloader.watch.REPEAT"
 
   var current: MpvEngine? = null
     private set
@@ -104,8 +107,36 @@ internal object Playback {
           .build(),
       )
     }
+    val context = player.context
     session.setPlaybackState(
       PlaybackState.Builder()
+        // Ten seconds back and on, as actions of the app's own: from Android 13 the system
+        // draws its controls from the session, and of the standard actions it shows only
+        // play, previous and next. Rewind and fast forward it leaves out.
+        .addCustomAction(
+          PlaybackState.CustomAction.Builder(ACTION_BACK, context.getString(R.string.ldl_playback_back), R.drawable.ldl_back_10).build(),
+        )
+        .addCustomAction(
+          PlaybackState.CustomAction.Builder(ACTION_FORWARD, context.getString(R.string.ldl_playback_forward), R.drawable.ldl_forward_10).build(),
+        )
+        // Last: where the system has room for two of these only, it is the one left out.
+        .addCustomAction(
+          PlaybackState.CustomAction.Builder(
+            ACTION_REPEAT,
+            context.getString(
+              when (state.repeat) {
+                "one" -> R.string.ldl_playback_repeat_one
+                "all" -> R.string.ldl_playback_repeat_all
+                else -> R.string.ldl_playback_repeat_off
+              },
+            ),
+            when (state.repeat) {
+              "one" -> R.drawable.ldl_repeat_one
+              "all" -> R.drawable.ldl_repeat_all
+              else -> R.drawable.ldl_repeat_off
+            },
+          ).build(),
+        )
         .setActions(
           PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or
             PlaybackState.ACTION_SEEK_TO or PlaybackState.ACTION_REWIND or PlaybackState.ACTION_FAST_FORWARD or
@@ -162,6 +193,13 @@ internal object Playback {
     override fun onRewind() { current?.seekBy(-SEEK_MS) }
     override fun onFastForward() { current?.seekBy(SEEK_MS) }
     override fun onSkipToNext() { current?.next() }
+    override fun onCustomAction(action: String, extras: android.os.Bundle?) {
+      when (action) {
+        ACTION_BACK -> current?.seekBy(-SEEK_MS)
+        ACTION_FORWARD -> current?.seekBy(SEEK_MS)
+        ACTION_REPEAT -> current?.cycleRepeat()
+      }
+    }
     override fun onSkipToPrevious() { current?.previous() }
   }
 
@@ -231,12 +269,12 @@ internal object Playback {
     }
     val session = session
     if (state != null && session != null) {
-      builder.addAction(action(context, android.R.drawable.ic_media_rew, R.string.ldl_playback_back, ACTION_BACK))
+      builder.addAction(action(context, R.drawable.ldl_back_10, R.string.ldl_playback_back, ACTION_BACK))
       builder.addAction(
         if (state.paused) action(context, android.R.drawable.ic_media_play, R.string.ldl_playback_play, ACTION_TOGGLE)
         else action(context, android.R.drawable.ic_media_pause, R.string.ldl_playback_pause, ACTION_TOGGLE),
       )
-      builder.addAction(action(context, android.R.drawable.ic_media_ff, R.string.ldl_playback_forward, ACTION_FORWARD))
+      builder.addAction(action(context, R.drawable.ldl_forward_10, R.string.ldl_playback_forward, ACTION_FORWARD))
       builder.setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0, 1, 2))
     }
     return builder.build()
@@ -282,6 +320,7 @@ class PlaybackService : Service() {
       it.setPaused(true)
       Playback.end(it)
     }
+    MpvEngine.current?.close()
     finish()
   }
 

@@ -92,9 +92,9 @@ export default function VideosScreen() {
   const press = useCallback(
     (video: LocalVideo) => {
       if (selecting) toggle(video.id);
-      else openVideo(router, shown, shown.findIndex((v) => v.id === video.id));
+      else openVideo(shown, shown.findIndex((v) => v.id === video.id));
     },
-    [selecting, toggle, router, shown],
+    [selecting, toggle, shown],
   );
 
   const remove = async () => {

@@ -937,6 +937,11 @@
       "kor": "Korece",
       "chi": "Çince",
       "aze": "Azerbaycan Türkçesi"
+    },
+    "repeat": {
+      "off": "Tekrar: kapalı",
+      "all": "Tekrar: sıra",
+      "one": "Tekrar: bu video"
     }
   },
   "torrents": {
@@ -1005,6 +1010,8 @@
     "deleteTitle_one": "Bu video silinsin mi?",
     "deleteTitle_other": "{{count}} video silinsin mi?",
     "deleteMessage": "Dosya telefondan ve galeriden silinir. Bu işlem geri alınamaz.",
-    "playFailed": "Bu video açılamadı."
+    "playFailed": "Bu video açılamadı.",
+    "next": "Sonraki video",
+    "stop": "Durdur"
   }
 }

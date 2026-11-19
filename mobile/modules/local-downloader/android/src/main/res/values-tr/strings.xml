@@ -67,6 +67,9 @@
   <string name="ldl_playback_pause">Duraklat</string>
   <string name="ldl_playback_back">10 saniye geri</string>
   <string name="ldl_playback_forward">10 saniye ileri</string>
+  <string name="ldl_playback_repeat_off">Tekrar: kapalı</string>
+  <string name="ldl_playback_repeat_all">Tekrar: sıra</string>
+  <string name="ldl_playback_repeat_one">Tekrar: bu video</string>
 
   <!-- Signing in to a site for its cookies (CookieSignIn.kt). -->
   <string name="ldl_cookie_signin_title">Giriş yap, sonra Bitti\'ye bas</string>

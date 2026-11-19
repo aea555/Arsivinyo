@@ -8,6 +8,7 @@ export {
   addMemesChangedListener,
   addSoundsChangedListener,
   addVideosChangedListener,
+  addPlayerChangedListener,
   addSoundPresetProgressListener,
   addYtDlpUpdateProgressListener,
 } from '../../modules/local-downloader/src';
@@ -100,6 +101,7 @@ export type {
   LocalQuickDownloadResult,
   LocalSound,
   LocalVideo,
+  LocalPlayerState,
   LocalSoundPlaylist,
   LocalSoundsImportResult,
   LocalSoundsLibrary,
@@ -120,4 +122,4 @@ export type {
   LocalYtDlpUpdateStatus,
 } from '../../modules/local-downloader/src';
 export { MpvPlayerView } from '../../modules/local-downloader/src';
-export type { MpvPlayerHandle, MpvProgress, MpvQueue, MpvRecord, MpvSource, MpvTrack } from '../../modules/local-downloader/src';
+export type { MpvPlayerHandle, MpvProgress, MpvQueue, MpvRecord, MpvRepeat, MpvSource, MpvTrack } from '../../modules/local-downloader/src';

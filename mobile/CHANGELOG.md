@@ -11,7 +11,20 @@ All notable changes to this project are documented here. Format based on [Keep a
   picture-in-picture, and resumes where it stopped. The list as shown is the queue: the
   player's buttons go to the video before and after, and at the end of one the next begins,
   with the screen off and in picture-in-picture too. A headset's and the lock screen's
-  previous and next buttons work on it. A video taller than it is wide plays upright. A long press
+  previous and next buttons work on it. A video taller than it is wide plays upright.
+  Closing the player does not stop the video: it becomes small, in a bar at the bottom of
+  every screen (above the home screen's navigation), and plays on there, picture and all.
+  The bar pauses it, goes to the next and stops it, and its top edge is the line to seek
+  on; a tap makes it the whole screen again, at
+  once, since it is the same player resized. Another player starting (Watch, the vault,
+  music) pauses it: one thing sounds at a time.
+- Phone: repeat, in every player. A button in the player goes from off to this video again
+  and again, and for a queue of the library, round the queue first. A Watch or vault
+  player forgets it as it closes; the library's keeps it until the app does.
+- Phone: back and forward 10 seconds in Android's own media control (the lock screen, the
+  notification shade), for Watch and the library. From Android 13 the system draws that
+  control from what the app declares, and left the standard rewind and fast forward out.
+  Where there is room for it (no previous or next to show), a repeat button too. A long press
   selects, to rename a video or delete it from the phone.
 
 ### Changed

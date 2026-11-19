@@ -12,6 +12,7 @@ import {
   type MpvProgress,
   type MpvQueue,
   type MpvRecord,
+  type MpvRepeat,
   type MpvSource,
   type MpvTrack,
 } from '@/src/native/localDownloader';
@@ -54,6 +55,18 @@ export interface PlayerProps {
   background?: boolean;
   /** The video is taller than it is wide: played upright, not in landscape. */
   upright?: boolean;
+  /**
+   * Small, in the app's bar: the picture alone, with no controls over it. It is the same
+   * player made large again, so the video does not stop between the two.
+   */
+  mini?: boolean;
+  /**
+   * At the end: stop, this video again, or (for a queue) round the queue. The player keeps
+   * the choice itself, for as long as it is on screen, unless the screen keeps it: then
+   * [repeat] is the choice and [onRepeat] is told of a new one.
+   */
+  repeat?: MpvRepeat;
+  onRepeat?: (repeat: MpvRepeat) => void;
   /** What the video is kept as in the library; the player writes down where it is. */
   record?: MpvRecord | null;
   onClose: () => void;
@@ -87,7 +100,7 @@ function clock(ms: number): string {
  * subtitle track, subtitle delay and speed.
  */
 export function Player({
-  source, queue = null, item = 0, onItem, title, languages, subtitles = [], background = false, upright = false, record = null,
+  source, queue = null, item = 0, onItem, title, languages, subtitles = [], background = false, upright = false, mini = false, repeat: repeatGiven, onRepeat, record = null,
   onClose, onPrevious: toPrevious, onNext: toNext, switching = false,
   onProgress, onEnded, children, waiting,
 }: PlayerProps) {
@@ -178,6 +191,8 @@ export function Player({
   // a second closes the player, so a swipe meant for something else does not end the video.
   // The close button closes at once.
   useEffect(() => {
+    // Small, it is not the screen: back is the screen's under it.
+    if (mini) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (panel) {
         setPanel(null);
@@ -194,7 +209,12 @@ export function Player({
       return true;
     });
     return () => sub.remove();
-  }, [backArmed, failed, onClose, panel, progress.paused, touch]);
+  }, [backArmed, failed, mini, onClose, panel, progress.paused, touch]);
+
+  // Made large again: the controls show, as they do when a video opens.
+  useEffect(() => {
+    if (!mini) touch();
+  }, [mini, touch]);
 
   useEffect(
     () => () => {
@@ -246,6 +266,18 @@ export function Player({
     setProgress({ positionMs: 0, durationMs: 0, paused: false, buffering: true });
   }, [source?.url, item]);
 
+  const [repeatOwn, setRepeatOwn] = useState<MpvRepeat>('off');
+  /** When the button last changed it: what the player says for a moment after is still the old one. */
+  const repeatSetAt = useRef(0);
+  const repeat = repeatGiven ?? repeatOwn;
+  // Off, then round the queue where there is one, then this video alone.
+  const nextRepeat = () => {
+    const next: MpvRepeat = repeat === 'off' ? (queue ? 'all' : 'one') : repeat === 'all' ? 'one' : 'off';
+    repeatSetAt.current = Date.now();
+    setRepeatOwn(next);
+    onRepeat?.(next);
+  };
+
   const count = queue?.items.length ?? 0;
   const onPrevious = queue ? (item > 0 ? () => void player.current?.skipTo(item - 1) : undefined) : toPrevious;
   const onNext = queue ? (item < count - 1 ? () => void player.current?.skipTo(item + 1) : undefined) : toNext;
@@ -292,8 +324,14 @@ export function Player({
   const trackLabel = (x: MpvTrack, n: number) =>
     [x.title || t('player.track', { n }), languageName(x.lang), x.codec?.toUpperCase()].filter(Boolean).join(' · ');
 
+  // Not collapsable, neither this nor the view over the picture: React Native leaves out of
+  // the native tree a view it has no need of, and puts its children in the one above. Which
+  // views those are changes with their styles, so the picture was moved to another parent
+  // each time the player went between small and large. A surface taken out of the window is
+  // destroyed: the video restarted its output, a quarter of a second, and could come back
+  // above the controls, which then neither showed nor took a touch.
   return (
-    <View style={styles.fill}>
+    <View style={styles.fill} collapsable={false}>
       <MpvPlayerView
         ref={player}
         style={StyleSheet.absoluteFill}
@@ -303,6 +341,8 @@ export function Player({
         languages={languages}
         background={background}
         upright={upright}
+        mini={mini}
+        repeat={repeat}
         // For the notification of a player that plays on out of sight; a vault video is named nowhere.
         title={background ? title : undefined}
         record={record}
@@ -310,6 +350,12 @@ export function Player({
         subtitleBold={subtitleStyle.bold}
         onProgress={(e) => {
           if (scrubMs === null) setProgress(e.nativeEvent);
+          // Changed from Android's own media control: the button follows.
+          const said = e.nativeEvent.repeat;
+          if (said && said !== repeat && Date.now() - repeatSetAt.current > 800) {
+            setRepeatOwn(said);
+            onRepeat?.(said);
+          }
           onProgress?.(e.nativeEvent);
         }}
         onTracks={(e) => onTracks(e.nativeEvent.tracks)}
@@ -317,6 +363,8 @@ export function Player({
         onFailed={(e) => setFailed(e.nativeEvent.code)}
       />
 
+      {/* All that is over the picture. Small, there is none of it. */}
+      <View style={[StyleSheet.absoluteFill, mini && styles.gone]} pointerEvents="box-none" collapsable={false}>
       {/* Touching the picture shows or hides the controls; twice on a side, it seeks. */}
       <Pressable
         style={StyleSheet.absoluteFill}
@@ -337,6 +385,11 @@ export function Player({
                 <MaterialCommunityIcons name="picture-in-picture-bottom-right" size={24} color="#fff" />
               </Pressable>
             ) : null}
+            <Pressable onPress={() => { touch(); nextRepeat(); }} hitSlop={10}
+              accessibilityRole="button" accessibilityLabel={t(`player.repeat.${repeat}`)}>
+              <MaterialCommunityIcons name={repeat === 'one' ? 'repeat-once' : repeat === 'all' ? 'repeat' : 'repeat-off'} size={24}
+                color={repeat === 'off' ? 'rgba(255,255,255,0.6)' : '#fff'} />
+            </Pressable>
             <Pressable onPress={() => { touch(); setPanel(panel === 'audio' ? null : 'audio'); }} hitSlop={10}
               accessibilityRole="button" accessibilityLabel={t('player.audio')}>
               <Ionicons name="musical-notes-outline" size={24} color="#fff" />
@@ -530,6 +583,7 @@ export function Player({
       ) : null}
 
       {children}
+      </View>
     </View>
   );
 }
@@ -565,6 +619,7 @@ const styles = StyleSheet.create({
   side: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
   slot: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
   // Below the spinner without moving it off the middle.
+  gone: { display: 'none' },
   waiting: { position: 'absolute', top: 76, width: 260, alignItems: 'center' },
   toast: {
     position: 'absolute', bottom: 72, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.75)',

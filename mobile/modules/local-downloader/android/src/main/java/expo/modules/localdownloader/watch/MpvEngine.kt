@@ -42,6 +42,8 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     val subtitle: String? = null,
     val record: ((positionMs: Long, durationMs: Long) -> Unit)? = null,
     val place: (() -> Long)? = null,
+    /** What the app's library knows it as, for an item of the library. */
+    val id: String? = null,
   )
 
   /** The screen's side. Called on the main thread. */
@@ -63,10 +65,14 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
   private var mpv: MPVLib? = null
   private var items: List<Item> = emptyList()
   private var index = 0
+  /** Which queue [items] is, where the one who set it said. */
+  private var key: String? = null
   /** Asked for, and waiting for a surface to draw its first frame into. */
   private var pending: Int? = null
   private var loaded: Item? = null
   private var surfaceReady = false
+  /** The surface drawn into, so that one already replaced cannot take the picture away. */
+  private var surface: Surface? = null
   private var lastProgressAt = 0L
   private var recordedAt = 0L
   /** From asking for a file until its first frame: what the screen shows as loading. */
@@ -95,6 +101,42 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     set(value) {
       field = value
       mpv?.setPropertyString("sub-bold", if (value) "yes" else "no")
+    }
+
+  /**
+   * What happens at the end: "one" plays the item again, and again; "all" goes from the last
+   * item of the queue to its first; "off", the queue ends where it ends.
+   */
+  var repeat = "off"
+    set(value) {
+      field = value
+      // mpv's own, so the item goes round with no gap and never reaches an end.
+      mpv?.setPropertyString("loop-file", if (value == "one") "inf" else "no")
+    }
+
+  /**
+   * To the next of them, from the system's media control: off, then round the queue where
+   * there is one, then this item alone. The screen is told with the next progress.
+   */
+  fun cycleRepeat() {
+    repeat = when (repeat) {
+      "off" -> if (key != null) "all" else "one"
+      "all" -> "one"
+      else -> "off"
+    }
+    reportProgress()
+    reportPlayback()
+  }
+
+  /**
+   * The picture fills its surface, cut at the sides or top and bottom where its shape is
+   * not the surface's: for the small player, where bars around it would leave little of it.
+   * Otherwise it is shown whole.
+   */
+  var fill = false
+    set(value) {
+      field = value
+      mpv?.setPropertyDouble("panscan", if (value) 1.0 else 0.0)
     }
 
   init {
@@ -146,11 +188,31 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
 
   // ---- the queue -------------------------------------------------------------------------------
 
-  /** Plays [items] from the one at [index]: this is the queue from here on. */
-  fun play(items: List<Item>, index: Int) {
+  /**
+   * Plays [items] from the one at [index]: this is the queue from here on. A queue that is
+   * already the one playing (the same [key]) is not begun again: a screen come back to what
+   * plays on finds it where it is, and is told so.
+   */
+  fun play(items: List<Item>, index: Int, key: String? = null) {
     if (items.isEmpty()) return
+    val at = index.coerceIn(items.indices)
+    // Wherever in it [index] says: a screen's copy of that can be older than the queue's
+    // own, which has moved on by itself. Going to another item of it is [skipTo]'s.
+    if (key != null && key == this.key && loaded != null) {
+      report()
+      return
+    }
     this.items = items
-    open(index.coerceIn(items.indices), tell = false)
+    this.key = key
+    open(at, tell = false)
+  }
+
+  /** Everything a screen just arrived needs to draw what is already playing. */
+  private fun report() {
+    listener?.item(index)
+    reportProgress()
+    reportTracks()
+    listener?.playing()
   }
 
   /** To another item of the queue. */
@@ -203,6 +265,8 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
       // Length-quoted, so a comma in the URL cannot end the option.
       item.audioUrl?.let { "audio-file=%${it.toByteArray().size}%$it" },
     ).joinToString(",")
+    // One source of sound in the app: a player of its own beginning quiets the shared one.
+    if (!shared) sharedEngine?.setPaused(true)
     val url = opened(item.url)
     mpv.command(if (options.isEmpty()) arrayOf("loadfile", url) else arrayOf("loadfile", url, "replace", "-1", options))
     // A new item plays. mpv pauses itself at the end of one (keep-open), and that would carry
@@ -210,6 +274,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     mpv.setPropertyBoolean("pause", false)
     if (background) Playback.begin(this, state(mpv))
     listener?.playing()
+    tellChanged()
   }
 
   /**
@@ -256,6 +321,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
 
   fun attach(surface: Surface) {
     val mpv = mpv ?: return
+    this.surface = surface
     mpv.attachSurface(surface)
     mpv.setOptionString("force-window", "yes")
     mpv.setPropertyString("vo", "gpu")
@@ -271,10 +337,12 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     mpv?.setPropertyString("android-surface-size", "${width}x$height")
   }
 
-  fun detach() {
+  /** [surface] is gone. Nothing happens if it is no longer the one drawn into. */
+  fun detach(surface: Surface) {
     val mpv = mpv ?: return
-    if (!surfaceReady) return
+    if (!surfaceReady || surface !== this.surface) return
     surfaceReady = false
+    this.surface = null
     // Out of sight (the app sent to the background, the screen off) is paused, not playing
     // on unseen; unless this player plays on there, and then only its sound does. The video
     // track is turned off first: taking the output from under a playing track makes mpv seek
@@ -303,6 +371,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     listener = null
     items = emptyList()
     index = 0
+    key = null
     pending = null
     loaded = null
     starting = false
@@ -310,6 +379,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     val mpv = mpv ?: return
     if (shared) {
       runCatching { mpv.command(arrayOf("stop")) }
+      tellChanged()
       return
     }
     this.mpv = null
@@ -347,6 +417,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
         if (property == "pause") {
           if (value) keepPlace()
           listener?.playing()
+          tellChanged()
         }
       }
     }
@@ -360,10 +431,13 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     if (eventId == MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART && starting) {
       starting = false
       main.post {
+        // Where it resumed from is not where it begins: gone round, it starts at its start.
+        mpv?.setPropertyString("start", "none")
         reportProgress()
         reportPlayback()
         // The picture's shape is known from here.
         listener?.playing()
+        tellChanged()
       }
     }
     if (eventId == MPVLib.MpvEvent.MPV_EVENT_END_FILE) {
@@ -383,7 +457,31 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     // Said again by mpv for an item already left: only the one loaded, and only at its end.
     if (loaded == null || starting || pending != null || mpv?.getPropertyBoolean("eof-reached") != true) return
     keepPlace(finished = true)
-    if (hasNext) open(index + 1, tell = true) else listener?.ended()
+    if (hasNext) open(index + 1, tell = true) else if (repeat == "all") open(0, tell = true) else listener?.ended()
+  }
+
+  /**
+   * What the shared engine plays, for the app's small player: which queue and which item of
+   * it, by the library's ids, and whether it is paused. `active` is false when nothing is.
+   */
+  fun snapshot(): Map<String, Any?> {
+    val mpv = mpv
+    val item = loaded
+    if (mpv == null || item == null) return mapOf("active" to false)
+    return mapOf(
+      "active" to true,
+      "ids" to items.mapNotNull { it.id },
+      "index" to index,
+      "title" to item.title,
+      "subtitle" to item.subtitle,
+      "paused" to (mpv.getPropertyBoolean("pause") ?: false),
+      "positionMs" to ((mpv.getPropertyDouble("time-pos") ?: 0.0) * 1000),
+      "durationMs" to ((mpv.getPropertyDouble("duration") ?: 0.0) * 1000),
+    )
+  }
+
+  private fun tellChanged() {
+    if (shared) changed?.invoke(snapshot())
   }
 
   /** Opening, waiting for the network, or finding the place after a seek. */
@@ -398,6 +496,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
       "durationMs" to ((mpv.getPropertyDouble("duration") ?: 0.0) * 1000),
       "paused" to paused,
       "buffering" to buffering(mpv),
+      "repeat" to repeat,
     ))
     if (!paused && System.currentTimeMillis() - recordedAt >= RECORD_EVERY_MS) keepPlace()
   }
@@ -412,12 +511,18 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     speed = (mpv.getPropertyDouble("speed") ?: 1.0).toFloat(),
     hasPrevious = hasPrevious,
     hasNext = hasNext,
+    repeat = repeat,
   )
 
   /** What the session shows; it counts the position on by itself between these. */
   private fun reportPlayback() {
     val mpv = mpv ?: return
-    if (background && loaded != null) Playback.update(this, state(mpv))
+    if (!background || loaded == null) return
+    val state = state(mpv)
+    // The session may be another player's by now, or gone with it: an add-on's stream
+    // played since, and closed. Playing again, this one takes it back; without it there is
+    // no notification, no picture-in-picture and nothing to keep the app alive unseen.
+    if (Playback.current === this) Playback.update(this, state) else if (!state.paused) Playback.begin(this, state)
   }
 
   /**
@@ -462,6 +567,12 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     private const val RESTART_AFTER_MS = 3_000.0
 
     private var sharedEngine: MpvEngine? = null
+
+    /** Told what the shared engine plays, each time that changes. On the main thread. */
+    var changed: ((Map<String, Any?>) -> Unit)? = null
+
+    /** The process's engine, if it has been made. */
+    val current: MpvEngine? get() = sharedEngine
 
     /** An engine of a player's own. Throws where mpv cannot be made. */
     fun own(context: Context) = MpvEngine(context.applicationContext, shared = false)

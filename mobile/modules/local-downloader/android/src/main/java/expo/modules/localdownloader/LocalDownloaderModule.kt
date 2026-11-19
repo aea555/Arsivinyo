@@ -1226,10 +1226,12 @@ class LocalDownloaderModule : Module() {
       "memesChanged",
       "soundsChanged",
       "videosChanged",
+      "playerChanged",
     )
 
     OnCreate {
       activeModule = this@LocalDownloaderModule
+      MpvEngine.changed = { state -> runCatching { sendEvent("playerChanged", state) } }
       lastQuickReason = lastQuickReasonFallback
       val context = requireNotNull(appContext.reactContext)
       privateModeEnabled = isPrivateModeEnabledPersisted(context)
@@ -1323,7 +1325,11 @@ class LocalDownloaderModule : Module() {
         activeModule = null
       }
       // Nothing plays on with no screen to come back to.
-      Handler(Looper.getMainLooper()).post { runCatching { Playback.current?.close() } }
+      MpvEngine.changed = null
+      Handler(Looper.getMainLooper()).post {
+        runCatching { Playback.current?.close() }
+        runCatching { MpvEngine.current?.close() }
+      }
       runCatching { activeMigrationCancel?.cancel() }
       runCatching { stopVaultLoopbackServer() }
       runCatching {
@@ -1810,6 +1816,10 @@ class LocalDownloaderModule : Module() {
 
       Prop("upright") { view: MpvPlayerView, upright: Boolean? -> view.upright = upright == true }
 
+      Prop("mini") { view: MpvPlayerView, mini: Boolean? -> view.mini = mini == true }
+
+      Prop("repeat") { view: MpvPlayerView, repeat: String? -> view.repeat = repeat?.takeIf { it == "one" || it == "all" } ?: "off" }
+
       // What the video is kept as in the library. The player writes its place down itself:
       // the screen's own timers stop when the app is out of sight, where this one plays on.
       Prop("record") { view: MpvPlayerView, record: Map<String, Any?>? ->
@@ -1847,9 +1857,10 @@ class LocalDownloaderModule : Module() {
               }
             },
             place = { videos.place(id) },
+            id = id,
           )
         }
-        if (items.isNotEmpty()) view.setQueue(entries.joinToString(",") { it["id"] as String } + "#$index", items, index)
+        if (items.isNotEmpty()) view.setQueue(entries.joinToString(",") { it["id"] as String }, items, index)
       }
 
       AsyncFunction("skipTo") { view: MpvPlayerView, index: Int -> view.skipTo(index) }
@@ -2150,6 +2161,39 @@ class LocalDownloaderModule : Module() {
     AsyncFunction("pairingHasPeers") {
       val file = java.io.File(requireNotNull(appContext.reactContext).filesDir, "pairing/peers.json")
       file.isFile && runCatching { org.json.JSONArray(file.readText()).length() > 0 }.getOrDefault(false)
+    }
+
+    // What the shared engine plays with no player on screen, for the app's small player.
+    // The engine is the main thread's.
+    AsyncFunction("playerState") { promise: Promise ->
+      Handler(Looper.getMainLooper()).post {
+        promise.resolve(runCatching { MpvEngine.current?.snapshot() }.getOrNull() ?: mapOf("active" to false))
+      }
+    }
+
+    AsyncFunction("playerSetPaused") { paused: Boolean ->
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.setPaused(paused) } }
+      Unit
+    }
+
+    AsyncFunction("playerSeek") { ms: Double ->
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.seek(ms) } }
+      Unit
+    }
+
+    AsyncFunction("playerSeekBy") { ms: Double ->
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.seekBy(ms) } }
+      Unit
+    }
+
+    AsyncFunction("playerSkipTo") { index: Int ->
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.skipTo(index) } }
+      Unit
+    }
+
+    AsyncFunction("playerStop") {
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.close() } }
+      Unit
     }
 
     Function("isVideosSupported") { videos.isSupported() }

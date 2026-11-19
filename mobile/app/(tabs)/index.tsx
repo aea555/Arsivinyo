@@ -28,6 +28,8 @@ import {
   unlockLocalPrivateVault,
 } from '@/src/api';
 import type { DownloadState } from '@/src/api/types';
+import { setVideoBarLift } from '@/src/features/videos/open';
+import { VideoBarRoom } from '@/src/features/videos/VideoPlayer';
 import { AppText as Text, DownloadButton, DOWNLOAD_BUTTON_SIZE } from '@/src/components';
 import {
   downloadAndSaveFile,
@@ -358,6 +360,15 @@ export default function HomeScreen() {
       setCancelTarget(null);
     }
   }, [cancelTarget, downloads, t]);
+
+  // The small video player sits above this screen's navigation, while this is the screen shown.
+  const [navHeight, setNavHeight] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setVideoBarLift(navHeight);
+      return () => setVideoBarLift(0);
+    }, [navHeight]),
+  );
 
   const openSettings = useCallback(() => {
     router.push('/settings');
@@ -695,7 +706,10 @@ export default function HomeScreen() {
             thumb already is, each a fifth of the width: in the header, six of them did not
             fit beside the wordmark. Labelled, not icon-only: they go to entirely different
             screens, and an icon alone gives no way to know which before tapping it. */}
-        <View style={[styles.bottomNav, { borderTopColor: colors.border, backgroundColor: colors.surface + 'E6' }]}>
+        <VideoBarRoom />
+        <View
+          onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
+          style={[styles.bottomNav, { borderTopColor: colors.border, backgroundColor: colors.surface + 'E6' }]}>
           {([
             { label: t('home.navMusic'), icon: 'musical-notes-outline', onPress: openSounds },
             { label: t('home.navVideos'), icon: 'videocam-outline', onPress: openVideos },
