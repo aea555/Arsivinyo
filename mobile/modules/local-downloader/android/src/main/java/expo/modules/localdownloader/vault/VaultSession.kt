@@ -142,8 +142,16 @@ class VaultSession(private val now: () -> Long = System::currentTimeMillis) {
     synchronized(lock) { expireLocked() }
   }
 
+  /**
+   * As it is now, not as it was left: a window that has run out is closed here. Nothing runs
+   * on a timer to close it, so without this a session whose time had passed still said it
+   * was open until something asked it for the key; and what asks whether to open the vault
+   * (the prompt, having succeeded) was told it was open already, and did not open it. The
+   * next thing to ask for the key was then refused.
+   */
   fun snapshot(): State {
     synchronized(lock) {
+      expireLocked()
       dropExpiredLeases()
       return State(
         unlocked = dek != null,

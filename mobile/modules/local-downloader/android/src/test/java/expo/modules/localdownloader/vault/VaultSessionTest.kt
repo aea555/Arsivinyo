@@ -89,6 +89,28 @@ class VaultSessionTest {
   }
 
   @Test
+  fun aWindowThatRanOutSaysItIsLocked() {
+    val session = session()
+    session.unlock(key())
+    assertTrue(session.snapshot().unlocked)
+    clock += VaultSession.IDLE_TTL_MS + 1
+    // With nothing having asked for the key since: the state is asked first.
+    assertFalse("a session whose time had passed said it was open", session.snapshot().unlocked)
+  }
+
+  @Test
+  fun aWindowThatRanOutUnderALeaseSaysItIsLockedOnceTheLeaseEnds() {
+    val session = session()
+    session.unlock(key())
+    val lease = session.beginLease("ingest")
+    clock += VaultSession.ABSOLUTE_TTL_MS + 1
+    assertTrue(session.snapshot().unlocked)
+    session.endLease(lease)
+    clock += VaultSession.IDLE_TTL_MS + 1
+    assertFalse(session.snapshot().unlocked)
+  }
+
+  @Test
   fun useKeepsTheIdleWindowOpen() {
     val session = session()
     session.unlock(key())

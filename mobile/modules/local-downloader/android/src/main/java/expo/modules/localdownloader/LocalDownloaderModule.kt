@@ -8317,8 +8317,12 @@ class LocalDownloaderModule : Module() {
       writePrivateVaultIndex(initial)
       return initial
     }
+    // Outside what follows: a vault that is locked is locked, and says so, which is what the
+    // screen answers by asking to open it. Taken inside, it was reported as a listing that
+    // could not be read, which reads as a vault that is broken.
+    val dek = requireVaultDek(VaultAuthPolicy.OP_LIST)
     return runCatching {
-      val parsed = JSONObject(VaultIndexCodec.open(requireVaultDek(VaultAuthPolicy.OP_LIST), encrypted.readBytes()))
+      val parsed = JSONObject(VaultIndexCodec.open(dek, encrypted.readBytes()))
       if (!parsed.has("items")) {
         parsed.put("items", JSONArray())
       }

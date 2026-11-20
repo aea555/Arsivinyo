@@ -62,6 +62,13 @@ outright and has had little use yet. The Mac is unchanged, and stays 4.1.4.
   videos already in `DCIM` stay there, and are in the library as well.
 
 ### Fixed
+- Phone: the vault could refuse to open with `PRIVATE_INDEX_UNREADABLE` after its time had
+  run out: after a private download, say, with the vault not looked at for some minutes.
+  Nothing was wrong with the vault. A session whose window had passed still said it was
+  open until something asked it for the key, so the prompt, having succeeded, did not open
+  it again, and the listing that followed was refused; and "locked" was reported as a
+  listing that could not be read. The session's state is true to the clock now, and a
+  locked vault says it is locked.
 - Phone: a private download failed at its end with `PRIVATE_STORAGE_WRITE_FAILED` when the
   vault had locked by then. The vault is asked for as the download starts, and the download
   holds it open until it is done. One started from the share sheet has no screen to ask on,
