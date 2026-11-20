@@ -70,9 +70,6 @@
   <string name="ldl_playback_pause">Pause</string>
   <string name="ldl_playback_back">Back 10 seconds</string>
   <string name="ldl_playback_forward">Forward 10 seconds</string>
-  <string name="ldl_playback_repeat_off">Repeat: off</string>
-  <string name="ldl_playback_repeat_all">Repeat: the queue</string>
-  <string name="ldl_playback_repeat_one">Repeat: this video</string>
 
   <!-- Signing in to a site for its cookies (CookieSignIn.kt). -->
   <string name="ldl_cookie_signin_title">Sign in, then press Done</string>

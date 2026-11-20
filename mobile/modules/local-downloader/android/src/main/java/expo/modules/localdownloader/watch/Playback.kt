@@ -63,7 +63,6 @@ internal object Playback {
   const val ACTION_TOGGLE = "expo.modules.localdownloader.watch.TOGGLE"
   const val ACTION_BACK = "expo.modules.localdownloader.watch.BACK"
   const val ACTION_FORWARD = "expo.modules.localdownloader.watch.FORWARD"
-  const val ACTION_REPEAT = "expo.modules.localdownloader.watch.REPEAT"
 
   var current: MpvEngine? = null
     private set
@@ -135,29 +134,16 @@ internal object Playback {
         // Ten seconds back and on, as actions of the app's own: from Android 13 the system
         // draws its controls from the session, and of the standard actions it shows only
         // play, previous and next. Rewind and fast forward it leaves out.
+        // Two of them and no more, and in a queue previous and next are always declared
+        // with them: the system has five places, the middle three for previous, play and
+        // next, and puts these in whichever are free. With next missing (the last item) it
+        // put "back" where next goes and "forward" at the far left; and a third action,
+        // repeat, only showed at such times, in the place one of these had been.
         .addCustomAction(
           PlaybackState.CustomAction.Builder(ACTION_BACK, context.getString(R.string.ldl_playback_back), R.drawable.ldl_back_10).build(),
         )
         .addCustomAction(
           PlaybackState.CustomAction.Builder(ACTION_FORWARD, context.getString(R.string.ldl_playback_forward), R.drawable.ldl_forward_10).build(),
-        )
-        // Last: where the system has room for two of these only, it is the one left out.
-        .addCustomAction(
-          PlaybackState.CustomAction.Builder(
-            ACTION_REPEAT,
-            context.getString(
-              when (state.repeat) {
-                "one" -> R.string.ldl_playback_repeat_one
-                "all" -> R.string.ldl_playback_repeat_all
-                else -> R.string.ldl_playback_repeat_off
-              },
-            ),
-            when (state.repeat) {
-              "one" -> R.drawable.ldl_repeat_one
-              "all" -> R.drawable.ldl_repeat_all
-              else -> R.drawable.ldl_repeat_off
-            },
-          ).build(),
         )
         .setActions(
           PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or
@@ -222,7 +208,6 @@ internal object Playback {
       when (action) {
         ACTION_BACK -> current?.seekBy(-SEEK_MS)
         ACTION_FORWARD -> current?.seekBy(SEEK_MS)
-        ACTION_REPEAT -> current?.cycleRepeat()
       }
     }
     override fun onSkipToPrevious() { current?.previous() }

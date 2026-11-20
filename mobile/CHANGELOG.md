@@ -31,7 +31,7 @@ outright and has had little use yet. The Mac is unchanged, and stays 4.1.4.
 - Phone: back and forward 10 seconds in Android's own media control (the lock screen, the
   notification shade), for Watch and the library. From Android 13 the system draws that
   control from what the app declares, and left the standard rewind and fast forward out.
-  Where there is room for it (no previous or next to show), a repeat button too. A long press
+  In a queue the control is always back 10, previous, play, next, forward 10. A long press
   selects, to rename a video or delete it from the phone.
 
 - Phone: playlists and albums. An address that is a playlist's or an album's own (YouTube,

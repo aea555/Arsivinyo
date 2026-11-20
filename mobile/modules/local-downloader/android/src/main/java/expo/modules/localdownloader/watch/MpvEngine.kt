@@ -126,21 +126,6 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     }
 
   /**
-   * To the next of them, from the system's media control: off, then round the queue where
-   * there is one, then this item alone. The screen is told with the next progress.
-   */
-  fun cycleRepeat() {
-    repeat = when (repeat) {
-      "off" -> if (key != null) "all" else "one"
-      "all" -> "one"
-      else -> "off"
-    }
-    reportProgress()
-    reportPlayback()
-    tellChanged()
-  }
-
-  /**
    * The picture fills its surface, cut at the sides or top and bottom where its shape is
    * not the surface's: for the small player, where bars around it would leave little of it.
    * Otherwise it is shown whole.
@@ -543,9 +528,11 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     positionMs = ((mpv.getPropertyDouble("time-pos") ?: 0.0) * 1000).toLong(),
     durationMs = ((mpv.getPropertyDouble("duration") ?: 0.0) * 1000).toLong(),
     speed = (mpv.getPropertyDouble("speed") ?: 1.0).toFloat(),
-    // In a queue "previous" always does something: at the least it starts the item over.
+    // In a queue both are always there, so the system's control keeps its shape from the
+    // first item to the last. "Previous" always does something: at the least it starts the
+    // item over. "Next" at the last item does nothing, unless the queue repeats.
     hasPrevious = hasPrevious || key != null,
-    hasNext = hasNext || (repeat == "all" && items.size > 1),
+    hasNext = hasNext || key != null,
     repeat = repeat,
     artwork = loaded?.artwork,
   )
