@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -51,6 +53,8 @@ internal object Playback {
     val hasNext: Boolean = false,
     /** "off", "one" or "all": what happens at the end. */
     val repeat: String = "off",
+    /** A picture of what plays, as a file: a song's cover. */
+    val artwork: String? = null,
   )
 
   const val SEEK_MS = 10_000.0
@@ -64,6 +68,9 @@ internal object Playback {
   var current: MpvEngine? = null
     private set
   private var state: State? = null
+  /** [State.artwork] as a picture, read once for each. */
+  private var art: Bitmap? = null
+  private const val ART_PX = 512
   private var session: MediaSession? = null
   private var hasFocus = false
   /** Paused by a call or a moment of another app's sound, to carry on when it is over. */
@@ -98,12 +105,27 @@ internal object Playback {
     val before = this.state
     this.state = state
     val session = session ?: return
-    if (before?.title != state.title || before?.subtitle != state.subtitle || before?.durationMs != state.durationMs) {
+    if (before?.artwork != state.artwork) {
+      art = state.artwork?.let { path ->
+        // Small enough for the lock screen: a cover as it was downloaded can be large.
+        runCatching {
+          val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+          BitmapFactory.decodeFile(path, bounds)
+          var sample = 1
+          while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= ART_PX) sample *= 2
+          BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+        }.getOrNull()
+      }
+    }
+    if (before?.title != state.title || before?.subtitle != state.subtitle || before?.durationMs != state.durationMs ||
+      before?.artwork != state.artwork
+    ) {
       session.setMetadata(
         MediaMetadata.Builder()
           .putString(MediaMetadata.METADATA_KEY_TITLE, state.title)
           .putString(MediaMetadata.METADATA_KEY_ARTIST, state.subtitle)
           .putLong(MediaMetadata.METADATA_KEY_DURATION, state.durationMs)
+          .apply { art?.let { putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, it) } }
           .build(),
       )
     }
@@ -152,7 +174,9 @@ internal object Playback {
         .build(),
     )
     if (!state.paused) focus(player.context)
-    if (before?.paused != state.paused || before?.title != state.title || before?.subtitle != state.subtitle) {
+    if (before?.paused != state.paused || before?.title != state.title || before?.subtitle != state.subtitle ||
+      before?.artwork != state.artwork
+    ) {
       PlaybackService.instance?.let { service ->
         runCatching { service.getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(service)) }
       }
@@ -165,6 +189,7 @@ internal object Playback {
     val context = player.context.applicationContext
     current = null
     state = null
+    art = null
     resumeOnFocus = false
     session?.run {
       isActive = false
@@ -260,6 +285,7 @@ internal object Playback {
       .setSmallIcon(context.applicationInfo.icon)
       .setContentTitle(state?.title?.ifBlank { null } ?: context.getString(R.string.ldl_playback_channel))
       .setContentText(state?.subtitle)
+      .setLargeIcon(art)
       .setShowWhen(false)
       .setOngoing(state?.paused == false)
       .setCategory(Notification.CATEGORY_TRANSPORT)

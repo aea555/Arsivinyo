@@ -17,7 +17,8 @@ import 'react-native-reanimated';
 
 import '@/global.css';
 import { AnimatedSplash, PeerLinkPrompt, PeerTransferBar } from '@/src/components';
-import { VideoBarSpace, VideoPlayer } from '@/src/features/videos/VideoPlayer';
+import { MediaBarSpace, MediaPlayer } from '@/src/features/player/MediaBar';
+import { reconcileMediaSession } from '@/src/features/player/session';
 import i18n from '@/src/i18n';
 import { appHeaderTitleFontFamily } from '@/src/components';
 import { ThemeProvider, useTheme } from '@/src/theme';
@@ -32,6 +33,8 @@ export const unstable_settings = {
 function AppContent() {
   const { isDark, colors } = useTheme();
   const { t } = useTranslation();
+  // Before the player below is drawn: see the function.
+  useState(reconcileMediaSession);
 
   return (
     <>
@@ -132,8 +135,8 @@ function AppContent() {
         />
       </Stack>
       </View>
-      <VideoBarSpace />
-      <VideoPlayer />
+      <MediaBarSpace />
+      <MediaPlayer />
       <PeerTransferBar />
       <PeerLinkPrompt />
       <StatusBar style={isDark ? 'light' : 'dark'} />

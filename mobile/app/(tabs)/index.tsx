@@ -26,11 +26,15 @@ import {
   setLocalAudioModeEnabled,
   setLocalPrivateModeEnabled,
   unlockLocalPrivateVault,
+  expandLocalPlaylist,
+  queueLocalPlaylist,
+  isPlaylistUrl,
+  type LocalPlaylist,
 } from '@/src/api';
 import type { DownloadState } from '@/src/api/types';
-import { setVideoBarLift } from '@/src/features/videos/open';
-import { VideoBarRoom } from '@/src/features/videos/VideoPlayer';
-import { AppText as Text, DownloadButton, DOWNLOAD_BUTTON_SIZE } from '@/src/components';
+import { MediaBarRoom } from '@/src/features/player/MediaBar';
+import { setMediaBarLift } from '@/src/features/player/session';
+import { AppText as Text, DownloadButton, DOWNLOAD_BUTTON_SIZE, ConfirmModal } from '@/src/components';
 import {
   downloadAndSaveFile,
   getUrlFromClipboard,
@@ -97,6 +101,9 @@ export default function HomeScreen() {
   const [lastOutcome, setLastOutcome] = useState<'idle' | 'completed' | 'error'>('idle');
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  /** A playlist found at the address to download, waiting for a yes to all of it. */
+  const [playlistOffer, setPlaylistOffer] = useState<(LocalPlaylist & { address: string }) | null>(null);
+  const [playlistBusy, setPlaylistBusy] = useState(false);
   /** Guards only the gap between the press and reading the clipboard, so a double tap
       cannot start the same url twice. */
   const [isReadingClipboard, setIsReadingClipboard] = useState(false);
@@ -204,6 +211,27 @@ export default function HomeScreen() {
         setStatusMessage(t('home.noUrlInClipboard'));
         setTimeout(() => setLastOutcome('idle'), 3000);
         return;
+      }
+
+      // A playlist's or an album's own address: everything in it, asked about first.
+      if (isPlaylistUrl(url)) {
+        setStatusMessage(t('home.playlistReading'));
+        const playlist = await expandLocalPlaylist(url).catch(() => null);
+        if (playlist?.success && playlist.isPlaylist && playlist.entries.length > 1) {
+          setStatusMessage('');
+          setPlaylistOffer({ ...playlist, address: url });
+          return;
+        }
+        // It could not be read. Not handed on as one download: that fetches every entry
+        // of a playlist and keeps the first.
+        if (!playlist?.success) {
+          setLastOutcome('error');
+          setStatusMessage(t('home.playlistFailed'));
+          setTimeout(() => setLastOutcome('idle'), 3000);
+          return;
+        }
+        // Not one after all, or one of a single entry: as any other address.
+        setStatusMessage('');
       }
 
       setDownloads((current) => ({
@@ -329,6 +357,45 @@ export default function HomeScreen() {
     }
   }, [privateModeEnabled, audioModeEnabled, t]);
 
+  // Each entry of the playlist becomes a download of its own, in the queue that shared
+  // links use: it runs with the app out of sight, files what it downloads by itself, and
+  // one that fails does not stop the rest.
+  const downloadPlaylist = useCallback(async () => {
+    const playlist = playlistOffer;
+    if (!playlist || playlistBusy) return;
+    setPlaylistBusy(true);
+    try {
+      if (!audioModeEnabled && privateModeEnabled) {
+        const lock = await getLocalPrivateVaultLockState().catch(() => null);
+        if (!lock?.unlocked) {
+          const opened = await unlockLocalPrivateVault('import').catch(() => null);
+          if (!opened?.granted) {
+            setLastOutcome('error');
+            setStatusMessage(t('home.vaultLockedForDownload'));
+            setTimeout(() => setLastOutcome('idle'), 3000);
+            return;
+          }
+        }
+      }
+      const { queued, skipped } = await queueLocalPlaylist(playlist, playlist.address).catch(() => ({ queued: 0, skipped: 0 }));
+      setLastOutcome(queued > 0 || skipped > 0 ? 'completed' : 'error');
+      setStatusMessage(
+        queued > 0
+          ? t('home.playlistQueued', { count: queued }) + (skipped > 0 ? ` ${t('home.playlistSkipped', { count: skipped })}` : '')
+          : skipped > 0
+            ? t('home.playlistAllHad')
+            : t('home.downloadFailed'),
+      );
+      setTimeout(() => {
+        setLastOutcome('idle');
+        setStatusMessage('');
+      }, 4000);
+    } finally {
+      setPlaylistBusy(false);
+      setPlaylistOffer(null);
+    }
+  }, [playlistOffer, playlistBusy, audioModeEnabled, privateModeEnabled, t]);
+
   const openCancelConfirm = useCallback((clientId: string) => {
     setCancelTarget(clientId);
     setShowCancelConfirm(true);
@@ -365,8 +432,8 @@ export default function HomeScreen() {
   const [navHeight, setNavHeight] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      setVideoBarLift(navHeight);
-      return () => setVideoBarLift(0);
+      setMediaBarLift(navHeight);
+      return () => setMediaBarLift(0);
     }, [navHeight]),
   );
 
@@ -706,7 +773,7 @@ export default function HomeScreen() {
             thumb already is, each a fifth of the width: in the header, six of them did not
             fit beside the wordmark. Labelled, not icon-only: they go to entirely different
             screens, and an icon alone gives no way to know which before tapping it. */}
-        <VideoBarRoom />
+        <MediaBarRoom />
         <View
           onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
           style={[styles.bottomNav, { borderTopColor: colors.border, backgroundColor: colors.surface + 'E6' }]}>
@@ -734,6 +801,27 @@ export default function HomeScreen() {
             </Pressable>
           ))}
         </View>
+
+        <ConfirmModal
+          visible={playlistOffer != null}
+          busy={playlistBusy}
+          config={
+            playlistOffer
+              ? {
+                  title: playlistOffer.title || t('home.playlistTitle'),
+                  message:
+                    t(audioModeEnabled ? 'home.playlistMessageAudio' : 'home.playlistMessageVideo', { count: playlistOffer.entries.length }) +
+                    (playlistOffer.total > playlistOffer.entries.length
+                      ? ` ${t('home.playlistCut', { total: playlistOffer.total })}`
+                      : ''),
+                  confirm: t('home.playlistConfirm'),
+                  destructive: false,
+                }
+              : null
+          }
+          onCancel={() => setPlaylistOffer(null)}
+          onConfirm={() => void downloadPlaylist()}
+        />
 
         <Modal
           visible={showCancelConfirm}

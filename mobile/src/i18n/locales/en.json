@@ -79,7 +79,21 @@
     "navWatch": "Watch",
     "navTorrents": "Torrents",
     "navVideos": "Videos",
-    "vaultLockedForDownload": "The vault is locked, so the download was not started."
+    "vaultLockedForDownload": "The vault is locked, so the download was not started.",
+    "playlistReading": "Reading the playlist…",
+    "playlistTitle": "Playlist",
+    "playlistMessageAudio_one": "Download {{count}} song?",
+    "playlistMessageAudio_other": "Download all {{count}} as songs?",
+    "playlistMessageVideo_one": "Download {{count}} video?",
+    "playlistMessageVideo_other": "Download all {{count}} as videos?",
+    "playlistCut": "It holds {{total}}; only these can be queued at once.",
+    "playlistConfirm": "Download all",
+    "playlistQueued_one": "{{count}} download queued.",
+    "playlistQueued_other": "{{count}} downloads queued.",
+    "playlistFailed": "The playlist could not be read.",
+    "playlistSkipped_one": "{{count}} is already there.",
+    "playlistSkipped_other": "{{count}} are already there.",
+    "playlistAllHad": "All of it is already in that playlist."
   },
   "privateVault": {
     "title": "Private Vault",
@@ -942,7 +956,9 @@
       "off": "Repeat: off",
       "all": "Repeat: the queue",
       "one": "Repeat: this video"
-    }
+    },
+    "next": "Next",
+    "stop": "Stop"
   },
   "torrents": {
     "live": {
@@ -1010,8 +1026,6 @@
     "deleteTitle_one": "Delete this video?",
     "deleteTitle_other": "Delete {{count}} videos?",
     "deleteMessage": "The file is deleted from the phone, from the gallery too. This cannot be undone.",
-    "playFailed": "This video could not be opened.",
-    "next": "Next video",
-    "stop": "Stop"
+    "playFailed": "This video could not be opened."
   }
 }

@@ -372,6 +372,8 @@ export function Player({
         onPress={(e) => onPicture(e.nativeEvent.locationX)}
       />
 
+      {/* Dimmed while the controls are up: white controls are lost on a bright picture otherwise. */}
+      {shown ? <View style={[StyleSheet.absoluteFill, styles.scrim]} pointerEvents="none" /> : null}
       {shown ? (
         <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none" edges={['left', 'right', 'top', 'bottom']}>
           <View style={styles.top}>
@@ -620,6 +622,7 @@ const styles = StyleSheet.create({
   slot: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
   // Below the spinner without moving it off the middle.
   gone: { display: 'none' },
+  scrim: { backgroundColor: 'rgba(0,0,0,0.42)' },
   waiting: { position: 'absolute', top: 76, width: 260, alignItems: 'center' },
   toast: {
     position: 'absolute', bottom: 72, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.75)',

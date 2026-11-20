@@ -16,7 +16,7 @@ import {
   type LocalVideo,
 } from '@/src/api';
 import { AppText as Text, AppTextInput, ConfirmModal } from '@/src/components';
-import { openVideo } from '@/src/features/videos/open';
+import { openVideos } from '@/src/features/player/session';
 import { useTheme } from '@/src/theme';
 
 function clock(ms: number): string {
@@ -92,7 +92,7 @@ export default function VideosScreen() {
   const press = useCallback(
     (video: LocalVideo) => {
       if (selecting) toggle(video.id);
-      else openVideo(shown, shown.findIndex((v) => v.id === video.id));
+      else openVideos(shown, shown.findIndex((v) => v.id === video.id));
     },
     [selecting, toggle, shown],
   );

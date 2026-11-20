@@ -5,29 +5,26 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Animated, AppState, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import TrackPlayer, {
-  RepeatMode,
-  State,
-  useActiveTrack,
-  usePlaybackState,
-  useProgress,
-} from 'react-native-track-player';
-
 import {
   FAVORITES_PLAYLIST_ID,
   listLocalSoundPlaylists,
   listLocalSounds,
+  seekPlayer,
+  seekPlayerBy,
   setLocalSoundsFavorite,
+  setPlayerPaused,
+  skipPlayerNext,
+  skipPlayerPrevious,
   type LocalSound,
 } from '@/src/api';
 import { AppText as Text, TrackMetadata } from '@/src/components';
 import { listAllPresets, type AudioPreset } from '@/src/features/audioPresets/presets';
-import { cycleRepeatMode, handlePrevious, seekBy } from '@/src/services/trackPlayerService';
+import { setMediaRepeat, useMediaRepeat } from '@/src/features/player/session';
+import { useActiveSound, usePlayerClock } from '@/src/services/musicPlayer';
 import { useTheme } from '@/src/theme';
 
-/** How often the position is read while the screen can be seen, and "not at all" while it cannot. */
+/** How often the position is read while the screen can be seen. While it cannot, it is not read. */
 const PROGRESS_EVERY_MS = 250;
-const PROGRESS_NEVER_MS = 24 * 60 * 60 * 1000;
 
 /** Whether the app is in front: not with another app over it, nor with the screen off. */
 function useAppInFront(): boolean {
@@ -52,19 +49,23 @@ export default function SoundPlayerScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
-  const track = useActiveTrack();
-  const playback = usePlaybackState();
+  // The song that plays, of the app's one player: this screen is its large player for a song.
+  const track = useActiveSound();
   // Only while the app is in front. Timers still run behind it while music plays, so left
   // open this screen went on reading the position four times a second and animating the bar
   // for nobody: half a processor's worth, and every one of those updates waited to be drawn,
   // so coming back replayed minutes of them before the screen caught up with the song.
   const inFront = useAppInFront();
-  const progress = useProgress(inFront ? PROGRESS_EVERY_MS : PROGRESS_NEVER_MS);
-  const [repeatMode, setRepeatMode] = React.useState<RepeatMode>(RepeatMode.Off);
+  const player = usePlayerClock(inFront ? PROGRESS_EVERY_MS : null);
+  const progress = React.useMemo(
+    () => ({ position: (player.positionMs ?? 0) / 1000, duration: (player.durationMs ?? 0) / 1000 }),
+    [player.positionMs, player.durationMs],
+  );
+  const repeatMode = useMediaRepeat();
   const [isFav, setIsFav] = React.useState(false);
-  const trackId = track?.id != null ? String(track.id) : null;
+  const trackId = track?.id ?? null;
 
-  // The player only holds an RNTP track, which carries no format or preset detail.
+  // The player's queue holds a title, an artist and a cover, with no format or preset detail.
   // Resolve the library entry so the metadata section can describe the real file.
   const [librarySong, setLibrarySong] = useState<LocalSound | null>(null);
   const [libraryById, setLibraryById] = useState<Map<string, LocalSound>>(new Map());
@@ -117,14 +118,13 @@ export default function SoundPlayerScreen() {
   const seekSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
-    TrackPlayer.getRepeatMode().then(setRepeatMode).catch(() => undefined);
     return () => {
       if (seekSettleTimer.current) clearTimeout(seekSettleTimer.current);
     };
   }, []);
 
-  const playing = playback.state === State.Playing;
-  const buffering = playback.state === State.Buffering || playback.state === State.Loading;
+  const playing = player.active && !player.paused;
+  const buffering = player.active && !!player.buffering;
 
   // Keep the bar synced to live playback while NOT dragging and no seek is settling.
   // timing() over the poll interval makes the fill glide between the 250ms polls.
@@ -180,7 +180,7 @@ export default function SoundPlayerScreen() {
           const d = durationRef.current;
           setScrubbing(false);
           setPendingFraction(f); // hold the dropped position…
-          if (d > 0) TrackPlayer.seekTo(f * d).catch(() => undefined);
+          if (d > 0) seekPlayer(f * d * 1000).catch(() => undefined);
           // …until the next couple of progress polls reflect the new position.
           if (seekSettleTimer.current) clearTimeout(seekSettleTimer.current);
           seekSettleTimer.current = setTimeout(() => setPendingFraction(null), 600);
@@ -195,19 +195,19 @@ export default function SoundPlayerScreen() {
   // restart it (when not looping).
   const onTogglePlay = useCallback(async () => {
     if (playing) {
-      TrackPlayer.pause().catch(() => undefined);
+      setPlayerPaused(true).catch(() => undefined);
       return;
     }
     try {
-      const { position, duration } = await TrackPlayer.getProgress();
+      const { position, duration } = progress;
       if (duration > 0 && position >= duration - 0.5) {
-        await TrackPlayer.seekTo(0);
+        await seekPlayer(0);
       }
     } catch {
-      // ignore — fall through to play()
+      // ignore — fall through to play
     }
-    TrackPlayer.play().catch(() => undefined);
-  }, [playing]);
+    setPlayerPaused(false).catch(() => undefined);
+  }, [playing, progress]);
 
   // Reflect the active track's favorite state.
   React.useEffect(() => {
@@ -239,12 +239,12 @@ export default function SoundPlayerScreen() {
     }
   }, [trackId, isFav]);
 
-  const onToggleRepeat = useCallback(async () => {
-    const next = await cycleRepeatMode(repeatMode);
-    setRepeatMode(next);
+  // Off, then round the queue, then this song alone.
+  const onToggleRepeat = useCallback(() => {
+    setMediaRepeat(repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off');
   }, [repeatMode]);
 
-  const repeatActive = repeatMode !== RepeatMode.Off;
+  const repeatActive = repeatMode !== 'off';
 
   const displayPosition = scrubbing
     ? scrubLabelSec
@@ -294,7 +294,7 @@ export default function SoundPlayerScreen() {
       <View style={styles.artworkWrap}>
         <View style={[styles.artwork, { backgroundColor: colors.surfaceHover }]}>
           {track.artwork ? (
-            <Image source={{ uri: String(track.artwork) }} style={styles.artworkImg} contentFit="cover" />
+            <Image source={{ uri: `file://${track.artwork}` }} style={styles.artworkImg} contentFit="cover" />
           ) : (
             <Ionicons name="musical-note" size={96} color={colors.textMuted} />
           )}
@@ -321,7 +321,7 @@ export default function SoundPlayerScreen() {
         </Pressable>
         <Pressable hitSlop={10} onPress={onToggleRepeat} style={styles.repeatBtn}>
           <Ionicons name="repeat" size={22} color={repeatActive ? colors.accent : colors.textMuted} />
-          {repeatMode === RepeatMode.Track ? (
+          {repeatMode === 'one' ? (
             <View style={[styles.repeatOneDot, { backgroundColor: colors.accent }]} />
           ) : null}
         </Pressable>
@@ -353,11 +353,11 @@ export default function SoundPlayerScreen() {
 
       {/* Transport controls: prev · −10 · play · +10 · next (symmetric around play) */}
       <View style={styles.controls}>
-        <Pressable hitSlop={8} onPress={() => handlePrevious()} style={styles.smallBtn}>
+        <Pressable hitSlop={8} onPress={() => void skipPlayerPrevious()} style={styles.smallBtn}>
           <Ionicons name="play-skip-back" size={30} color={colors.text} />
         </Pressable>
 
-        <Pressable hitSlop={8} onPress={() => seekBy(-10)} style={styles.smallBtn}>
+        <Pressable hitSlop={8} onPress={() => void seekPlayerBy(-10_000)} style={styles.smallBtn}>
           <Ionicons name="play-back" size={28} color={colors.text} />
           <Text style={[styles.jumpLabel, { color: colors.textMuted }]}>10</Text>
         </Pressable>
@@ -366,12 +366,12 @@ export default function SoundPlayerScreen() {
           <Ionicons name={playing ? 'pause' : 'play'} size={36} color={colors.background} />
         </Pressable>
 
-        <Pressable hitSlop={8} onPress={() => seekBy(10)} style={styles.smallBtn}>
+        <Pressable hitSlop={8} onPress={() => void seekPlayerBy(10_000)} style={styles.smallBtn}>
           <Ionicons name="play-forward" size={28} color={colors.text} />
           <Text style={[styles.jumpLabel, { color: colors.textMuted }]}>10</Text>
         </Pressable>
 
-        <Pressable hitSlop={8} onPress={() => TrackPlayer.skipToNext().catch(() => undefined)} style={styles.smallBtn}>
+        <Pressable hitSlop={8} onPress={() => void skipPlayerNext()} style={styles.smallBtn}>
           <Ionicons name="play-skip-forward" size={30} color={colors.text} />
         </Pressable>
       </View>

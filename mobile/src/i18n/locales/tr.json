@@ -79,7 +79,21 @@
     "navWatch": "İzle",
     "navTorrents": "Torrent",
     "navVideos": "Videolar",
-    "vaultLockedForDownload": "Kasa kilitli olduğu için indirme başlatılmadı."
+    "vaultLockedForDownload": "Kasa kilitli olduğu için indirme başlatılmadı.",
+    "playlistReading": "Liste okunuyor…",
+    "playlistTitle": "Çalma listesi",
+    "playlistMessageAudio_one": "{{count}} şarkı indirilsin mi?",
+    "playlistMessageAudio_other": "{{count}} öğenin hepsi şarkı olarak indirilsin mi?",
+    "playlistMessageVideo_one": "{{count}} video indirilsin mi?",
+    "playlistMessageVideo_other": "{{count}} öğenin hepsi video olarak indirilsin mi?",
+    "playlistCut": "Listede {{total}} öğe var; aynı anda ancak bu kadarı sıraya alınabilir.",
+    "playlistConfirm": "Hepsini indir",
+    "playlistQueued_one": "{{count}} indirme sıraya alındı.",
+    "playlistQueued_other": "{{count}} indirme sıraya alındı.",
+    "playlistFailed": "Liste okunamadı.",
+    "playlistSkipped_one": "{{count}} tanesi zaten var.",
+    "playlistSkipped_other": "{{count}} tanesi zaten var.",
+    "playlistAllHad": "Hepsi zaten o listede."
   },
   "privateVault": {
     "title": "Gizli Kasa",
@@ -942,7 +956,9 @@
       "off": "Tekrar: kapalı",
       "all": "Tekrar: sıra",
       "one": "Tekrar: bu video"
-    }
+    },
+    "next": "Sonraki",
+    "stop": "Durdur"
   },
   "torrents": {
     "live": {
@@ -1010,8 +1026,6 @@
     "deleteTitle_one": "Bu video silinsin mi?",
     "deleteTitle_other": "{{count}} video silinsin mi?",
     "deleteMessage": "Dosya telefondan ve galeriden silinir. Bu işlem geri alınamaz.",
-    "playFailed": "Bu video açılamadı.",
-    "next": "Sonraki video",
-    "stop": "Durdur"
+    "playFailed": "Bu video açılamadı."
   }
 }

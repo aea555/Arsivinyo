@@ -1,10 +1,3 @@
-// Custom entry point: register the react-native-track-player playback service
-// BEFORE expo-router boots the app, so lock-screen / notification / headset
-// controls are wired up for background audio. `require` (not a hoisted import)
-// guarantees the registration runs before expo-router/entry evaluates.
-import TrackPlayer from 'react-native-track-player';
-import { PlaybackService } from './src/services/trackPlayerService';
-
-TrackPlayer.registerPlaybackService(() => PlaybackService);
-
+// The app's entry point. A file of the app's own, and not expo-router's named in
+// package.json, so that something can run before the router does, should it need to.
 require('expo-router/entry');

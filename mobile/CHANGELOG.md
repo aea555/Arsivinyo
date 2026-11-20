@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [4.2.0-beta.1] — One player for videos and music, and whole playlists
+
+The phone has a video library, and one player for it and for music: it stays over every
+screen as a bar, and a video goes from the bar to the whole screen and back without
+stopping. A playlist or an album is downloaded whole. A beta: the music player was replaced
+outright and has had little use yet. The Mac is unchanged, and stays 4.1.4.
+
 ### Added
 - Phone: a video library. "Videos" on the home screen lists every video the app saved, newest
   first, each with a picture, its length, who posted it and how far it was watched. A tap
@@ -27,7 +34,30 @@ All notable changes to this project are documented here. Format based on [Keep a
   Where there is room for it (no previous or next to show), a repeat button too. A long press
   selects, to rename a video or delete it from the phone.
 
+- Phone: playlists and albums. An address that is a playlist's or an album's own (YouTube,
+  YouTube Music, a SoundCloud set, a Bandcamp album) downloads everything in it: the app
+  reads the list, says how many it holds and asks, and each entry becomes a download of its
+  own in the background queue, as songs with audio mode on and as videos without. One that
+  fails does not stop the rest. As songs, they are gathered into a music playlist named
+  after the album, in the album's order. The same album downloaded again fills the playlist
+  it made before, and fetches only the songs that playlist no longer has; another playlist that only has the same name is left alone, and the new
+  one is named apart from it ("Name (2)"). A
+  video opened from a playlist is still that one video, and a channel is not taken as a
+  playlist. The versions a preset makes of each song on download join the playlist with
+  it. A playlist's address taken from the notification, the share sheet or another device
+  is downloaded whole too, without being asked about: there is no screen there to ask on.
+
 ### Changed
+- Phone: the player's controls dim the picture while they are up, so they can be read over
+  a bright one.
+- Phone: music plays in the same player as the library's videos. A song has the same bar at
+  the bottom of every screen, with its cover in it, and the bar opens the large music
+  player; the music screen's own small player is gone. A song and a video cannot sound at
+  once: starting one replaces the other. The notification and the lock screen show the
+  cover, and have back and forward 10 seconds. "Previous" goes by where the song is, not by
+  how fast it is pressed twice: within its first three seconds it goes to the song before,
+  after that to the song's beginning. The player the music had before
+  (react-native-track-player) is removed.
 - Phone: a downloaded video is saved to `Movies/Arsivinyo`, where it went to `DCIM`. The
   videos already in `DCIM` stay there, and are in the library as well.
 

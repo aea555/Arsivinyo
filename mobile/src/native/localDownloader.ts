@@ -102,6 +102,7 @@ export type {
   LocalSound,
   LocalVideo,
   LocalPlayerState,
+  LocalPlaylist,
   LocalSoundPlaylist,
   LocalSoundsImportResult,
   LocalSoundsLibrary,
@@ -122,4 +123,4 @@ export type {
   LocalYtDlpUpdateStatus,
 } from '../../modules/local-downloader/src';
 export { MpvPlayerView } from '../../modules/local-downloader/src';
-export type { MpvPlayerHandle, MpvProgress, MpvQueue, MpvRecord, MpvRepeat, MpvSource, MpvTrack } from '../../modules/local-downloader/src';
+export type { MpvPlayerHandle, MpvProgress, MpvQueue, MpvQueueItem, MpvRecord, MpvRepeat, MpvSource, MpvTrack } from '../../modules/local-downloader/src';

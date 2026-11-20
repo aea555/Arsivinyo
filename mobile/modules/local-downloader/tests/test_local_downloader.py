@@ -898,6 +898,72 @@ class ResolveStreamTests(unittest.TestCase):
         self.assertEqual(result["code"], "RESOLVE_FAILED")
 
 
+class ExpandPlaylistTests(unittest.TestCase):
+    """expand_playlist: a playlist's page to the pages of what is in it."""
+
+    def _expand(self, info=None, error=None):
+        seen = {}
+
+        class Fake:
+            def __init__(self, opts=None):
+                seen["opts"] = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def extract_info(self, url, download=False):
+                seen["download"] = download
+                if error:
+                    raise error
+                return info
+
+        with unittest.mock.patch.object(ld.yt_dlp, "YoutubeDL", Fake):
+            return json.loads(ld.expand_playlist("https://example.com/playlist")), seen
+
+    def test_a_playlist_gives_each_entry_once_without_opening_any(self):
+        result, seen = self._expand({"_type": "playlist", "title": "Album", "entries": [
+            {"url": "https://example.com/1", "title": "one"},
+            None,
+            {"url": "https://example.com/1", "title": "one again"},
+            {"webpage_url": "https://example.com/2", "title": "two"},
+            {"url": "not-a-page", "title": "an id only"},
+        ]})
+        self.assertTrue(result["success"])
+        self.assertTrue(result["isPlaylist"])
+        self.assertEqual(result["title"], "Album")
+        self.assertEqual([e["url"] for e in result["entries"]], ["https://example.com/1", "https://example.com/2"])
+        self.assertEqual(result["total"], 2)
+        self.assertFalse(seen["download"])
+        self.assertEqual(seen["opts"]["extract_flat"], "in_playlist")
+        # A phone's User-Agent gets a page of YouTube's that yt-dlp cannot read.
+        self.assertNotIn("http_headers", seen["opts"])
+
+    def test_an_album_is_named_without_its_kind(self):
+        entries = [{"url": "https://example.com/1"}, {"url": "https://example.com/2"}]
+        for given, name in (("Album - Mor ve Ötesi", "Mor ve Ötesi"), ("Single - X", "X"), ("Albums I like", "Albums I like")):
+            result, _ = self._expand({"_type": "playlist", "title": given, "entries": entries})
+            self.assertEqual(result["title"], name)
+
+    def test_one_video_is_not_a_playlist(self):
+        result, _ = self._expand({"title": "T", "url": "https://cdn/x.mp4"})
+        self.assertTrue(result["success"])
+        self.assertFalse(result["isPlaylist"])
+
+    def test_more_than_the_queue_takes_is_cut_and_counted(self):
+        many = [{"url": f"https://example.com/{n}"} for n in range(ld.PLAYLIST_MAX_ENTRIES + 7)]
+        result, _ = self._expand({"_type": "playlist", "entries": many})
+        self.assertEqual(len(result["entries"]), ld.PLAYLIST_MAX_ENTRIES)
+        self.assertEqual(result["total"], ld.PLAYLIST_MAX_ENTRIES + 7)
+
+    def test_a_failure_is_a_code(self):
+        result, _ = self._expand(error=RuntimeError("no"))
+        self.assertFalse(result["success"])
+        self.assertEqual(result["code"], "PLAYLIST_FAILED")
+
+
 class RuntimeDiagnosticsIsolationTests(unittest.TestCase):
     """Two downloads must not see each other's diagnostics.
 

@@ -327,6 +327,142 @@ class LocalDownloaderModule : Module() {
   private fun videoTitleOf(result: JSONObject): String? =
     if (result.isNull("title")) null else result.optString("title").trim().ifBlank { null }
 
+  /**
+   * Songs on their way down that are to join a music playlist when they land: an album or a
+   * playlist downloaded whole, each of its entries a download of its own. By the entry's
+   * address, to the playlist's id and the entry's place in the album. Kept in memory only:
+   * an entry that lands after the app was killed is in Songs, and not in the playlist.
+   */
+  private val pendingSoundPlaylists = ConcurrentHashMap<String, Pair<String, Int>>()
+  /** For each such playlist, where in the album each song of it that has landed belongs. */
+  private val soundPlaylistOrder = ConcurrentHashMap<String, ConcurrentHashMap<String, Int>>()
+
+  /**
+   * A downloaded song was filed: it joins the playlist its download was for, if any, in the
+   * album's order and not the order the downloads happened to finish in. Songs the playlist
+   * had before stay first, as they were.
+   */
+  private fun joinSoundPlaylist(url: String?, songId: String?, last: Boolean) {
+    if (url == null) return
+    // Not forgotten at the first song: a download can file several, the original and each
+    // version of it a preset makes, and all of them are the album's.
+    val (playlistId, position) = (if (last) pendingSoundPlaylists.remove(url) else pendingSoundPlaylists[url]) ?: return
+    if (songId == null) return
+    runCatching {
+      val order = soundPlaylistOrder.getOrPut(playlistId) { ConcurrentHashMap() }
+      order[songId] = position
+      @Suppress("UNCHECKED_CAST")
+      val playlist = (soundsStore.listPlaylists() as List<Map<String, Any?>>).firstOrNull { it["id"] == playlistId }
+        ?: return
+      @Suppress("UNCHECKED_CAST")
+      val current = ((playlist["songIds"] as? List<String>).orEmpty() + songId).distinct()
+      val placed = current.filter { order.containsKey(it) }.sortedBy { order[it] }
+      soundsStore.setPlaylistSongs(playlistId, current.filter { !order.containsKey(it) } + placed)
+      soundsStore.notePlaylistEntry(playlistId, url, songId)
+      sendEvent("soundsChanged", emptyMap<String, Any?>())
+    }.onFailure { addError("SOUND_PLAYLIST_JOIN_FAILED: ${it.javaClass.simpleName}") }
+  }
+
+  private class PlaylistListing(val success: Boolean, val isPlaylist: Boolean, val title: String?, val total: Int, val entries: List<String>)
+
+  /** Asks the site what a playlist holds. On the network: not for the main thread. */
+  private fun expandPlaylistInternal(target: String): PlaylistListing {
+    ensurePythonReady()
+    val taskId = "playlist-${UUID.randomUUID()}"
+    try {
+      val cookieFile = runCatching { prepareRuntimeCookiePath(taskId, target, null, detectCookiePlatform(target)) }.getOrNull()
+      val result = JSONObject(Python.getInstance().getModule("local_downloader")
+        .callAttr("expand_playlist", target, cookieFile, DEFAULT_HTTP_USER_AGENT, debugLoggingEnabled).toString())
+      val entries = result.optJSONArray("entries")
+      return PlaylistListing(
+        success = result.optBoolean("success"),
+        isPlaylist = result.optBoolean("isPlaylist"),
+        title = if (result.isNull("title")) null else result.optString("title").trim().ifBlank { null },
+        total = result.optInt("total"),
+        entries = (0 until (entries?.length() ?: 0)).mapNotNull { entries?.optJSONObject(it)?.optString("url")?.takeIf { url -> url.isNotBlank() } },
+      )
+    } finally {
+      cleanupRuntimeCookieTemp(taskId)
+    }
+  }
+
+  /**
+   * Whether an address is a playlist's or an album's own, and not one video's: only such a
+   * one is downloaded whole. A video opened from a playlist (`watch?v=…&list=…`) is that
+   * video, and a channel is left out: it can hold thousands. The same rule as the screen's
+   * (`src/api/playlists.ts`): keep the two alike.
+   */
+  private fun isPlaylistUrl(raw: String): Boolean {
+    val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+    val host = uri.host?.lowercase()?.removePrefix("www.")?.removePrefix("m.") ?: return false
+    val path = uri.path.orEmpty()
+    return when {
+      host == "youtube.com" || host == "music.youtube.com" -> when {
+        uri.getQueryParameter("v") != null -> false
+        path.startsWith("/playlist") -> uri.getQueryParameter("list") != null
+        else -> host == "music.youtube.com" && path.startsWith("/browse/")
+      }
+      host == "soundcloud.com" -> path.contains("/sets/")
+      host.endsWith("bandcamp.com") -> path.startsWith("/album/")
+      else -> false
+    }
+  }
+
+  /**
+   * What says which playlist an address is, however it was written: YouTube's own id for
+   * the list where there is one, and the host and path otherwise.
+   */
+  private fun playlistSourceKey(address: String): String? {
+    val uri = runCatching { Uri.parse(address) }.getOrNull() ?: return null
+    uri.getQueryParameter("list")?.takeIf { it.isNotBlank() }?.let { return "list:$it" }
+    val host = uri.host?.lowercase()?.removePrefix("www.")?.removePrefix("m.") ?: return null
+    return "$host${uri.path.orEmpty().trimEnd('/')}"
+  }
+
+  /**
+   * The music playlist an album's songs go into. The one made by downloading this same
+   * album before, if there is one: downloaded again, or again after some of it failed, it
+   * fills the same playlist, whatever that has been renamed to. Otherwise a new one, named
+   * [title]; and where a playlist of that name is there already (another album called the
+   * same, or one made by hand), named apart from it, "Name (2)", so the two are not mixed.
+   */
+  private fun soundPlaylistFor(title: String, address: String?): String? = runCatching {
+    @Suppress("UNCHECKED_CAST")
+    val playlists = (soundsStore.listPlaylists() as List<Map<String, Any?>>).filter { it["system"] != true }
+    val source = address?.let { playlistSourceKey(it) }
+    if (source != null) playlists.firstOrNull { it["source"] == source }?.let { return@runCatching it["id"] as? String }
+    val taken = playlists.mapNotNull { (it["name"] as? String)?.trim()?.lowercase() }.toSet()
+    var name = title
+    var n = 2
+    while (name.lowercase() in taken) name = "$title (${n++})"
+    soundsStore.createPlaylist(name, source)["id"] as? String
+  }.getOrNull()
+
+  /**
+   * Each of [urls] becomes a download of its own, in the queue shared links use. As songs,
+   * they are gathered into a music playlist named [title], in this order
+   * ([soundPlaylistFor]). [address] is the playlist's own. An entry that playlist still
+   * holds a song of is not downloaded again: the same album asked for twice fetches what is
+   * missing, not everything. Returns how many were taken, and how many were left as had.
+   */
+  private fun queuePlaylist(title: String?, urls: List<String>, captureMode: String, address: String?): Pair<Int, Int> {
+    val playlistId = if (audioModeEnabled && title != null && soundsStore.isSupported()) soundPlaylistFor(title, address) else null
+    val had = playlistId?.let { runCatching { soundsStore.playlistSourcesPresent(it) }.getOrNull() }.orEmpty()
+    var queued = 0
+    var skipped = 0
+    for ((position, url) in urls.withIndex()) {
+      // By the address the download itself would go by, which is what a song is kept under.
+      if (had.isNotEmpty() && soundsStore.sourceKey(normalizeClipboardUrl(url) ?: url) in had) {
+        skipped += 1
+        continue
+      }
+      val started = startQuickDownloadWithUrl(url, captureMode, soundPlaylist = playlistId?.let { it to position }, expand = false)
+      if (started["accepted"] == true) queued += 1 else if (started["reason"] == "QUEUE_FULL") break
+    }
+    if (playlistId != null) runCatching { sendEvent("soundsChanged", emptyMap<String, Any?>()) }
+    return queued to skipped
+  }
+
   /** A download was saved to MediaStore: a video among them joins the video library. */
   private fun adoptVideo(uri: String, fileName: String, mimeType: String, title: String?, source: MemeStore.Source?) {
     if (!mimeType.startsWith("video/")) return
@@ -1428,11 +1564,38 @@ class LocalDownloaderModule : Module() {
       startQuickDownloadFromClipboard()
     }
 
+    // What a playlist or an album holds, as the pages of its entries: the screen asks before
+    // it has them all downloaded. Nothing of it is logged.
+    AsyncFunction("expandPlaylist") { url: String ->
+      val target = url.trim()
+      if (!Addons.isHttp(target)) throw IllegalArgumentException("INVALID_URL")
+      val list = expandPlaylistInternal(target)
+      mapOf(
+        "success" to list.success,
+        "isPlaylist" to list.isPlaylist,
+        "title" to list.title,
+        "total" to list.total,
+        "entries" to list.entries.map { mapOf("url" to it) },
+      )
+    }
+
+    // The screen said yes: each entry becomes a download of its own.
+    AsyncFunction("queuePlaylist") { input: Map<String, Any?> ->
+      val title = (input["title"] as? String)?.trim()?.ifEmpty { null }
+      val urls = (input["urls"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
+      val address = (input["address"] as? String)?.trim()?.ifEmpty { null }
+      val (queued, skipped) = queuePlaylist(title, urls, "manual", address)
+      mapOf("queued" to queued, "skipped" to skipped)
+    }
+
     AsyncFunction("startQuickDownloadWithUrl") { input: Map<String, Any?> ->
       val url = (input["url"] as? String)?.trim().orEmpty()
       // Given when the request came from a paired device, which said what it wanted.
       val mediaKind = (input["mediaKind"] as? String)?.trim()?.ifEmpty { null }
-      startQuickDownloadWithUrl(url, "manual", mediaKindOverride = mediaKind)
+      // An entry of an album downloaded whole: the song joins this music playlist, at this place.
+      val soundPlaylist = (input["soundPlaylistId"] as? String)?.trim()?.ifEmpty { null }
+        ?.let { it to ((input["position"] as? Number)?.toInt() ?: 0) }
+      startQuickDownloadWithUrl(url, "manual", mediaKindOverride = mediaKind, soundPlaylist = soundPlaylist)
     }
 
     AsyncFunction("getPrivateModeState") {
@@ -1844,11 +2007,13 @@ class LocalDownloaderModule : Module() {
         val index = (queue?.get("index") as? Number)?.toInt() ?: 0
         val items = entries.map { entry ->
           val id = entry["id"] as String
+          // A song has no place to come back to: it begins at its beginning.
+          val audio = entry["kind"] == "audio"
           MpvEngine.Item(
             url = entry["uri"] as String,
             title = (entry["title"] as? String).orEmpty(),
-            subtitle = (entry["uploader"] as? String)?.takeIf { it.isNotBlank() },
-            record = { positionMs, durationMs ->
+            subtitle = (entry["subtitle"] as? String)?.takeIf { it.isNotBlank() },
+            record = if (audio) null else { positionMs, durationMs ->
               watchPlace.execute {
                 runCatching {
                   videos.setPlace(id, positionMs, durationMs)
@@ -1856,11 +2021,15 @@ class LocalDownloaderModule : Module() {
                 }
               }
             },
-            place = { videos.place(id) },
+            place = if (audio) null else { -> videos.place(id) },
             id = id,
+            audio = audio,
+            artwork = (entry["artwork"] as? String)?.takeIf { it.isNotBlank() },
           )
         }
-        if (items.isNotEmpty()) view.setQueue(entries.joinToString(",") { it["id"] as String }, items, index)
+        val ids = entries.joinToString(",") { it["id"] as String }
+        val key = (queue?.get("key") as? String)?.takeIf { it.isNotBlank() } ?: ids
+        if (items.isNotEmpty()) view.setQueue(key, "$key#${ids.hashCode()}#${items.size}", items, index)
       }
 
       AsyncFunction("skipTo") { view: MpvPlayerView, index: Int -> view.skipTo(index) }
@@ -2183,6 +2352,26 @@ class LocalDownloaderModule : Module() {
 
     AsyncFunction("playerSeekBy") { ms: Double ->
       Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.seekBy(ms) } }
+      Unit
+    }
+
+    // Asked as the screens are made, before any of them is drawn: so not a promise.
+    Function("playerKey") { MpvEngine.current?.playingKey }
+
+    AsyncFunction("playerNext") {
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.next() } }
+      Unit
+    }
+
+    AsyncFunction("playerPrevious") {
+      Handler(Looper.getMainLooper()).post { runCatching { MpvEngine.current?.previous() } }
+      Unit
+    }
+
+    AsyncFunction("playerSetRepeat") { repeat: String ->
+      Handler(Looper.getMainLooper()).post {
+        runCatching { MpvEngine.current?.repeat = repeat.takeIf { it == "one" || it == "all" } ?: "off" }
+      }
       Unit
     }
 
@@ -3818,12 +4007,13 @@ class LocalDownloaderModule : Module() {
                 val plan = readAutoPresetPlan()
                 if (plan == null) {
                   // Nothing to render: file it and drop the download, as before.
-                  soundsStore.registerDownloadedSound(
+                  val filed = soundsStore.registerDownloadedSound(
                     sourceFilePath = filePath,
                     displayName = filename,
                     sourceUrl = url,
                     thumbnailPath = thumbnailPath,
-                  )
+                  )["id"] as? String
+                  joinSoundPlaylist(url, filed, last = true)
                   finalFilePath = null
                   runCatching { File(filePath).delete() }
                   thumbnailPath?.let { runCatching { File(it).delete() } }
@@ -3845,6 +4035,7 @@ class LocalDownloaderModule : Module() {
                       sourceUrl = url,
                       thumbnailPath = stagedThumb,
                     )["id"] as? String
+                    joinSoundPlaylist(url, filedId, last = false)
                     debug("Task[$taskId] audio saved to music library")
                   }
 
@@ -3868,6 +4059,7 @@ class LocalDownloaderModule : Module() {
                       // now rather than leave it stranded in staging.
                       if (staged.registerOnFailure) registerStagedOriginal(staged)
                       discardStaged(staged)
+                      pendingSoundPlaylists.remove(url)
                     }
                 }
               }.onFailure { saveError ->
@@ -4074,6 +4266,9 @@ class LocalDownloaderModule : Module() {
     captureMode: String,
     visibilityOverride: String? = null,
     mediaKindOverride: String? = null,
+    soundPlaylist: Pair<String, Int>? = null,
+    /** False for an entry of a playlist already taken apart: it is one download whatever it looks like. */
+    expand: Boolean = true,
   ): Map<String, Any?> {
     requireNotNull(appContext.reactContext)
     // No notification-permission gate: see startDownloadInternal.
@@ -4096,6 +4291,36 @@ class LocalDownloaderModule : Module() {
       return mapOf("accepted" to false, "reason" to admission.reason)
     }
 
+    // A playlist's or an album's own address, from the notification, the share sheet or
+    // another device: everything in it, each a download of its own. Nobody is asked here,
+    // there being no screen to ask on. Handed on as one download it would fetch every entry
+    // and keep the first.
+    if (expand && isPlaylistUrl(normalizedUrl)) {
+      scope.launch {
+        val list = runCatching { expandPlaylistInternal(normalizedUrl) }.getOrNull()
+        val (queued, skipped) =
+          if (list != null && list.success && list.isPlaylist) queuePlaylist(list.title, list.entries, captureMode, normalizedUrl) else 0 to 0
+        // Nothing taken and nothing already had: it could not be read, or all were refused.
+        if (queued == 0 && skipped == 0) {
+          synchronized(queueLock) { recentQuickUrls.remove(normalizedUrl) }
+          reportQuickActionReason("QUICK_DOWNLOAD_REJECTED")
+        }
+      }
+      reportQuickActionReason(null)
+      return mapOf(
+        "accepted" to true,
+        "playlist" to true,
+        "queueSize" to queueSize(),
+        "queueMax" to MAX_QUEUED_DOWNLOADS,
+        "resolvedUrl" to normalizedUrl,
+        "visibility" to selectedVisibility,
+        "captureMode" to captureMode,
+      )
+    }
+
+    // Before the download starts: it is found by this when its song lands.
+    if (audioOnly && soundPlaylist != null) pendingSoundPlaylists[normalizedUrl] = soundPlaylist
+
     return runCatching {
       val result = startDownloadInternal(
         url = normalizedUrl,
@@ -4117,6 +4342,7 @@ class LocalDownloaderModule : Module() {
         "captureMode" to captureMode
       )
     }.getOrElse {
+      pendingSoundPlaylists.remove(normalizedUrl)
       val reason = when {
         it.message?.contains("BACKGROUND_PERMISSION_REQUIRED") == true -> "PERMISSION_REQUIRED"
         it.message?.contains("DOWNLOAD_ALREADY_IN_PROGRESS") == true -> "ALREADY_ACTIVE"
@@ -4455,12 +4681,13 @@ class LocalDownloaderModule : Module() {
     val file = File(staged.path)
     if (!file.isFile || file.length() <= 0L) return
     runCatching {
-      soundsStore.registerDownloadedSound(
+      val filed = soundsStore.registerDownloadedSound(
         sourceFilePath = staged.path,
         displayName = staged.displayName,
         sourceUrl = staged.sourceUrl,
         thumbnailPath = staged.thumbnailPath,
-      )
+      )["id"] as? String
+      joinSoundPlaylist(staged.sourceUrl, filed, last = false)
       debug("Filed the staged original after an incomplete preset batch")
     }.onFailure { addError("PRESET_ORIGINAL_RECOVERY_FAILED: ${it.message}") }
   }
@@ -4601,6 +4828,8 @@ class LocalDownloaderModule : Module() {
 
           outcome.onSuccess { song ->
             completed += 1
+            // A version made of a song that was downloaded for an album: the album's too.
+            if (staged != null) joinSoundPlaylist(staged.sourceUrl, song["id"] as? String, last = false)
             emitPresetProgress(renderId, "TRACK_DONE", job.songId, index, total, 100.0, song = song)
           }.onFailure { error ->
             if (cancelFlag.exists()) return@onFailure
@@ -4630,6 +4859,7 @@ class LocalDownloaderModule : Module() {
           // than delete it, or the download is lost.
           if (!clean && staged.registerOnFailure) registerStagedOriginal(staged)
           discardStaged(staged)
+          staged.sourceUrl?.let { pendingSoundPlaylists.remove(it) }
         }
 
         emitPresetProgress(

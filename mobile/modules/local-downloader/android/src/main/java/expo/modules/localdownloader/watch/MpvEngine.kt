@@ -44,6 +44,10 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     val place: (() -> Long)? = null,
     /** What the app's library knows it as, for an item of the library. */
     val id: String? = null,
+    /** A song: it has no picture, and begins with no surface to draw into. */
+    val audio: Boolean = false,
+    /** A picture for the notification and the lock screen, as a file: a song's cover. */
+    val artwork: String? = null,
   )
 
   /** The screen's side. Called on the main thread. */
@@ -66,10 +70,13 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
   private var items: List<Item> = emptyList()
   private var index = 0
   /** Which queue [items] is, where the one who set it said. */
-  private var key: String? = null
+  @Volatile private var key: String? = null
+
+  /** The queue that plays, by its key; null when nothing is loaded. Read from any thread. */
+  val playingKey: String? get() = if (loaded != null) key else null
   /** Asked for, and waiting for a surface to draw its first frame into. */
   private var pending: Int? = null
-  private var loaded: Item? = null
+  @Volatile private var loaded: Item? = null
   private var surfaceReady = false
   /** The surface drawn into, so that one already replaced cannot take the picture away. */
   private var surface: Surface? = null
@@ -77,8 +84,12 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
   private var recordedAt = 0L
   /** From asking for a file until its first frame: what the screen shows as loading. */
   @Volatile private var starting = false
-  /** The video track, while it is off because nothing shows it. */
-  private var videoBefore: String? = null
+  /**
+   * The video track is off because nothing shows it. It comes back as mpv's own choice
+   * ("auto"), not as what it was: taken away while a song played, what it was is "no", and
+   * put back as that it left every video after the song with sound and no picture.
+   */
+  private var videoOff = false
   /** Playing on with no surface: the screen off, another app in front. */
   private var unseen = false
 
@@ -126,6 +137,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     }
     reportProgress()
     reportPlayback()
+    tellChanged()
   }
 
   /**
@@ -170,6 +182,8 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
       setOptionString("osd-fonts-dir", it.path)
       setOptionString("sub-font", "Noto Sans")
     }
+    // A song's cover is not a film: the app draws it itself, where it wants it.
+    setOptionString("audio-display", "no")
     setOptionString("keep-open", "yes")
     setOptionString("idle", "yes")
     init()
@@ -197,9 +211,15 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     if (items.isEmpty()) return
     val at = index.coerceIn(items.indices)
     // Wherever in it [index] says: a screen's copy of that can be older than the queue's
-    // own, which has moved on by itself. Going to another item of it is [skipTo]'s.
-    if (key != null && key == this.key && loaded != null) {
+    // own, which has moved on by itself. Going to another item of it is [skipTo]'s. The
+    // list may be another, though: items added to the one playing, which goes on as it is.
+    val playing = loaded
+    if (key != null && key == this.key && playing != null) {
+      this.items = items
+      this.index = items.indexOfFirst { it.id != null && it.id == playing.id }.takeIf { it >= 0 } ?: this.index.coerceIn(items.indices)
       report()
+      reportPlayback()
+      tellChanged()
       return
     }
     this.items = items
@@ -223,7 +243,10 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
   val hasNext get() = index < items.lastIndex
   val hasPrevious get() = index > 0
 
-  fun next() = skipTo(index + 1)
+  /** Round to the first from the last, where the queue repeats. */
+  fun next() {
+    if (hasNext) skipTo(index + 1) else if (repeat == "all" && items.isNotEmpty()) skipTo(0)
+  }
 
   /**
    * A little way into an item, "previous" is its own beginning; at its beginning, the one
@@ -241,7 +264,8 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     this.index = index
     pending = index
     // Out of sight nothing waits for a surface: there is none to come, and only sound plays.
-    if (surfaceReady || unseen) load()
+    // Nor does a song wait for one, wherever it begins.
+    if (surfaceReady || unseen || items.getOrNull(index)?.audio == true) load()
     if (tell) listener?.item(index)
   }
 
@@ -289,9 +313,14 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
 
   // ---- what the screen asks --------------------------------------------------------------------
 
-  fun setPaused(paused: Boolean) = mpv?.setPropertyBoolean("pause", paused)
+  /** Played at its end, where it was held (keep-open), an item starts over: there is nothing after the end to play. */
+  fun setPaused(paused: Boolean) {
+    val mpv = mpv ?: return
+    if (!paused && mpv.getPropertyBoolean("eof-reached") == true) mpv.command(arrayOf("seek", "0", "absolute"))
+    mpv.setPropertyBoolean("pause", paused)
+  }
 
-  fun togglePaused() = mpv?.let { it.setPropertyBoolean("pause", it.getPropertyBoolean("pause") != true) }
+  fun togglePaused() = setPaused(mpv?.getPropertyBoolean("pause") != true)
 
   fun seek(ms: Double) = mpv?.command(arrayOf("seek", "${ms / 1000.0}", "absolute"))
 
@@ -328,8 +357,8 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     surfaceReady = true
     unseen = false
     // Last, with the output in place: the track comes back into a sound that never stopped.
-    videoBefore?.let { mpv.setPropertyString("vid", it) }
-    videoBefore = null
+    if (videoOff) mpv.setPropertyString("vid", "auto")
+    videoOff = false
     load()
   }
 
@@ -348,7 +377,7 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     // track is turned off first: taking the output from under a playing track makes mpv seek
     // to where it is, which is heard as a gap; with no track there is nothing to seek for.
     if (background) {
-      if (videoBefore == null) videoBefore = mpv.getPropertyString("vid") ?: "auto"
+      videoOff = true
       mpv.setPropertyString("vid", "no")
       unseen = loaded != null
     } else {
@@ -470,8 +499,13 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     if (mpv == null || item == null) return mapOf("active" to false)
     return mapOf(
       "active" to true,
+      "key" to key,
       "ids" to items.mapNotNull { it.id },
       "index" to index,
+      "id" to item.id,
+      "audio" to item.audio,
+      "buffering" to buffering(mpv),
+      "repeat" to repeat,
       "title" to item.title,
       "subtitle" to item.subtitle,
       "paused" to (mpv.getPropertyBoolean("pause") ?: false),
@@ -509,9 +543,11 @@ class MpvEngine private constructor(val context: Context, private val shared: Bo
     positionMs = ((mpv.getPropertyDouble("time-pos") ?: 0.0) * 1000).toLong(),
     durationMs = ((mpv.getPropertyDouble("duration") ?: 0.0) * 1000).toLong(),
     speed = (mpv.getPropertyDouble("speed") ?: 1.0).toFloat(),
-    hasPrevious = hasPrevious,
-    hasNext = hasNext,
+    // In a queue "previous" always does something: at the least it starts the item over.
+    hasPrevious = hasPrevious || key != null,
+    hasNext = hasNext || (repeat == "all" && items.size > 1),
     repeat = repeat,
+    artwork = loaded?.artwork,
   )
 
   /** What the session shows; it counts the position on by itself between these. */

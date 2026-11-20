@@ -265,14 +265,15 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
 
   /**
    * A queue of the app's own library, played from the item at [index]. [key] says which
-   * queue it is: the same one set again changes nothing.
+   * queue it is, and [stamp] which list of it: the same list set again changes nothing, and
+   * another list under the same key is the same queue with items added, which plays on.
    */
-  fun setQueue(key: String, items: List<MpvEngine.Item>, index: Int) {
-    if (key == queueKey || items.isEmpty()) return
-    queueKey = key
+  fun setQueue(key: String, stamp: String, items: List<MpvEngine.Item>, index: Int) {
+    if (stamp == queueKey || items.isEmpty()) return
+    queueKey = stamp
     source = null
     post {
-      if (released || queueKey != key) return@post
+      if (released || queueKey != stamp) return@post
       engine(shared = true)?.play(items, index, key)
     }
   }

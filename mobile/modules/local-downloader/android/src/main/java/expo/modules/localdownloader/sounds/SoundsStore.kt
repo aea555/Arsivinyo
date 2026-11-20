@@ -401,7 +401,12 @@ class SoundsStore(private val context: Context) {
     }
   }
 
-  fun createPlaylist(name: String): Map<String, Any?> {
+  /**
+   * [source]: for a playlist made by downloading one, what says which one it was (not an
+   * address to open: the caller's own key for it). The same playlist downloaded again is
+   * then found by it, whatever the playlist has been renamed to since.
+   */
+  fun createPlaylist(name: String, source: String? = null): Map<String, Any?> {
     requireSupported()
     val trimmed = name.trim()
     if (trimmed.isEmpty()) throw IllegalArgumentException("INVALID_NAME")
@@ -415,6 +420,7 @@ class SoundsStore(private val context: Context) {
         put("songIds", JSONArray())
         put("createdAt", now)
         put("updatedAt", now)
+        if (!source.isNullOrBlank()) put("source", source)
       }
       playlists.put(pl)
       writeIndexLocked(index)
@@ -457,6 +463,52 @@ class SoundsStore(private val context: Context) {
   }
 
   /** Replace a playlist's ordered membership (used for in-playlist reordering). */
+  /** What a download's address is kept as, here and in a song's `sourceUrlHash`. */
+  fun sourceKey(url: String): String = sha256Hex(url)
+
+  /**
+   * A song filed from the download of [url] joined this playlist. Written down with the
+   * playlist, because not every such song says where it came from: a version a preset made
+   * does not, and where only those are kept there is no original to say it.
+   */
+  fun notePlaylistEntry(playlistId: String, url: String, songId: String) {
+    synchronized(lock) {
+      val index = readIndexLocked()
+      val pl = findPlaylistLocked(index, playlistId) ?: return
+      val entries = pl.optJSONObject("entries") ?: JSONObject().also { pl.put("entries", it) }
+      val key = sourceKey(url)
+      val songs = entries.optJSONArray(key) ?: JSONArray().also { entries.put(key, it) }
+      songs.put(songId)
+      writeIndexLocked(index)
+    }
+  }
+
+  /**
+   * The downloads this playlist still holds a song of, by [sourceKey]: so that the same
+   * album downloaded again fetches what is missing and not everything. A song taken out of
+   * the playlist, or deleted, no longer counts, and its download is wanted again.
+   */
+  fun playlistSourcesPresent(playlistId: String): Set<String> {
+    synchronized(lock) {
+      val index = readIndexLocked()
+      val pl = findPlaylistLocked(index, playlistId) ?: return emptySet()
+      val valid = validSongIdSet(index)
+      val ids = pl.optJSONArray("songIds") ?: JSONArray()
+      val held = (0 until ids.length()).map { ids.getString(it) }.filter { it in valid }.toSet()
+      val present = HashSet<String>()
+      // What was written down as it joined.
+      pl.optJSONObject("entries")?.let { entries ->
+        for (key in entries.keys()) {
+          val songs = entries.optJSONArray(key) ?: continue
+          if ((0 until songs.length()).any { songs.optString(it) in held }) present.add(key)
+        }
+      }
+      // And what a song says of itself: one that joined before any of this was written down.
+      for (id in held) findSongLocked(index, id)?.optString("sourceUrlHash")?.takeIf { it.isNotBlank() && it != "null" }?.let { present.add(it) }
+      return present
+    }
+  }
+
   fun setPlaylistSongs(id: String, songIds: List<String>): Map<String, Any?> {
     requireSupported()
     synchronized(lock) {
@@ -1074,6 +1126,7 @@ class SoundsStore(private val context: Context) {
       "name" to p.optString("name"),
       "songIds" to ids,
       "system" to (p.optString("id") == FAVORITES_PLAYLIST_ID || p.optBoolean("system", false)),
+      "source" to p.optString("source").ifBlank { null },
       "createdAt" to p.optLong("createdAt", 0L),
       "updatedAt" to p.optLong("updatedAt", 0L),
     )

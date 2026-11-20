@@ -40,13 +40,28 @@ export interface MpvRecord {
   bingeGroup: string | null;
 }
 
+/** One thing of the app's own library in a queue: a video or a song. */
+export interface MpvQueueItem {
+  kind: 'video' | 'audio';
+  id: string;
+  uri: string;
+  title: string;
+  /** Who posted the video, or the song's artist. */
+  subtitle?: string | null;
+  /** A picture of it as a file path, for the notification and the lock screen: a song's cover. */
+  artwork?: string | null;
+}
+
 /**
- * Videos of the app's own library to play one after another, from the one at `index`. The
- * player keeps the queue itself: each video resumes where it stopped, has its place written
- * down, and is followed by the next, also while the app is out of sight.
+ * Videos and songs of the app's own library to play one after another, from the one at
+ * `index`. The player keeps the queue itself: a video resumes where it stopped and has its
+ * place written down, and each item is followed by the next, also while the app is out of
+ * sight. `key` names the queue: the same key with more items is the same queue, grown, and
+ * what plays goes on; another key begins anew.
  */
 export interface MpvQueue {
-  items: { id: string; uri: string; title: string; uploader?: string | null }[];
+  key: string;
+  items: MpvQueueItem[];
   index: number;
 }
 

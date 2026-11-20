@@ -98,4 +98,6 @@ export * from './pairing';
 export * from './memes';
 export * from './watch';
 export * from './videos';
+export * from './player';
+export * from './playlists';
 export * from './torrents';

@@ -82,6 +82,7 @@ import type {
   LocalSoundsImportResult,
   LocalSoundsLibrary,
   LocalPlayerState,
+  LocalPlaylist,
   LocalVideo,
   LocalTaskStatusResult,
   LocalVaultDiagnostics,
@@ -99,7 +100,12 @@ type LocalDownloaderNativeModule = {
   ensureBackgroundPermission(): Promise<LocalBackgroundPermissionResult>;
   setStickyNotificationEnabled(input: { enabled: boolean }): Promise<LocalStickyNotificationState>;
   startQuickDownloadFromClipboard(): Promise<LocalQuickDownloadResult>;
-  startQuickDownloadWithUrl(input: { url: string; mediaKind?: 'audio' | 'video' }): Promise<LocalQuickDownloadResult>;
+  startQuickDownloadWithUrl(input: {
+    url: string;
+    mediaKind?: 'audio' | 'video';
+    soundPlaylistId?: string;
+    position?: number;
+  }): Promise<LocalQuickDownloadResult>;
   getPrivateModeState(): Promise<LocalPrivateModeState>;
   setPrivateModeEnabled(input: { enabled: boolean }): Promise<LocalPrivateModeState>;
   getAudioModeState(): Promise<{ enabled: boolean }>;
@@ -244,10 +250,16 @@ type LocalDownloaderNativeModule = {
   setExperimentalFeatures(enabled: boolean): Promise<void>;
   dismissMemePrompt(id: string): Promise<void>;
 
+  expandPlaylist(url: string): Promise<LocalPlaylist>;
+  queuePlaylist(input: { title: string | null; urls: string[]; address: string | null }): Promise<{ queued: number; skipped: number }>;
   playerState(): Promise<LocalPlayerState>;
   playerSetPaused(paused: boolean): Promise<void>;
   playerSeek(ms: number): Promise<void>;
   playerSeekBy(ms: number): Promise<void>;
+  playerKey(): string | null;
+  playerNext(): Promise<void>;
+  playerPrevious(): Promise<void>;
+  playerSetRepeat(repeat: string): Promise<void>;
   playerSkipTo(index: number): Promise<void>;
   playerStop(): Promise<void>;
   isVideosSupported(): boolean;
@@ -439,10 +451,16 @@ const NativeLocalDownloader: LocalDownloaderNativeModule = Platform.OS === 'andr
       getExperimentalFeatures: async () => false,
       setExperimentalFeatures: async () => unsupported(),
       dismissMemePrompt: async () => unsupported(),
+      expandPlaylist: async () => unsupported(),
+      queuePlaylist: async () => unsupported(),
       playerState: async () => ({ active: false }),
       playerSetPaused: async () => undefined,
       playerSeek: async () => undefined,
       playerSeekBy: async () => undefined,
+      playerKey: () => null,
+      playerNext: async () => undefined,
+      playerPrevious: async () => undefined,
+      playerSetRepeat: async () => undefined,
       playerSkipTo: async () => undefined,
       playerStop: async () => undefined,
       isVideosSupported: () => false,

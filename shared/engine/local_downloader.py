@@ -2775,6 +2775,66 @@ def _playable_format(info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
+# More than the app will queue at once is not listed: the rest would only be refused.
+PLAYLIST_MAX_ENTRIES = 250
+
+
+def expand_playlist(
+    url: str,
+    cookie_file: Optional[str] = None,
+    user_agent: str = DEFAULT_HTTP_USER_AGENT,
+    debug_logging: bool = False,
+) -> str:
+    """What a playlist or an album holds: each entry's own page, to be downloaded one by one.
+
+    Nothing is downloaded and no entry is opened: the site's list alone is read. A page that
+    is one video says so (`isPlaylist` false). Titles and URLs are returned to the app and
+    never logged.
+    """
+    # yt-dlp's own User-Agent, not the app's: [user_agent] is a phone's, and to a phone
+    # YouTube sends a playlist page that yt-dlp cannot read ("Unable to recognize tab page").
+    opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": "in_playlist",
+        "noplaylist": False,
+    }
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+    except Exception as exc:
+        _debug_log(debug_logging, f"playlist expand failed: {type(exc).__name__}")
+        return json.dumps({"success": False, "code": "PLAYLIST_FAILED", "message": str(exc)[:500]})
+    if info.get("_type") != "playlist":
+        return json.dumps({"success": True, "isPlaylist": False, "entries": []})
+    entries = []
+    seen = set()
+    total = 0
+    for entry in info.get("entries") or []:
+        if not entry:
+            continue
+        page = entry.get("url") or entry.get("webpage_url")
+        if not page or not str(page).startswith(("http://", "https://")) or page in seen:
+            continue
+        seen.add(page)
+        total += 1
+        if len(entries) < PLAYLIST_MAX_ENTRIES:
+            entries.append({"url": page, "title": entry.get("title")})
+    # YouTube Music titles an album's list "Album - <its name>" (and "Single - ", "EP - "):
+    # the kind is not part of the name.
+    title = re.sub(r"^(Album|Single|EP)\s+[-\u2013]\s+", "", str(info.get("title") or "")).strip() or None
+    return json.dumps({
+        "success": True,
+        "isPlaylist": True,
+        "title": title,
+        "total": total,
+        "entries": entries,
+    })
+
+
 def resolve_stream(
     url: str,
     cookie_file: Optional[str] = None,

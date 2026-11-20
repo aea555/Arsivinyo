@@ -1,81 +1,59 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useSegments } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Image } from 'expo-image';
+import { useRouter, useSegments, type Href } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  getLanguages,
-  getPlayerState,
-  listLocalVideos,
-  onPlayerChanged,
-  seekPlayer,
-  setPlayerPaused,
-  skipPlayerTo,
-} from '@/src/api';
+import { getLanguages, getPlayerState, onPlayerChanged, seekPlayer, setPlayerPaused, skipPlayerTo, stopPlayer } from '@/src/api';
 import { AppText as Text } from '@/src/components';
 import { Player } from '@/src/features/player/Player';
 import { useTheme } from '@/src/theme';
 
 import {
-  adoptVideos,
-  closeVideo,
-  expandVideo,
-  setVideoRepeat,
-  useVideoBarLift,
-  useVideoRepeat,
-  useVideoSession,
-  videoAt,
-  videoStopped,
-} from './open';
+  closeMedia,
+  expandMedia,
+  mediaAt,
+  mediaPlace,
+  mediaPlaceIs,
+  mediaRepeatIs,
+  mediaSession,
+  mediaStopped,
+  setMediaRepeat,
+  useMediaBarLift,
+  useMediaPlace,
+  useMediaRepeat,
+  useMediaSession,
+} from './session';
 
 const BAR_HEIGHT = 60;
+const BAR_GAP = 6;
 /** From the screen's sides to the bar's. */
 const BAR_SIDE = 14;
-const BAR_GAP = 6;
-/** Screens that are a player of their own: this one is not drawn over them, and is quiet. */
-const OTHER_PLAYERS = ['watch-player', 'private-player', 'sound-player'];
+/**
+ * Screens that are a player themselves: the bar is not drawn over them. Two are players of
+ * their own, which quiet this one as they begin; the third is the large player for a song,
+ * of this same player.
+ */
+const PLAYER_SCREENS = ['watch-player', 'private-player', 'sound-player'];
 
-function useOtherPlayer(): boolean {
+function usePlayerScreen(): boolean {
   const segments = useSegments() as string[];
-  return segments.some((segment) => OTHER_PLAYERS.includes(segment));
-}
-
-// Where the video is, a few times a second. Kept apart from the player's own state: only
-// the bar's buttons and its line are drawn again for it, not the player.
-interface Place {
-  positionMs: number;
-  durationMs: number;
-  paused: boolean;
-}
-let place: Place = { positionMs: 0, durationMs: 0, paused: false };
-const watchers = new Set<() => void>();
-function tell(next: Place) {
-  place = next;
-  watchers.forEach((watcher) => watcher());
-}
-function usePlace(): Place {
-  return useSyncExternalStore(
-    (watcher) => {
-      watchers.add(watcher);
-      return () => watchers.delete(watcher);
-    },
-    () => place,
-  );
+  return segments.some((segment) => PLAYER_SCREENS.includes(segment));
 }
 
 /**
  * The room the small player takes under every screen, so that it covers none of them.
  * Nothing when nothing plays, or when the player is the whole screen; and nothing under a
- * screen that keeps the room itself, above a bar of its own ([VideoBarRoom]).
+ * screen that keeps the room itself, above a bar of its own ([MediaBarRoom]).
  */
-export function VideoBarSpace() {
+export function MediaBarSpace() {
   const { colors } = useTheme();
-  const session = useVideoSession();
+  const session = useMediaSession();
   const insets = useSafeAreaInsets();
-  const other = useOtherPlayer();
-  const lift = useVideoBarLift();
+  const other = usePlayerScreen();
+  const lift = useMediaBarLift();
   if (!session || session.expanded || other || lift > 0) return null;
   // The screens' own colour: this strip is seen around the bar, as the foot of the screen above it.
   return <View style={{ height: BAR_HEIGHT + BAR_GAP * 2 + insets.bottom, backgroundColor: colors.background }} />;
@@ -83,30 +61,33 @@ export function VideoBarSpace() {
 
 /**
  * The same room, for a screen to put above a bar of its own at the bottom, with
- * `setVideoBarLift` given that bar's height: the small player then sits above the bar.
+ * `setMediaBarLift` given that bar's height: the small player then sits above the bar.
  */
-export function VideoBarRoom() {
-  const session = useVideoSession();
+export function MediaBarRoom() {
+  const session = useMediaSession();
   if (!session || session.expanded) return null;
   return <View style={{ height: BAR_HEIGHT + BAR_GAP * 2 }} />;
 }
 
 /**
- * The app's video player, over every screen: the whole screen, or small in a bar at the
- * bottom with the video still playing in it. It is one player in both, only resized, so
- * going between them does not stop or restart anything. Closing the large one makes it
- * small; the bar's own button stops it.
+ * The app's player of its own library, songs and videos, over every screen. A video is the
+ * whole screen, or small in a bar at the bottom with the picture still playing in it: one
+ * player in both, only resized, so going between them does not stop or restart anything. A
+ * song is always the bar, with its cover where the picture would be; its large player is a
+ * screen of its own (`app/sound-player.tsx`), which a tap on the bar opens. Closing the
+ * large video makes it small; the bar's own button stops what plays.
  *
- * The queue is the player's (`MpvEngine`), so it plays on with the app out of sight. This
- * component is only told which video of the list plays.
+ * The queue is the player's (`MpvEngine`), so it plays on with the app out of sight and
+ * with this component not drawn. This component is only told which item of the list plays.
  */
-export function VideoPlayer() {
+export function MediaPlayer() {
   const { colors } = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const session = useVideoSession();
-  const other = useOtherPlayer();
-  const lift = useVideoBarLift();
-  const repeat = useVideoRepeat();
+  const session = useMediaSession();
+  const other = usePlayerScreen();
+  const lift = useMediaBarLift();
+  const repeat = useMediaRepeat();
   const [languages, setLanguages] = useState<string[] | null>(null);
 
   // The languages first: mpv picks the file's tracks by them as it opens it.
@@ -120,40 +101,59 @@ export function VideoPlayer() {
     };
   }, []);
 
-  // Stopped from outside this component (the app swiped away): the bar goes. And a queue
-  // found playing with nothing here to match it, after a reload: taken up, small.
+  // What the player says of itself, also while no view of it is on screen (under the large
+  // player for a song, the view is not drawn): which item, paused or not, the repeat, and
+  // that it stopped. And one found playing with no list here to match it, after a reload of
+  // the screens alone, is stopped: there is nothing to show it with.
   useEffect(() => {
     const subscription = onPlayerChanged((state) => {
-      if (!state.active) videoStopped();
-      else if (typeof state.paused === 'boolean' && state.paused !== place.paused) tell({ ...place, paused: state.paused });
+      if (!state.active) {
+        mediaStopped();
+        return;
+      }
+      if (state.key !== mediaSession()?.key) return;
+      if (typeof state.index === 'number') mediaAt(state.index);
+      if (state.repeat) mediaRepeatIs(state.repeat);
+      const now = mediaPlace();
+      if (typeof state.paused === 'boolean' && (state.paused !== now.paused || !!state.buffering !== now.buffering)) {
+        mediaPlaceIs({ ...now, paused: state.paused, buffering: !!state.buffering });
+      }
     });
     void getPlayerState()
-      .then(async (state) => {
-        if (!state.active || !state.ids?.length) return;
-        const byId = new Map((await listLocalVideos()).map((v) => [v.id, v]));
-        const videos = state.ids.map((id) => byId.get(id)).filter((v) => v != null);
-        if (videos.length === state.ids.length) adoptVideos(videos, state.index ?? 0);
+      .then((state) => {
+        if (state.active && !mediaSession()) void stopPlayer();
       })
       .catch(() => undefined);
     return () => subscription.remove();
   }, []);
 
-  const videos = session?.videos;
+  const key = session?.key;
+  const items = session?.items;
   const start = session?.start ?? 0;
   const queue = useMemo(
     () =>
-      videos
-        ? { items: videos.map((v) => ({ id: v.id, uri: v.uri, title: v.title, uploader: v.uploader ?? null })), index: start }
+      key && items
+        ? {
+            key,
+            items: items.map(({ kind, id, uri, title, subtitle, artwork }) => ({ kind, id, uri, title, subtitle, artwork })),
+            index: start,
+          }
         : null,
-    [videos, start],
+    [key, items, start],
   );
 
+  // A song has no large player here: reached in a queue while a video was the whole screen,
+  // the player becomes the bar.
+  const audio = session ? (session.items[session.index] ?? session.items[0]).kind === 'audio' : false;
+  useEffect(() => {
+    if (audio) expandMedia(false);
+  }, [audio, session?.index]);
+
   if (!session || !queue || other) return null;
-  const { index, expanded } = session;
-  const video = session.videos[index] ?? session.videos[0];
-  // Small, the picture fills its box, cut to it; a video taller than wide gets a box less
-  // wide, so less of it is cut away.
-  const tall = video.height > video.width;
+  const { index } = session;
+  const item = session.items[index] ?? session.items[0];
+  const expanded = session.expanded && !audio;
+  const open = () => (audio ? router.push('/sound-player' as Href) : expandMedia(true));
 
   // The same three views around the player in both sizes, only styled apart: were it put
   // elsewhere in the tree, React would make the player again, and the video with it. And
@@ -168,35 +168,39 @@ export function VideoPlayer() {
             : [styles.bar, { bottom: insets.bottom + lift + BAR_GAP, backgroundColor: colors.surfaceHover, borderColor: colors.border }]
         }
       >
-        <View style={expanded ? styles.fill : [styles.box, tall && styles.boxTall]} collapsable={false}>
+        <View style={expanded ? styles.fill : [styles.box, (audio || item.tall) && styles.boxTall]} collapsable={false}>
           <Player
             source={null}
             queue={languages ? queue : null}
             item={index}
-            onItem={videoAt}
-            title={video.title}
+            onItem={mediaAt}
+            title={item.title}
             languages={languages ?? []}
             background
-            upright={tall}
+            upright={!!item.tall}
             mini={!expanded}
             repeat={repeat}
-            onRepeat={setVideoRepeat}
-            onProgress={tell}
-            onClose={() => expandVideo(false)}
+            onRepeat={setMediaRepeat}
+            onProgress={mediaPlaceIs}
+            onClose={() => expandMedia(false)}
           />
           {!expanded ? (
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={() => expandVideo(true)}
-              accessibilityRole="button"
-              accessibilityLabel={video.title}
-            />
+            <Pressable style={StyleSheet.absoluteFill} onPress={open} accessibilityRole="button" accessibilityLabel={item.title}>
+              {/* A song's cover, over where a video's picture is. */}
+              {audio ? (
+                <View style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: colors.surface }]}>
+                  {item.artwork ? (
+                    <Image source={{ uri: `file://${item.artwork}` }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                  ) : (
+                    <Ionicons name="musical-note" size={20} color={colors.textMuted} />
+                  )}
+                </View>
+              ) : null}
+            </Pressable>
           ) : null}
         </View>
         {!expanded ? (
-          <>
-            <Bar title={video.title} uploader={video.uploader ?? null} next={index < session.videos.length - 1 ? index + 1 : null} />
-          </>
+          <Bar title={item.title} subtitle={item.subtitle ?? null} next={index < session.items.length - 1 ? index + 1 : null} onOpen={open} />
         ) : null}
       </View>
       {!expanded ? <Scrub bottom={insets.bottom + lift + BAR_GAP} /> : null}
@@ -208,15 +212,15 @@ export function VideoPlayer() {
  * What is beside the small picture: what plays, and three buttons, to pause it, go to the
  * next and stop it. No more than that: the rest is a tap away, in the large player.
  */
-function Bar({ title, uploader, next }: { title: string; uploader: string | null; next: number | null }) {
+function Bar({ title, subtitle, next, onOpen }: { title: string; subtitle: string | null; next: number | null; onOpen: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const { paused } = usePlace();
+  const { paused } = useMediaPlace();
   return (
     <>
-      <Pressable style={styles.words} onPress={() => expandVideo(true)} accessibilityRole="button" accessibilityLabel={title}>
+      <Pressable style={styles.words} onPress={onOpen} accessibilityRole="button" accessibilityLabel={title}>
         <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{title}</Text>
-        {uploader ? <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{uploader}</Text> : null}
+        {subtitle ? <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
       </Pressable>
       <Pressable
         onPress={() => void setPlayerPaused(!paused)}
@@ -227,11 +231,11 @@ function Bar({ title, uploader, next }: { title: string; uploader: string | null
         <Ionicons name={paused ? 'play' : 'pause'} size={24} color={colors.text} />
       </Pressable>
       {next != null ? (
-        <Pressable onPress={() => void skipPlayerTo(next)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('videos.next')}>
+        <Pressable onPress={() => void skipPlayerTo(next)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('player.next')}>
           <Ionicons name="play-skip-forward" size={21} color={colors.text} />
         </Pressable>
       ) : null}
-      <Pressable onPress={closeVideo} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('videos.stop')}>
+      <Pressable onPress={closeMedia} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('player.stop')}>
         <Ionicons name="close" size={23} color={colors.textMuted} />
       </Pressable>
     </>
@@ -239,14 +243,14 @@ function Bar({ title, uploader, next }: { title: string; uploader: string | null
 }
 
 /**
- * How far the video is, drawn as the bar's own top edge, round its corners. It is laid over
+ * How far what plays is, drawn as the bar's own top edge, round its corners. It is laid over
  * the bar, of the bar's own shape, and cut to that shape: so the line bends with the
  * corners and nothing of it stands above them. Dragged, it seeks there on letting go; it
  * takes touches in a strip along the top, the line itself being too thin to hold.
  */
 function Scrub({ bottom }: { bottom: number }) {
   const { colors } = useTheme();
-  const { positionMs, durationMs } = usePlace();
+  const { positionMs, durationMs } = useMediaPlace();
   const [dragMs, setDragMs] = useState<number | null>(null);
   const latest = useRef({ durationMs: 0, width: 1, dragMs: null as number | null });
   useEffect(() => {
@@ -312,6 +316,7 @@ const styles = StyleSheet.create({
   },
   box: { width: 85, height: 48, borderRadius: 7, overflow: 'hidden', backgroundColor: '#000' },
   boxTall: { width: 48 },
+  cover: { alignItems: 'center', justifyContent: 'center' },
   words: { flex: 1, alignSelf: 'stretch', justifyContent: 'center', gap: 1 },
   title: { fontSize: 14, fontWeight: '600' },
   subtitle: { fontSize: 12 },

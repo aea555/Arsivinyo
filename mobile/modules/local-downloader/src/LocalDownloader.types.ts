@@ -34,9 +34,16 @@ export interface LocalVideo {
 export interface LocalPlayerState {
   /** False when nothing is loaded; the other fields are then absent. */
   active: boolean;
+  /** Which queue it is, as the one who set it named it. */
+  key?: string | null;
   /** The queue, by the library's ids. */
   ids?: string[];
   index?: number;
+  /** The one playing: its id, and whether it is a song. */
+  id?: string | null;
+  audio?: boolean;
+  buffering?: boolean;
+  repeat?: 'off' | 'one' | 'all';
   title?: string;
   subtitle?: string | null;
   paused?: boolean;
@@ -176,6 +183,17 @@ export interface LocalBackgroundPermissionResult {
 
 export interface LocalStickyNotificationState {
   enabled: boolean;
+}
+
+/** What a playlist or an album holds: the page of each entry. */
+export interface LocalPlaylist {
+  success: boolean;
+  /** False for a page that is one video. */
+  isPlaylist: boolean;
+  title?: string | null;
+  /** How many it holds; `entries` is cut to what the app will queue at once. */
+  total: number;
+  entries: { url: string }[];
 }
 
 export interface LocalQuickDownloadResult {

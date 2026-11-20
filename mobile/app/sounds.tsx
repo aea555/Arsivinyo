@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -17,7 +17,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import TrackPlayer, { State, useActiveTrack, usePlaybackState } from 'react-native-track-player';
 
 import {
   addLocalSoundsToPlaylists,
@@ -57,7 +56,7 @@ import {
   type AudioPreset,
   type AudioPresetParams,
 } from '@/src/features/audioPresets/presets';
-import { playSongs, reconcileQueueAfterReload, setupTrackPlayer } from '@/src/services/trackPlayerService';
+import { playSongs, reconcileQueueAfterReload, useActiveSound } from '@/src/services/musicPlayer';
 import { useTheme } from '@/src/theme';
 
 type SortMode = 'newest' | 'oldest' | 'titleAsc' | 'titleDesc' | 'durationDesc' | 'durationAsc';
@@ -124,8 +123,7 @@ export default function SoundsScreen() {
   const supported = useMemo(() => isLocalSoundsSupported(), []);
 
   // The currently-playing track (its id matches a song id) gets an accent outline.
-  const activeTrack = useActiveTrack();
-  const activeTrackId = activeTrack?.id != null ? String(activeTrack.id) : null;
+  const activeTrackId = useActiveSound()?.id ?? null;
 
   const [loading, setLoading] = useState(true);
   const [songs, setSongs] = useState<LocalSound[]>([]);
@@ -189,17 +187,13 @@ export default function SoundsScreen() {
       setPlaylists(allPlaylists);
       // Keep the active queue current: append songs added since the last reconcile
       // (import/download) so the player's prev/next can reach them without a restart.
-      await reconcileQueueAfterReload(library.songs, allPlaylists);
+      reconcileQueueAfterReload(library.songs, allPlaylists);
     } catch {
       showToast(t('sounds.loadFailed'));
     } finally {
       setLoading(false);
     }
   }, [supported, showToast, t]);
-
-  useEffect(() => {
-    setupTrackPlayer().catch(() => undefined);
-  }, []);
 
   // Presets live in AsyncStorage (plus the frozen built-ins), so they are loaded once
   // rather than on every sheet open.
@@ -500,7 +494,7 @@ export default function SoundsScreen() {
         // Just start playback. The full player opens via the mini-player or the
         // notification, not by tapping a song row. The context (playlist id or 'all')
         // lets later imports/downloads be appended to this queue.
-        await playSongs(visibleSongs, index, activePlaylist ? activePlaylist.id : 'all');
+        playSongs(visibleSongs, index, activePlaylist ? activePlaylist.id : 'all');
       } catch {
         showToast(t('sounds.loadFailed'));
       }
@@ -1068,9 +1062,7 @@ export default function SoundsScreen() {
               </Pressable>
             </View>
           </View>
-        ) : (
-          <MiniPlayer colors={colors} onOpen={() => router.push('/sound-player' as Href)} />
-        )}
+        ) : null}
       </View>
 
       {/* Sort menu */}
@@ -1360,35 +1352,6 @@ function Header({
       </Text>
       <View style={styles.headerRight}>{right}</View>
     </View>
-  );
-}
-
-function MiniPlayer({ colors, onOpen }: { colors: any; onOpen: () => void }) {
-  const track = useActiveTrack();
-  const playback = usePlaybackState();
-  const playing = playback.state === State.Playing;
-  if (!track) return null;
-  return (
-    <Pressable onPress={onOpen} style={[styles.miniPlayer, { backgroundColor: colors.surfaceHover, borderColor: colors.border }]}>
-      <View style={[styles.miniThumb, { backgroundColor: colors.surface }]}>
-        {track.artwork ? (
-          <Image source={{ uri: String(track.artwork) }} style={styles.miniThumbImg} contentFit="cover" />
-        ) : (
-          <Ionicons name="musical-note" size={18} color={colors.textMuted} />
-        )}
-      </View>
-      <View style={styles.miniText}>
-        <Text numberOfLines={1} style={[styles.miniTitle, { color: colors.text }]}>
-          {track.title ?? ''}
-        </Text>
-        <Text numberOfLines={1} style={[styles.miniArtist, { color: colors.textMuted }]}>
-          {track.artist ?? ''}
-        </Text>
-      </View>
-      <Pressable hitSlop={10} onPress={() => (playing ? TrackPlayer.pause() : TrackPlayer.play())} style={styles.miniBtn}>
-        <Ionicons name={playing ? 'pause' : 'play'} size={26} color={colors.text} />
-      </Pressable>
-    </Pressable>
   );
 }
 
