@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [4.2.0-beta.2] — The app closing as it opens
+
+One fix, for a fault older than the beta: the app could close a moment after it was opened.
+The Mac is unchanged, and stays 4.1.4.
+
+### Fixed
+- Phone: the app could close about two seconds after it was opened, several times in a row
+  ("Context.startForegroundService() did not then call Service.startForeground()"). The
+  download notification's service could be stopped before it had gone to the foreground:
+  by a start that asked it to stop, and by its stopping itself outright while another
+  start, asking it to run, was still on its way. Every start now takes it to the
+  foreground first, and it stops by the start that asked.
+
 ## [4.2.0-beta.1] — One player for videos and music, and whole playlists
 
 The phone has a video library, and one player for it and for music: it stays over every
