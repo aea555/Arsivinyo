@@ -6,6 +6,7 @@ const KEYS = {
     PRIVATE_VAULT_SORT: '@arsivinyo_private_vault_sort_v1',
     PRIVATE_VAULT_SHOW_TAGS: '@arsivinyo_private_vault_show_tags_v1',
     SUBTITLE_STYLE: '@arsivinyo_subtitle_style_v1',
+    PLAYER_ORIENTATION: '@arsivinyo_player_orientation_v1',
 } as const;
 
 /** How the player draws subtitles: their size against the default, and whether in bold. */
@@ -34,6 +35,19 @@ export async function getSubtitleStyle(): Promise<SubtitleStyle> {
 export async function setSubtitleStyle(style: SubtitleStyle): Promise<boolean> {
     const size = (SUBTITLE_SCALES as readonly number[]).indexOf(style.scale);
     return setItem(KEYS.SUBTITLE_STYLE, { size: size < 0 ? DEFAULT_SUBTITLE_SIZE : size, bold: style.bold });
+}
+
+/** How the screen is held in a player: turned with the phone, or kept in landscape or upright. */
+export type PlayerOrientation = 'auto' | 'landscape' | 'portrait';
+export const PLAYER_ORIENTATIONS: readonly PlayerOrientation[] = ['auto', 'landscape', 'portrait'];
+
+export async function getPlayerOrientation(): Promise<PlayerOrientation> {
+    const stored = await getItem<string | null>(KEYS.PLAYER_ORIENTATION, null);
+    return (PLAYER_ORIENTATIONS as readonly string[]).includes(stored ?? '') ? (stored as PlayerOrientation) : 'auto';
+}
+
+export async function setPlayerOrientation(orientation: PlayerOrientation): Promise<boolean> {
+    return setItem(KEYS.PLAYER_ORIENTATION, orientation);
 }
 
 export type PrivateVaultSortMode = 'alpha' | 'time' | 'size' | 'duration';

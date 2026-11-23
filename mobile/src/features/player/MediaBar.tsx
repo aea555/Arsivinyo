@@ -177,7 +177,6 @@ export function MediaPlayer() {
             title={item.title}
             languages={languages ?? []}
             background
-            upright={!!item.tall}
             mini={!expanded}
             repeat={repeat}
             onRepeat={setMediaRepeat}

@@ -65,6 +65,9 @@ export interface MpvQueue {
   index: number;
 }
 
+/** The screen follows the phone, or is kept one way. */
+export type MpvOrientation = 'auto' | 'landscape' | 'portrait';
+
 /** At the end: stop, play this video again, or go round the queue. */
 export type MpvRepeat = 'off' | 'one' | 'all';
 
@@ -98,8 +101,11 @@ export interface MpvPlayerViewProps extends ViewProps {
   background?: boolean;
   /** What that notification calls the video. */
   title?: string;
-  /** The video is taller than it is wide: the screen stays upright for it, not in landscape. */
-  upright?: boolean;
+  /**
+   * How the screen is held while the player is the whole of it: turned with the phone
+   * (where Android's auto-rotate is on), or kept in landscape or upright.
+   */
+  orientation?: MpvOrientation;
   repeat?: MpvRepeat;
   /**
    * Small, in the app's bar: the picture only. The screen is not turned or made fullscreen

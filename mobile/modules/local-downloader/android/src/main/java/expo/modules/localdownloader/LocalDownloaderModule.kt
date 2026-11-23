@@ -1977,7 +1977,9 @@ class LocalDownloaderModule : Module() {
 
       Prop("title") { view: MpvPlayerView, title: String? -> view.title = title.orEmpty() }
 
-      Prop("upright") { view: MpvPlayerView, upright: Boolean? -> view.upright = upright == true }
+      Prop("orientation") { view: MpvPlayerView, orientation: String? ->
+        view.orientation = orientation?.takeIf { it == "landscape" || it == "portrait" } ?: "auto"
+      }
 
       Prop("mini") { view: MpvPlayerView, mini: Boolean? -> view.mini = mini == true }
 

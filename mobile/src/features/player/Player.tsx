@@ -16,7 +16,17 @@ import {
   type MpvSource,
   type MpvTrack,
 } from '@/src/native/localDownloader';
-import { DEFAULT_SUBTITLE_STYLE, getSubtitleStyle, setSubtitleStyle, SUBTITLE_SCALES, type SubtitleStyle } from '@/src/services/storage';
+import {
+  DEFAULT_SUBTITLE_STYLE,
+  getPlayerOrientation,
+  getSubtitleStyle,
+  PLAYER_ORIENTATIONS,
+  setPlayerOrientation,
+  setSubtitleStyle,
+  SUBTITLE_SCALES,
+  type PlayerOrientation,
+  type SubtitleStyle,
+} from '@/src/services/storage';
 
 /** Controls fade after this long without a touch, while playing. */
 const HIDE_AFTER_MS = 3500;
@@ -53,8 +63,6 @@ export interface PlayerProps {
    * not: out of sight it pauses.
    */
   background?: boolean;
-  /** The video is taller than it is wide: played upright, not in landscape. */
-  upright?: boolean;
   /**
    * Small, in the app's bar: the picture alone, with no controls over it. It is the same
    * player made large again, so the video does not stop between the two.
@@ -100,7 +108,7 @@ function clock(ms: number): string {
  * subtitle track, subtitle delay and speed.
  */
 export function Player({
-  source, queue = null, item = 0, onItem, title, languages, subtitles = [], background = false, upright = false, mini = false, repeat: repeatGiven, onRepeat, record = null,
+  source, queue = null, item = 0, onItem, title, languages, subtitles = [], background = false, mini = false, repeat: repeatGiven, onRepeat, record = null,
   onClose, onPrevious: toPrevious, onNext: toNext, switching = false,
   onProgress, onEnded, children, waiting,
 }: PlayerProps) {
@@ -136,6 +144,29 @@ export function Player({
       live = false;
     };
   }, []);
+  // How the screen is held: the viewer's own choice, for every video and every player from
+  // here on. Never by a video's shape. Said in words for a moment as it changes, the
+  // button's picture alone not being plain to everyone.
+  const [orientation, setOrientation] = useState<PlayerOrientation>('auto');
+  const [orientationSaid, setOrientationSaid] = useState(false);
+  const orientationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    let live = true;
+    void getPlayerOrientation().then((stored) => live && setOrientation(stored));
+    return () => {
+      live = false;
+      if (orientationTimer.current) clearTimeout(orientationTimer.current);
+    };
+  }, []);
+  const nextOrientation = () => {
+    const next = PLAYER_ORIENTATIONS[(PLAYER_ORIENTATIONS.indexOf(orientation) + 1) % PLAYER_ORIENTATIONS.length];
+    setOrientation(next);
+    void setPlayerOrientation(next);
+    setOrientationSaid(true);
+    if (orientationTimer.current) clearTimeout(orientationTimer.current);
+    orientationTimer.current = setTimeout(() => setOrientationSaid(false), 1800);
+  };
+
   const changeStyle = (next: SubtitleStyle) => {
     setStyle(next);
     void setSubtitleStyle(next);
@@ -340,7 +371,7 @@ export function Player({
         onItem={(e) => onItem?.(e.nativeEvent.index)}
         languages={languages}
         background={background}
-        upright={upright}
+        orientation={orientation}
         mini={mini}
         repeat={repeat}
         // For the notification of a player that plays on out of sight; a vault video is named nowhere.
@@ -381,6 +412,12 @@ export function Player({
               <Ionicons name="close" size={28} color="#fff" />
             </Pressable>
             <Text style={styles.title} numberOfLines={1}>{title}</Text>
+            <Pressable onPress={() => { touch(); nextOrientation(); }} hitSlop={10}
+              accessibilityRole="button" accessibilityLabel={t(`player.orientation.${orientation}`)}>
+              <MaterialCommunityIcons
+                name={orientation === 'landscape' ? 'phone-rotate-landscape' : orientation === 'portrait' ? 'phone-rotate-portrait' : 'screen-rotation'}
+                size={24} color="#fff" />
+            </Pressable>
             {background ? (
               <Pressable onPress={() => void player.current?.enterPictureInPicture()} hitSlop={10}
                 accessibilityRole="button" accessibilityLabel={t('player.pictureInPicture')}>
@@ -487,6 +524,10 @@ export function Player({
       {backArmed ? (
         <View style={styles.toast} pointerEvents="none">
           <Text style={styles.white}>{t('player.backAgain')}</Text>
+        </View>
+      ) : orientationSaid ? (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.white}>{t(`player.orientation.${orientation}`)}</Text>
         </View>
       ) : null}
 

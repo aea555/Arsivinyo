@@ -96,12 +96,12 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
       if (engine?.repeat != value) engine?.repeat = value
     }
 
-  /** The video is taller than it is wide, and the screen stays upright for it. */
-  var upright = false
+  /** "auto", "landscape" or "portrait": how the screen is held while this is the whole of it. */
+  var orientation = "auto"
     set(value) {
       field = value
       if (!isAttachedToWindow || mini) return
-      PlayerWindow.upright = value
+      PlayerWindow.orientation = value
       appContext.currentActivity?.let { PlayerWindow.keep(it) }
     }
 
@@ -122,7 +122,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
         offerPictureInPicture()
         PlayerWindow.leave(this, activity)
       } else {
-        PlayerWindow.upright = upright
+        PlayerWindow.orientation = orientation
         PlayerWindow.enter(this, activity)
         offerPictureInPicture()
       }
@@ -330,7 +330,7 @@ class MpvPlayerView(context: Context, appContext: AppContext) : ExpoView(context
     super.onAttachedToWindow()
     val activity = appContext.currentActivity ?: return
     if (!mini) {
-      PlayerWindow.upright = upright
+      PlayerWindow.orientation = orientation
       PlayerWindow.enter(this, activity)
     }
     (activity as? ComponentActivity)?.addOnPictureInPictureModeChangedListener(pictureInPicture)

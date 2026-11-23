@@ -958,7 +958,12 @@
       "one": "Tekrar: bu video"
     },
     "next": "Sonraki",
-    "stop": "Durdur"
+    "stop": "Durdur",
+    "orientation": {
+      "auto": "Döndürme: telefonu izler",
+      "landscape": "Döndürme: hep yatay",
+      "portrait": "Döndürme: hep dikey"
+    }
   },
   "torrents": {
     "live": {

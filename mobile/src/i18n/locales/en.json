@@ -958,7 +958,12 @@
       "one": "Repeat: this video"
     },
     "next": "Next",
-    "stop": "Stop"
+    "stop": "Stop",
+    "orientation": {
+      "auto": "Rotation: follows the phone",
+      "landscape": "Rotation: always landscape",
+      "portrait": "Rotation: always portrait"
+    }
   },
   "torrents": {
     "live": {

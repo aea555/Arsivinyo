@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [4.2.0-beta.3] — The screen turns when you say
+
+The player no longer turns the screen by a video's shape: a button chooses how it is held.
+The Mac is unchanged, and stays 4.1.4.
+
+### Changed
+- Phone: the player no longer turns the screen for a video's shape. It turned landscape for
+  a wide video and upright for a tall one, with no way to say otherwise, and turned again
+  under the viewer each time a queue went from one kind to the other. A button in the
+  player now chooses, for every video and every player, and the choice is kept: the screen
+  follows the phone as it is turned (where Android's auto-rotate is on), or stays in
+  landscape, or stays upright. It follows the phone until chosen otherwise.
+
 ## [4.2.0-beta.2] — The app closing as it opens
 
 One fix, for a fault older than the beta: the app could close a moment after it was opened.
